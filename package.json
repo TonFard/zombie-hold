@@ -1,0 +1,31 @@
+{
+  "name": "zombie-hold",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "尸潮 · 死守：斜俯视 3D 据点防守",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc --noEmit",
+    "sim:nav": "tsx scripts/sim-nav.ts",
+    "sim:combat": "tsx scripts/sim-combat.ts",
+    "sim:build": "tsx scripts/sim-build.ts",
+    "check:balance": "tsx scripts/check-balance.ts"
+  },
+  "dependencies": {
+    "three": "^0.187.0",
+    "vue": "^3.5.44"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/three": "^0.187.0",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "puppeteer-core": "^25.16.0",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vite": "^8.3.5",
+    "vue-tsc": "^3.3.14"
+  }
+}
