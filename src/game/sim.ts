@@ -10,6 +10,7 @@ import { Navigator } from './nav/navigator';
 import { updateBuildMode, updateStructures, type BuildCursor } from './systems/building';
 import { updateProjectiles, updateStatus } from './systems/combat';
 import { updatePlayer } from './systems/player';
+import { newRunState, updateRun, type Phase, type RunState } from './systems/run';
 import { stepZombies } from './systems/zombie-ai';
 import { resolveCircleVsGrid } from './world/collision';
 import { Grid, GRID_H, GRID_W, HALF_H, HALF_W } from './world/grid';
@@ -67,6 +68,8 @@ export interface PlayerInput {
   toggleBuild: boolean;
   /** 按住：拆除光标处的建筑（右键 / X） */
   sell: boolean;
+  /** 边沿触发：Enter，白天提前开始夜晚 */
+  confirm: boolean;
 }
 
 export interface WeaponSlot {
@@ -89,6 +92,12 @@ export interface Mods {
   turret: number;
   /** 炮塔射速倍率 */
   turretRate: number;
+  /** 受到的伤害倍率（越小越耐打） */
+  armor: number;
+  /** 每次击杀回复的生命 */
+  lifesteal: number;
+  /** 发电机每秒回复的生命 */
+  coreRegen: number;
 }
 
 export interface CoreState {
@@ -131,6 +140,20 @@ export interface GameEvents {
   spikesHit: { id: number };
   repaired: { x: number; z: number; core: boolean };
   buildMode: { on: boolean };
+  phase: { phase: Phase; night: number };
+  banner: { text: string; sub: string };
+  cardsOffered: { ids: string[] };
+  runEnded: { won: boolean; reason: string };
+  scrapBox: { index: number; taken: boolean };
+  playerDied: { x: number; z: number };
+}
+
+export interface ScrapBox {
+  cx: number;
+  cy: number;
+  x: number;
+  z: number;
+  alive: boolean;
 }
 
 export interface GameStats {
@@ -168,9 +191,16 @@ export class Game {
     use: false,
     toggleBuild: false,
     sell: false,
+    confirm: false,
   };
   readonly loadout: Record<WeaponKind, WeaponSlot>;
-  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1 };
+  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0 };
+  readonly run: RunState = newRunState();
+  readonly scrapBoxes: ScrapBox[];
+  /** 已选卡牌及叠加层数 */
+  readonly cardCounts: Record<string, number> = {};
+  /** 本局累计获得的零件（不含拆除返还） */
+  scrapEarned = 0;
 
   /** 建造模式 */
   buildMode = false;
@@ -245,6 +275,7 @@ export class Game {
     const lo = {} as Record<WeaponKind, WeaponSlot>;
     for (const k of WEAPON_ORDER) lo[k] = { owned: k === 'pistol', tier: 0, mag: WEAPONS[k].base.mag };
     this.loadout = lo;
+    this.scrapBoxes = this.map.scrapBoxes.map((c) => ({ cx: c.cx, cy: c.cy, x: c.cx - HALF_W + 0.5, z: c.cy - HALF_H + 0.5, alive: true }));
     this.input.aimX = this.player.x;
     this.input.aimZ = this.player.z + 5;
     this.nav.update(1, this.player.x, this.player.z, true);
@@ -263,6 +294,7 @@ export class Game {
     stepZombies(this, dt);
     updateStatus(this, dt);
     updateStructures(this, dt);
+    updateRun(this, dt);
 
     // 清理死亡
     let w = 0;
@@ -326,6 +358,8 @@ export class Game {
     this.stats.kills++;
     const reward = Math.round(z.def.reward * this.mods.scrap);
     this.scrap += reward;
+    this.scrapEarned += reward;
+    if (this.mods.lifesteal > 0 && this.player.alive) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.mods.lifesteal);
     this.events.emit('zombieDied', { zombie: z });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
@@ -374,11 +408,15 @@ export class Game {
 
   damagePlayer(amount: number): void {
     if (!this.player.alive) return;
+    const dealt = amount * this.mods.armor;
     if (!this.invulnerablePlayer) {
-      this.player.hp = Math.max(0, this.player.hp - amount);
-      if (this.player.hp <= 0) this.player.alive = false;
+      this.player.hp = Math.max(0, this.player.hp - dealt);
+      if (this.player.hp <= 0) {
+        this.player.alive = false;
+        this.events.emit('playerDied', { x: this.player.x, z: this.player.z });
+      }
     }
-    this.events.emit('playerDamaged', { amount });
+    this.events.emit('playerDamaged', { amount: dealt });
   }
 
   // ---------------- 武器 ----------------

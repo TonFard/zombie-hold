@@ -1,6 +1,6 @@
 import { CARD_BY_ID, drawCards } from '../data/cards';
 import { WEAPON_ORDER, statsAt } from '../data/weapons';
-import { ALIVE_CAP, DAY_FIRST, DAY_LEN, FINAL_NIGHT, batchInterval, batchSize, bossFor, hpScale, nightBonus, nightCount, pickKind } from '../data/waves';
+import { ALIVE_CAP, DAY_FIRST, DAY_LEN, FINAL_NIGHT, START_SCRAP, batchInterval, batchSize, bossFor, hpScale, nightBonus, nightCount, pickKind } from '../data/waves';
 import type { Game } from '../sim';
 
 export type Phase = 'menu' | 'day' | 'night' | 'cards' | 'won' | 'lost';
@@ -38,6 +38,8 @@ export function startRun(g: Game): void {
   g.run.night = 1;
   g.run.time = 0;
   g.run.lostReason = '';
+  g.scrap += START_SCRAP;
+  g.scrapEarned += START_SCRAP;
   startDay(g, true);
 }
 
@@ -186,7 +188,9 @@ export function updateRun(g: Game, dt: number): void {
     updateNight(g, dt);
   }
 
-  if (r.phase !== 'won' && r.phase !== 'lost') {
+  // 上面的阶段函数可能已经把阶段改成了 won，所以这里重新读一次
+  const now: Phase = g.run.phase;
+  if (now !== 'won' && now !== 'lost') {
     if (!g.player.alive) loseRun(g, 'player');
     else if (g.core.hp <= 0) loseRun(g, 'core');
   }

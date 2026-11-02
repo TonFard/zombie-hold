@@ -7,10 +7,14 @@ export const DAY_LEN = 45;
 /** 同屏僵尸上限（性能预算） */
 export const ALIVE_CAP = 70;
 
-/** 第 n 夜的普通僵尸总数 */
+/** 第 n 夜的普通僵尸总数。第 1 夜是教学夜，只有 12 只 */
 export function nightCount(n: number): number {
+  if (n <= 1) return 12;
   return Math.round(12 + 5.5 * n + 0.35 * n * n);
 }
+
+/** 开局赠送的零件：够买几个路障或者一级武器升级 */
+export const START_SCRAP = 120;
 
 /** 生命系数 */
 export function hpScale(n: number): number {

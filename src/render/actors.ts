@@ -33,6 +33,8 @@ export class Actors {
   private readonly zombies = new Map<number, ZActor>();
   private readonly corpses: Corpse[] = [];
   readonly player = new PlayerActor();
+  /** 第一人称时不画玩家自己的身体（手和枪由视角模型负责） */
+  firstPerson = false;
   private time = 0;
   private readonly off: Array<() => void> = [];
 
@@ -150,7 +152,7 @@ export class Actors {
     // ---- 玩家 ----
     const p = game.player;
     this.player.setWeapon(p.weapon, p.tier);
-    this.player.group.visible = p.alive;
+    this.player.group.visible = p.alive && !this.firstPerson;
     this.player.group.position.set(p.x, 0, p.z);
     this.player.update(this.time, { yaw: p.yaw, vx: p.vx, vz: p.vz, phase: p.walkPhase, sprinting: p.sprinting, recoil: p.recoil });
   }

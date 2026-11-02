@@ -122,7 +122,8 @@ export class Lighting {
     this.scene.environmentIntensity = mix(0.4, 0.07);
   }
 
-  private readonly dir = new Vector3();
+  /** 从目标指向太阳的单位向量 */
+  readonly dir = new Vector3();
 
   /** 让阴影相机跟着目标走，并按目标附近最近的路灯分配有限的点光源 */
   follow(x: number, z: number, dt: number): void {

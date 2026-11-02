@@ -1,6 +1,6 @@
 # 尸潮 · 死守 (zombie-hold)
 
-斜俯视 3D 据点防守游戏。守住中央发电机,撑过 10 个夜晚。玩法与设计见 [docs/PLAN.md](docs/PLAN.md)。
+第一人称 3D 据点防守游戏。守住中央发电机,撑过 10 个夜晚。玩法与设计见 [docs/PLAN.md](docs/PLAN.md)。
 
 ## 技术栈
 
@@ -42,11 +42,15 @@ npm run typecheck  # 仅类型检查
 不需要浏览器,直接在 Node 里跑游戏逻辑:
 
 ```bash
-npm run sim:nav        # 僵尸寻路
+npm run sim:nav        # 僵尸寻路(环境变量 SIM_SEED 可换随机种子)
 npm run sim:combat     # 战斗
 npm run sim:build      # 建造
+npm run sim:run        # 一局的流程、胜负、卡牌、机器人试玩
 npm run check:balance  # 数值平衡
 ```
+
+音效自检需要先 `npm run dev`,再运行 `node scripts/audio-check.mjs`(同样依赖本机 Edge):
+把每个音效离线渲染出来,检查有声音、没有 NaN、不爆音。
 
 ## 截图脚本(可选,仅开发调试用)
 
@@ -58,15 +62,19 @@ npm run check:balance  # 数值平衡
 
 | 按键 | 作用 |
 |---|---|
-| W A S D | 移动 |
-| 鼠标 / 左键 | 瞄准 / 开火(建造模式下放置) |
+| W A S D | 前后左右移动(相对视线方向) |
+| 鼠标 | 转动视角(第一次点击画面锁定鼠标) |
+| 左键 | 开火(建造模式下在准星指的格子放置) |
 | R | 换弹 |
 | 1–5 | 切换武器 |
 | Shift | 冲刺 |
 | B | 建造模式(1/2/3 选建筑,右键或 X 拆除) |
 | E | 修理附近建筑 |
-| F | 靠近工坊时打开工坊 |
-| Esc | 暂停 |
+| F | 靠近工坊时打开工坊(白天) |
+| Enter | 白天提前开始夜晚 |
+| Esc | 释放鼠标并暂停 |
+
+看不到身后时,看右上角的雷达。
 
 ## 目录
 

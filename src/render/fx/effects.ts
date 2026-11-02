@@ -1,54 +1,36 @@
 import {
   AdditiveBlending,
   BoxGeometry,
-  CanvasTexture,
   Color,
   Group,
   Mesh,
   MeshBasicMaterial,
-  PlaneGeometry,
   PointLight,
   RingGeometry,
   Scene,
   SphereGeometry,
-  SRGBColorSpace,
   Vector3,
   type PerspectiveCamera,
 } from 'three';
+import { clamp } from '../../game/core/math';
 import { Rng } from '../../game/core/rng';
 import type { WeaponKind } from '../../game/data/weapons';
 import type { Projectile } from '../../game/entities/projectile';
 import type { Game } from '../../game/sim';
-import type { Actors } from '../actors';
 import type { CameraRig } from '../cameraRig';
 import { Builder, toGroup } from '../kit';
 import { MODEL_SCALE } from '../models/zombies';
+import type { ViewModel } from '../viewmodel';
 import { Decals } from './decals';
 import { FloatingText } from './floatingText';
 import { Particles } from './particles';
 
 const SHAKE: Record<WeaponKind, number> = { pistol: 0.07, smg: 0.05, shotgun: 0.26, rifle: 0.09, launcher: 0.34 };
-const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 45, smg: 40, shotgun: 130, rifle: 55, launcher: 150 };
+/** 枪口火光照亮前方世界的点光源峰值 */
+const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 16, smg: 14, shotgun: 46, rifle: 20, launcher: 54 };
 
-function flashTexture(): CanvasTexture {
-  const S = 128;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
-  const g = ctx.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
-  g.addColorStop(0, 'rgba(255,255,255,1)');
-  g.addColorStop(0.25, 'rgba(255,220,150,0.85)');
-  g.addColorStop(1, 'rgba(255,120,30,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, S, S);
-  // 十字星芒
-  ctx.fillStyle = 'rgba(255,240,200,0.9)';
-  ctx.fillRect(S / 2 - 3, 8, 6, S - 16);
-  ctx.fillRect(8, S / 2 - 3, S - 16, 6);
-  const t = new CanvasTexture(c);
-  t.colorSpace = SRGBColorSpace;
-  return t;
-}
+/** 开枪时相机上抬的弧度（只影响画面，不影响命中） */
+const KICK: Record<WeaponKind, number> = { pistol: 0.014, smg: 0.007, shotgun: 0.05, rifle: 0.02, launcher: 0.06 };
 
 interface Tracer {
   mesh: Mesh;
@@ -71,7 +53,6 @@ export class Effects {
 
   private readonly rng = new Rng(2024);
   private readonly off: Array<() => void> = [];
-  private readonly flash = new Group();
   private readonly flashLight = new PointLight(0xffa860, 0, 9, 2);
   private flashT = 0;
   private flashPeak = 0;
@@ -82,13 +63,16 @@ export class Effects {
   private readonly booms: Boom[] = [];
   private readonly grenades = new Map<Projectile, Group>();
   private readonly grenadeProto: Group;
-  private readonly v = new Vector3();
+  /** 最近一次开枪时枪口的世界坐标，曳光从这里出发 */
+  private readonly muzzle = new Vector3();
+  private readonly ta = new Vector3();
+  private readonly tb = new Vector3();
 
   constructor(
     private readonly scene: Scene,
     private readonly game: Game,
     private readonly rig: CameraRig,
-    private readonly actors: Actors,
+    private readonly viewmodel: ViewModel,
     container: HTMLElement,
     camera: PerspectiveCamera,
     size: () => { w: number; h: number },
@@ -97,20 +81,7 @@ export class Effects {
     scene.add(this.particles.mesh);
     scene.add(this.decals.group);
 
-    // 枪口火光：两张交叉的发光面片 + 一盏短命点光源
-    const tex = flashTexture();
-    const mat = new MeshBasicMaterial({ map: tex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, color: new Color(2.4, 1.7, 1.0) });
-    const quad = new PlaneGeometry(0.7, 0.42);
-    const a = new Mesh(quad, mat);
-    a.position.z = 0.3;
-    const b = new Mesh(quad, mat);
-    b.position.z = 0.3;
-    b.rotation.z = Math.PI / 2;
-    const c = new Mesh(new PlaneGeometry(0.5, 0.5), mat);
-    c.position.z = 0.05;
-    this.flash.add(a, b, c);
-    this.flash.visible = false;
-    scene.add(this.flash);
+    // 枪口火光的面片在视角模型里；这里只留一盏短命点光源照亮前方的地面和墙
     scene.add(this.flashLight);
     scene.add(this.boomLight);
 
@@ -139,7 +110,7 @@ export class Effects {
     const e = game.events;
     this.off.push(
       e.on('shot', (s) => this.onShot(s.kind, s.yaw)),
-      e.on('tracer', (t) => this.onTracer(t.x0, t.z0, t.x1, t.z1, t.hitFlesh)),
+      e.on('tracer', (t) => this.onPlayerTracer(t.x1, t.z1, t.hitFlesh)),
       e.on('impact', (i) => (i.flesh ? this.bloodSpray(i.x, i.z, -i.nx, -i.nz, 7, 1) : this.sparks(i.x, i.z, i.nx, i.nz))),
       e.on('zombieHit', (h) => {
         const z = h.zombie;
@@ -156,6 +127,11 @@ export class Effects {
       e.on('scrap', (s) => this.text.scrap(s.x, 1.2, s.z, s.amount)),
       e.on('explosion', (x) => this.onExplosion(x.x, x.z, x.radius, x.big)),
       e.on('acid', (a) => this.onAcid(a.x, a.z, a.radius)),
+      e.on('playerDied', (p) => {
+        // 第一人称里镜头就在玩家身上，近处的血粒子会变成满屏的大方块，所以只留地上的血迹
+        this.decals.add('blood', p.x, p.z, 2.4, 60);
+        this.rig.addShake(0.6);
+      }),
       e.on('playerDamaged', () => this.rig.addShake(0.3)),
       e.on('coreDamaged', () => this.rig.addShake(0.08)),
     );
@@ -204,30 +180,28 @@ export class Effects {
   // ---------------------------------------------------------------- 射击
 
   private onShot(kind: WeaponKind, yaw: number): void {
-    this.actors.player.muzzleWorld(this.v);
-    this.flash.position.copy(this.v);
-    this.flash.rotation.y = yaw;
-    const s = (kind === 'shotgun' ? 1.5 : kind === 'launcher' ? 1.7 : kind === 'pistol' ? 0.85 : 1) * this.rng.range(0.85, 1.15);
-    this.flash.scale.setScalar(s);
-    this.flash.rotation.z = this.rng.range(0, 6.28);
-    this.flash.visible = true;
+    this.viewmodel.fire(kind);
+    const m = this.viewmodel.muzzleWorld(this.muzzle, this.rig.camera);
     this.flashT = 0.06;
-    this.flashLight.position.copy(this.v);
+    this.flashLight.position.copy(m);
     this.flashPeak = FLASH_LIGHT[kind];
     this.rig.addShake(SHAKE[kind]);
+    this.rig.kick(KICK[kind]);
 
-    // 抛壳：向枪的右侧弹出
+    // 抛壳：从枪的右侧弹出。右方 = (-cos yaw, sin yaw)，前方 = (sin yaw, cos yaw)
     if (kind === 'launcher') return;
-    const rx = Math.cos(yaw);
-    const rz = -Math.sin(yaw);
+    const rx = -Math.cos(yaw);
+    const rz = Math.sin(yaw);
+    const fx = Math.sin(yaw);
+    const fz = Math.cos(yaw);
     const shell = kind === 'shotgun';
     this.particles.spawn({
-      x: this.v.x - Math.sin(yaw) * 0.35,
-      y: 1.2,
-      z: this.v.z - Math.cos(yaw) * 0.35,
-      vx: rx * this.rng.range(2, 3.5) + this.rng.range(-0.5, 0.5),
-      vy: this.rng.range(2.5, 4),
-      vz: rz * this.rng.range(2, 3.5) + this.rng.range(-0.5, 0.5),
+      x: m.x - fx * 0.2,
+      y: m.y + 0.03,
+      z: m.z - fz * 0.2,
+      vx: rx * this.rng.range(1.6, 2.6) + fx * 0.3 + this.rng.range(-0.4, 0.4),
+      vy: this.rng.range(1.6, 2.6),
+      vz: rz * this.rng.range(1.6, 2.6) + fz * 0.3 + this.rng.range(-0.4, 0.4),
       size: shell ? 0.07 : 0.04,
       life: 1.6,
       r: shell ? 0.8 : 1.5,
@@ -240,21 +214,28 @@ export class Effects {
     });
   }
 
-  private onTracer(x0: number, z0: number, x1: number, z1: number, hitFlesh: boolean): void {
+  /**
+   * 玩家的曳光：从枪口出发，打中僵尸时落在胸口高度，否则沿视线飞出去。
+   * 命中判定是水平面上的（上下自动瞄准），所以这里只负责让画面看起来合理。
+   */
+  private onPlayerTracer(x1: number, z1: number, hitFlesh: boolean): void {
+    const cam = this.rig.camera;
+    const hd = Math.hypot(x1 - cam.position.x, z1 - cam.position.z);
+    const y = hitFlesh ? 1.05 : clamp(cam.position.y + Math.tan(cam.rotation.x) * hd, 0.05, 6);
+    this.drawTracer(this.ta.copy(this.muzzle), this.tb.set(x1, y, z1), hitFlesh);
+  }
+
+  /** 画一道曳光（两点之间最后一段） */
+  private drawTracer(a: Vector3, b: Vector3, hitFlesh: boolean): void {
     const t = this.tracers[this.tracerIdx] as Tracer;
     this.tracerIdx = (this.tracerIdx + 1) % this.tracers.length;
-    const dx = x1 - x0;
-    const dz = z1 - z0;
-    const len = Math.hypot(dx, dz);
-    if (len < 0.2) return;
-    // 曳光弹只画中间一段，从枪口前一点到命中点，像一道闪过的光
-    const head = len;
-    const tail = Math.max(0, len - Math.min(len, 5 + this.rng.range(0, 2)));
-    const l = head - tail;
-    const mx = x0 + (dx / len) * (tail + l / 2);
-    const mz = z0 + (dz / len) * (tail + l / 2);
-    t.mesh.position.set(mx, 1.15, mz);
-    t.mesh.rotation.y = Math.atan2(dx, dz);
+    const len = a.distanceTo(b);
+    if (len < 0.6) return;
+    // 曳光弹只画靠近终点的一段，像一道闪过的光
+    const l = Math.min(len, 5 + this.rng.range(0, 2));
+    const k = (len - l / 2) / len;
+    t.mesh.position.set(a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k, a.z + (b.z - a.z) * k);
+    t.mesh.lookAt(b);
     t.mesh.scale.set(hitFlesh ? 0.022 : 0.016, 0.016, l);
     t.mesh.visible = true;
     t.age = 0;
@@ -347,7 +328,7 @@ export class Effects {
 
   /** 炮塔开火：曳光 + 枪口火星 */
   turretFire(x0: number, z0: number, x1: number, z1: number): void {
-    this.onTracer(x0, z0, x1, z1, true);
+    this.drawTracer(this.ta.set(x0, 1.15, z0), this.tb.set(x1, 1.15, z1), true);
     for (let i = 0; i < 3; i++) {
       this.particles.spawn({ x: x0, y: 0.75, z: z0, vx: (x1 - x0) * 0.2 + this.rng.range(-1, 1), vy: this.rng.range(0.3, 1.5), vz: (z1 - z0) * 0.2 + this.rng.range(-1, 1), size: 0.04, life: 0.14, r: 4, g: 2.6, b: 1, gravity: 4, drag: 3 });
     }
@@ -360,10 +341,7 @@ export class Effects {
     if (this.flashT > 0) {
       this.flashT -= dt;
       this.flashLight.intensity = this.flashPeak * Math.max(0, this.flashT / 0.06);
-      if (this.flashT <= 0) {
-        this.flash.visible = false;
-        this.flashLight.intensity = 0;
-      }
+      if (this.flashT <= 0) this.flashLight.intensity = 0;
     }
     // 爆炸光
     if (this.boomT > 0) {

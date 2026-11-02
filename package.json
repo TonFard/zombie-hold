@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "尸潮 · 死守：斜俯视 3D 据点防守",
+  "description": "尸潮 · 死守：第一人称 3D 据点防守",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -12,6 +12,7 @@
     "sim:nav": "tsx scripts/sim-nav.ts",
     "sim:combat": "tsx scripts/sim-combat.ts",
     "sim:build": "tsx scripts/sim-build.ts",
+    "sim:run": "tsx scripts/sim-run.ts",
     "check:balance": "tsx scripts/check-balance.ts"
   },
   "dependencies": {
