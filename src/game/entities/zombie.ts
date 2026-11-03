@@ -44,12 +44,36 @@ export class Zombie {
   maxStuck = 0;
 
   everAttacked = false;
+  /** 训练场靶子：站着不动、不攻击 */
+  dummy = false;
+  /** 精英（精英夜）：生命和掉落 ×3，金色 */
+  elite = false;
+  /** 硬直 / 眩晕剩余时间：不能动也不能攻击（推搡、电击脉冲） */
+  stunT = 0;
+  /** 吐酸者：远程攻击冷却 */
+  spitCd = 2;
+  /** 尖啸者：尖叫冷却；被尖叫加速的剩余时间和比例 */
+  screamCd = 3;
+  hasteT = 0;
+  hasteK = 0;
+  /**
+   * 首领冲锋（M13）：0 = 平常，1 = 蓄力（地上出现红线预警），2 = 冲锋，3 = 冲完硬直（胸口核心裸露）。
+   * chargeT 是这个阶段的剩余时间，chargeDX/DZ 是冲锋方向
+   */
+  chargeState = 0;
+  chargeT = 0;
+  chargeCd = 8;
+  chargeDX = 0;
+  chargeDZ = 0;
   /** 击退速度（格/秒），会快速衰减 */
   kbx = 0;
   kbz = 0;
   /** 灼烧剩余时间与每秒伤害 */
   burnT = 0;
   burnDps = 0;
+  /** 减速（轻机枪压制）：剩余时间和减速比例 */
+  slowT = 0;
+  slowK = 0;
   /** 渲染层使用 */
   hitFlash = 0;
   walkPhase = 0;

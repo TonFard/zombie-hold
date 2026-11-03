@@ -1,8 +1,10 @@
-/** 榴弹和它的子弹：会飞行、会爆炸 */
+/** 榴弹和它的子弹：沿抛物线飞行（受重力），碰到地面、墙或僵尸就爆炸 */
 export interface Projectile {
   x: number;
+  y: number;
   z: number;
   vx: number;
+  vy: number;
   vz: number;
   life: number;
   damage: number;

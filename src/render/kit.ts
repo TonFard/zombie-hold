@@ -8,6 +8,8 @@ import {
   ExtrudeGeometry,
   Float32BufferAttribute,
   Group,
+  LatheGeometry,
+  Vector2,
   Uint16BufferAttribute,
   Matrix4,
   Mesh,
@@ -190,12 +192,38 @@ export class Builder {
     return this.add(new SphereGeometry(r, ws, hs), xf, st);
   }
 
-  torus(r: number, tube: number, rs: number, ts: number, xf: Xf, st: Style): this {
-    return this.add(new TorusGeometry(r, tube, rs, ts), xf, st);
+  /** 圆环；arc < 2π 时是一段圆弧（扳机护圈、提把） */
+  torus(r: number, tube: number, rs: number, ts: number, xf: Xf, st: Style, arc = Math.PI * 2): this {
+    return this.add(new TorusGeometry(r, tube, rs, ts, arc), xf, st);
   }
 
-  /** 沿 Z 方向挤出一个 XY 轮廓，原点在底面中心，挤出长度居中 */
-  extrude(shape: Shape, depth: number, xf: Xf, st: Style): this {
+  /**
+   * 旋转体：profile 是 [半径, 沿轴位置] 的折线，绕 +Z 轴旋转（枪管、消音器、制退器、弹头）。
+   * 原点在轴上 0 处。
+   */
+  lathe(profile: Array<[number, number]>, seg: number, xf: Xf, st: Style): this {
+    const g = new LatheGeometry(profile.map(([r, y]) => new Vector2(r, y)), seg);
+    // Lathe 绕 Y 旋转：转到 +Z
+    g.rotateX(Math.PI / 2);
+    return this.add(g, xf, st);
+  }
+
+  /** 沿 +Z 的圆管，从 z0 开始，长 len（枪械零件最常用） */
+  tubeZ(r: number, len: number, seg: number, xf: Xf, st: Style, r2 = r): this {
+    const g = new CylinderGeometry(r2, r, len, seg);
+    g.translate(0, len / 2, 0);
+    g.rotateX(Math.PI / 2);
+    return this.add(g, xf, st);
+  }
+
+  /** 沿 Z 方向挤出一个 XY 轮廓，原点在底面中心，挤出长度居中。bevel > 0 时边缘倒角（轮廓大小不变） */
+  extrude(shape: Shape, depth: number, xf: Xf, st: Style, bevel = 0): this {
+    if (bevel > 0) {
+      const core = Math.max(0.0001, depth - bevel * 2);
+      const g = new ExtrudeGeometry(shape, { depth: core, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: 2, curveSegments: 8 });
+      g.translate(0, 0, -core / 2);
+      return this.add(g, xf, st);
+    }
     const g = new ExtrudeGeometry(shape, { depth, bevelEnabled: false });
     g.translate(0, 0, -depth / 2);
     return this.add(g, xf, st);
@@ -236,6 +264,9 @@ export const Mats = {
   matte: new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.92, metalness: 0.03 }),
   metal: new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.48, metalness: 0.7 }),
   glow: new MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
+  /** 平滑着色版本：枪械、手臂这种近距离看的模型，圆柱不出现棱面 */
+  matteSmooth: new MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.03 }),
+  metalSmooth: new MeshStandardMaterial({ vertexColors: true, roughness: 0.38, metalness: 0.78 }),
   /** 受击闪白：替换 matte / metal 材质 0.09 秒 */
   flash: new MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.6, metalness: 0, emissive: 0xff9070, emissiveIntensity: 1.6 }),
 };
@@ -243,6 +274,8 @@ export const Mats = {
 export interface MeshOpts {
   castShadow?: boolean;
   receiveShadow?: boolean;
+  /** 用平滑着色材质 */
+  smooth?: boolean;
 }
 
 /** 把 Built 变成一组网格 */
@@ -253,7 +286,8 @@ export function toGroup(built: Built, opts: MeshOpts = {}): Group {
   for (const k of ['matte', 'metal', 'glow'] as const) {
     const geo = built[k];
     if (!geo) continue;
-    const m = new Mesh(geo, Mats[k]);
+    const mat = opts.smooth && k !== 'glow' ? (k === 'matte' ? Mats.matteSmooth : Mats.metalSmooth) : Mats[k];
+    const m = new Mesh(geo, mat);
     m.castShadow = cast && k !== 'glow';
     m.receiveShadow = recv && k !== 'glow';
     g.add(m);

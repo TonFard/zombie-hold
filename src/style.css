@@ -1,3 +1,22 @@
+/* HUD 设计变量：所有局内 HUD 组件共用同一套颜色、字体、面板 */
+:root {
+  --hud-text: #eef1f3;
+  --hud-muted: #9aa6b2;
+  --hud-dim: #67737f;
+  --hud-accent: #f0b83a;
+  --hud-cyan: #6fd0e8;
+  --hud-danger: #e8553f;
+  --hud-ok: #7ad04a;
+  --hud-panel: rgba(9, 13, 18, 0.58);
+  --hud-panel-strong: rgba(9, 13, 18, 0.82);
+  --hud-line: rgba(255, 255, 255, 0.14);
+  --hud-line-strong: rgba(255, 255, 255, 0.32);
+  --hud-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  /* Bahnschrift 是 Windows 自带的 DIN 风格字体，窄体数字很适合 HUD；中文回落到雅黑 */
+  --hud-font: 'Bahnschrift', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
+  --hud-num: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+}
+
 *,
 *::before,
 *::after {
@@ -25,7 +44,6 @@ canvas.game-canvas {
   width: 100%;
   height: 100%;
   display: block;
-  cursor: none;
 }
 
 .fx-layer {

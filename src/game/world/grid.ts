@@ -28,6 +28,16 @@ export class Grid {
   readonly extra = new Float32Array(COUNT);
   readonly ground = new Uint8Array(COUNT);
   readonly buildable = new Uint8Array(COUNT);
+  /**
+   * 静态障碍的高度（米）。子弹低于它会被挡住，高于它会飞过去：
+   * 平着打能越过木箱、隔离墩、车顶，打不穿围墙。0 = 没有静态障碍。
+   */
+  readonly height = new Float32Array(COUNT);
+  /**
+   * 细障碍（树干、灯杆、油桶）的精细形状：圆柱半径（米），0 = 整格方块。
+   * 寻路仍然把整格当成障碍，但玩家的碰撞和子弹按真实粗细算，不会撞上"空气墙"。
+   */
+  readonly post = new Float32Array(COUNT);
 
   /** 阻挡建筑变化时自增，寻路据此重算 */
   structVersion = 0;

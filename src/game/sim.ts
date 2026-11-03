@@ -1,14 +1,20 @@
+import { sandboxConfig, type RunConfig } from './config';
 import { Emitter } from './core/events';
 import { Rng } from './core/rng';
-import { STRUCTURES, type StructureKind } from './data/structures';
-import { WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from './data/weapons';
+import { STRUCTURES, isTurret, type StructureKind } from './data/structures';
+import { EYE_HEIGHT } from './data/ballistics';
+import { COMBO_WINDOW, ELITE_REWARD, FLASHLIGHT, comboMult } from './data/modifiers';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from './data/weapons';
 import type { ZombieKind } from './data/zombies';
+import type { Bullet } from './entities/bullet';
 import type { Projectile } from './entities/projectile';
 import type { Structure } from './entities/structure';
 import { Zombie, type AttackTarget } from './entities/zombie';
 import { Navigator } from './nav/navigator';
 import { updateBuildMode, updateStructures, type BuildCursor } from './systems/building';
-import { updateProjectiles, updateStatus } from './systems/combat';
+import { updateBullets, updateProjectiles, updateStatus } from './systems/combat';
+import { newAirdrop, updateAirdrop, type AirdropState } from './systems/airdrop';
+import { newHazards, updateHazards, type HazardState } from './systems/hazards';
 import { updatePlayer } from './systems/player';
 import { newRunState, updateRun, type Phase, type RunState } from './systems/run';
 import { stepZombies } from './systems/zombie-ai';
@@ -48,6 +54,27 @@ export interface PlayerState {
   fireTimer: number;
   /** 射速递增进度 0–1 */
   ramp: number;
+  /** 瞄准进度 0（腰射）–1（完全举镜），按武器的 adsTime 线性推进 */
+  ads: number;
+  /** 这次换弹的总时长（战术换弹比打空换弹快） */
+  reloadTotal: number;
+  /** 蹲伏程度 0–1（平滑过渡），眼睛高度随之降低 */
+  crouch: number;
+  crouchHeld: boolean;
+  /** 眼睛离地高度（米），子弹从这里出膛 */
+  eye: number;
+  /** 滑铲剩余时间、冷却、方向 */
+  slide: number;
+  slideCd: number;
+  slideDirX: number;
+  slideDirZ: number;
+  /** 冲刺结束后的抬枪时间，期间不能开火 */
+  sprintOut: number;
+  /** 近战剩余时间，> 0 时不能开火 */
+  meleeTimer: number;
+  /** 后坐力把视线抬起来的量（弧度），开火时累加、松开扳机后回落；子弹和相机都会加上它 */
+  kickPitch: number;
+  kickYaw: number;
 }
 
 /** 每帧由输入层写入 */
@@ -56,20 +83,33 @@ export interface PlayerInput {
   moveZ: number;
   aimX: number;
   aimZ: number;
+  /** 视线俯仰角（弧度，抬头为正）。子弹按它飞，决定打头还是打身体 */
+  aimPitch: number;
+  /** 按住右键瞄准 */
+  ads: boolean;
+  /** 按住 Ctrl / C 蹲下；冲刺中按下 = 滑铲 */
+  crouch: boolean;
+  /** 边沿触发：V 近战 */
+  melee: boolean;
   fire: boolean;
   sprint: boolean;
   /** 边沿触发，逻辑层读取后清零 */
   reload: boolean;
   /** 0 = 无，1–5 = 切到第几把武器（建造模式下是选建筑）；逻辑层读取后清零 */
   select: number;
-  /** 边沿触发：E 键修理 */
+  /** 边沿触发：E 键交互（修理附近的建筑 / 发电机；靠近工坊时由应用层打开工坊） */
   use: boolean;
-  /** 边沿触发：B 键开关建造模式 */
+  /** 边沿触发：F 键开关建造模式 */
   toggleBuild: boolean;
   /** 按住：拆除光标处的建筑（右键 / X） */
   sell: boolean;
   /** 边沿触发：Enter，白天提前开始夜晚 */
   confirm: boolean;
+  /** 边沿触发：G 扔手雷、Q 发电机电击脉冲 */
+  grenade: boolean;
+  pulse: boolean;
+  /** T 键开关的手电筒（状态，不是边沿） */
+  flashlight: boolean;
 }
 
 export interface WeaponSlot {
@@ -98,6 +138,10 @@ export interface Mods {
   lifesteal: number;
   /** 发电机每秒回复的生命 */
   coreRegen: number;
+  /** 爆头加成（倍率超出 1 的那部分）的倍数（卡牌「弱点打击」） */
+  head: number;
+  /** 瞄准时散布的额外倍率（卡牌，越小越准） */
+  adsSpread: number;
 }
 
 export interface CoreState {
@@ -116,21 +160,28 @@ export interface DamageOpts {
   burn?: number;
   /** 不弹伤害数字（灼烧用） */
   silent?: boolean;
+  /** 打中的是头 */
+  head?: boolean;
 }
 
 export interface GameEvents {
   zombieSpawned: Zombie;
   zombieAttack: { zombie: Zombie; target: AttackTarget };
-  zombieDied: { zombie: Zombie };
-  zombieHit: { zombie: Zombie; amount: number; crit: boolean };
+  zombieDied: { zombie: Zombie; head: boolean };
+  zombieHit: { zombie: Zombie; amount: number; crit: boolean; head: boolean };
   structureAdded: Structure;
   structureDamaged: { structure: Structure; amount: number };
   structureRemoved: { structure: Structure; destroyed: boolean };
   coreDamaged: { amount: number };
   playerDamaged: { amount: number };
   shot: { kind: WeaponKind; mx: number; mz: number; yaw: number };
-  tracer: { kind: WeaponKind; x0: number; z0: number; x1: number; z1: number; hitFlesh: boolean };
-  impact: { x: number; z: number; nx: number; nz: number; flesh: boolean; kind: WeaponKind };
+  /** 爆头击杀返还子弹（狙击招牌） */
+  refund: { kind: WeaponKind; amount: number };
+  slide: Record<string, never>;
+  meleeSwing: Record<string, never>;
+  meleeHit: { zombie: Zombie | null; x: number; y: number; z: number };
+  /** 子弹命中：flesh = 打在僵尸身上；zone 区分头 / 身体 / 墙 / 地面。y 是命中点离地高度 */
+  impact: { x: number; y: number; z: number; nx: number; nz: number; flesh: boolean; zone: 'head' | 'body' | 'wall' | 'ground'; kind: WeaponKind };
   explosion: { x: number; z: number; radius: number; big: boolean };
   acid: { x: number; z: number; radius: number };
   scrap: { x: number; z: number; amount: number };
@@ -146,6 +197,17 @@ export interface GameEvents {
   runEnded: { won: boolean; reason: string };
   scrapBox: { index: number; taken: boolean };
   playerDied: { x: number; z: number };
+  /** silent = 读档时恢复已经炸掉的状态，不放特效 */
+  propExploded: { index: number; x: number; z: number; silent?: boolean };
+  grenadeThrown: { fire: boolean };
+  shove: { hits: number };
+  pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
+  spit: { x: number; z: number };
+  scream: { x: number; z: number; radius: number };
+  combo: { count: number; mult: number };
+  challenge: { id: string; done: boolean };
+  airdrop: { stage: 'land' | 'taken' | 'gone'; x: number; z: number };
+  bossCharge: { id: number; stage: 'windup' | 'go' | 'stun'; x: number; z: number; dx: number; dz: number; len: number };
 }
 
 export interface ScrapBox {
@@ -165,6 +227,13 @@ export interface GameStats {
   structuresDestroyed: number;
   spawned: number;
   kills: number;
+  /** 打中头的次数 / 爆头击杀数 */
+  headshots: number;
+  headshotKills: number;
+  /** 完成的夜间挑战数（结算勋章用） */
+  challenges: number;
+  /** 最高连杀 */
+  bestCombo: number;
 }
 
 export class Game {
@@ -176,6 +245,8 @@ export class Game {
 
   readonly zombies: Zombie[] = [];
   readonly projectiles: Projectile[] = [];
+  /** 空中飞行的子弹（枪械走弹道，榴弹仍是 projectiles） */
+  readonly bullets: Bullet[] = [];
   readonly structures = new Map<number, Structure>();
   readonly player: PlayerState;
   readonly core: CoreState;
@@ -184,6 +255,10 @@ export class Game {
     moveZ: 0,
     aimX: 0,
     aimZ: 0,
+    aimPitch: 0,
+    ads: false,
+    crouch: false,
+    melee: false,
     fire: false,
     sprint: false,
     reload: false,
@@ -192,10 +267,15 @@ export class Game {
     toggleBuild: false,
     sell: false,
     confirm: false,
+    grenade: false,
+    pulse: false,
+    flashlight: false,
   };
   readonly loadout: Record<WeaponKind, WeaponSlot>;
-  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0 };
+  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1 };
   readonly run: RunState = newRunState();
+  /** 这一局的规则（难度、局外成长带来的解锁和上限）；默认是什么都不限制的沙盒 */
+  config: RunConfig = sandboxConfig();
   readonly scrapBoxes: ScrapBox[];
   /** 已选卡牌及叠加层数 */
   readonly cardCounts: Record<string, number> = {};
@@ -216,10 +296,16 @@ export class Game {
   invulnerablePlayer = false;
   /** 仇恨范围倍率（测试用，正常游戏为 1） */
   aggroScale = 1;
+  /** 手电筒：剩余电量（秒），松开后充能；开着时僵尸更容易发现你 */
+  battery = FLASHLIGHT.battery;
+  flashOn = false;
 
   time = 0;
   tick = 0;
-  private nextId = 1;
+  /** 下一个实体 id（僵尸和建筑共用；检查点会保存它，保证读档后生成的僵尸和原来一样） */
+  nextId = 1;
+  /** 子弹 id（渲染层用它对应曳光）；放在 Game 上而不是模块里，几局同时存在时互不影响 */
+  nextBulletId = 1;
 
   /** 空间哈希（链表头 / 下一项），僵尸 AI 用 */
   readonly hashHead = new Int32Array(GRID_W * GRID_H);
@@ -234,7 +320,18 @@ export class Game {
     structuresDestroyed: 0,
     spawned: 0,
     kills: 0,
+    headshots: 0,
+    headshotKills: 0,
+    challenges: 0,
+    bestCombo: 0,
   };
+  /** 爆炸物、危险区、手雷、推搡、电击脉冲（M12） */
+  readonly hz: HazardState = newHazards();
+  /** 白天的空投补给（M13） */
+  readonly airdrop: AirdropState = newAirdrop();
+  /** 连杀：数量和距离上一次击杀的时间 */
+  combo = 0;
+  comboT = 0;
 
   constructor(seed = 1) {
     this.rng = new Rng(seed);
@@ -271,6 +368,19 @@ export class Game {
       reloadTimer: 0,
       fireTimer: 0,
       ramp: 0,
+      ads: 0,
+      reloadTotal: 1,
+      crouch: 0,
+      crouchHeld: false,
+      eye: EYE_HEIGHT,
+      slide: 0,
+      slideCd: 0,
+      slideDirX: 0,
+      slideDirZ: 0,
+      sprintOut: 0,
+      meleeTimer: 0,
+      kickPitch: 0,
+      kickYaw: 0,
     };
     const lo = {} as Record<WeaponKind, WeaponSlot>;
     for (const k of WEAPON_ORDER) lo[k] = { owned: k === 'pistol', tier: 0, mag: WEAPONS[k].base.mag };
@@ -284,15 +394,35 @@ export class Game {
   update(dt: number): void {
     this.time += dt;
     this.tick++;
+    if (this.comboT > 0) this.comboT = Math.max(0, this.comboT - dt);
+    // 手电筒：开着耗电，耗尽自动关；关着时充电
+    const wantLight = this.input.flashlight && this.config.extras && this.player.alive;
+    if (wantLight && this.battery > 0) {
+      this.flashOn = true;
+      this.battery = Math.max(0, this.battery - dt);
+      if (this.battery <= 0) this.input.flashlight = false;
+    } else {
+      this.flashOn = false;
+      this.battery = Math.min(FLASHLIGHT.battery, this.battery + dt * FLASHLIGHT.recharge);
+    }
     updateBuildMode(this, dt);
     updatePlayer(this, dt);
     const pl = this.player;
     pl.walkPhase += Math.hypot(pl.vx, pl.vz) * dt * 2.4;
     pl.recoil = Math.max(0, pl.recoil - dt * 6);
+    // 后坐力回落：松开扳机（或两发之间）视线慢慢回到原位
+    const back = Math.exp(-(this.input.fire ? 3.5 : 9) * dt);
+    pl.kickPitch *= back;
+    pl.kickYaw *= back;
     updateProjectiles(this, dt);
+    updateBullets(this, dt);
     this.nav.update(dt, this.player.x, this.player.z, this.player.alive);
     stepZombies(this, dt);
     updateStatus(this, dt);
+    if (this.config.extras) {
+      updateHazards(this, dt);
+      updateAirdrop(this, dt);
+    }
     updateStructures(this, dt);
     updateRun(this, dt);
 
@@ -351,16 +481,28 @@ export class Game {
       z.burnT = 3;
       z.burnDps = o.burn;
     }
-    if (!o.silent) this.events.emit('zombieHit', { zombie: z, amount, crit: !!o.crit });
+    const head = !!o.head;
+    if (head) this.stats.headshots++;
+    if (!o.silent) this.events.emit('zombieHit', { zombie: z, amount, crit: !!o.crit, head });
     if (z.hp > 0) return false;
 
     z.alive = false;
     this.stats.kills++;
-    const reward = Math.round(z.def.reward * this.mods.scrap);
+    if (head) this.stats.headshotKills++;
+    // 连杀：3 秒内的连续击杀累计倍率（M12，沙盒里关掉）
+    let comboK = 1;
+    if (this.config.extras) {
+      this.combo = this.comboT > 0 ? this.combo + 1 : 1;
+      this.comboT = COMBO_WINDOW;
+      comboK = comboMult(this.combo);
+      if (this.combo > this.stats.bestCombo) this.stats.bestCombo = this.combo;
+      if (this.combo >= 3) this.events.emit('combo', { count: this.combo, mult: comboK });
+    }
+    const reward = Math.round(z.def.reward * (z.elite ? ELITE_REWARD : 1) * this.mods.scrap * this.run.modScrap * comboK);
     this.scrap += reward;
     this.scrapEarned += reward;
     if (this.mods.lifesteal > 0 && this.player.alive) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.mods.lifesteal);
-    this.events.emit('zombieDied', { zombie: z });
+    this.events.emit('zombieDied', { zombie: z, head });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
     return true;
@@ -381,7 +523,7 @@ export class Game {
 
   performZombieAttack(z: Zombie): void {
     z.everAttacked = true;
-    const dmg = z.def.damage;
+    const dmg = z.def.damage * this.config.zombieDamage;
     switch (z.attackTarget) {
       case 'player':
         this.stats.attacksOnPlayer++;
@@ -421,10 +563,18 @@ export class Game {
 
   // ---------------- 武器 ----------------
 
+  /** 工坊里这把枪能不能买：逻辑和界面都用这一个判断，免得两边对不上 */
+  buyState(kind: WeaponKind): 'owned' | 'locked' | 'scrap' | 'ok' {
+    if (this.loadout[kind].owned) return 'owned';
+    if (!this.config.weapons.includes(kind)) return 'locked';
+    if (this.scrap < WEAPONS[kind].price) return 'scrap';
+    return 'ok';
+  }
+
   buyWeapon(kind: WeaponKind): boolean {
     const slot = this.loadout[kind];
     const price = WEAPONS[kind].price;
-    if (slot.owned || this.scrap < price) return false;
+    if (this.buyState(kind) !== 'ok') return false;
     this.scrap -= price;
     slot.owned = true;
     slot.tier = 0;
@@ -435,7 +585,7 @@ export class Game {
   /** 升到下一级。弹匣变大时，当前弹匣里补上多出来的容量 */
   upgradeWeapon(kind: WeaponKind): boolean {
     const slot = this.loadout[kind];
-    if (!slot.owned || slot.tier >= 5) return false;
+    if (!slot.owned || slot.tier >= Math.min(MAX_TIER, this.config.tierCap[kind])) return false;
     const up = WEAPONS[kind].upgrades[slot.tier];
     if (!up || this.scrap < up.cost) return false;
     const before = statsAt(kind, slot.tier);
@@ -477,6 +627,22 @@ export class Game {
     else grid.placeTrap(i, s.id);
     this.events.emit('structureAdded', s);
     return s;
+  }
+
+  /** 已经建了几座炮塔（所有类型合计） */
+  turretCount(): number {
+    let n = 0;
+    for (const s of this.structures.values()) if (isTurret(s.kind)) n++;
+    return n;
+  }
+
+  /** 读档用：原样放回一座建筑（不检查规则、不扣零件） */
+  restoreStructure(s: Structure): void {
+    this.structures.set(s.id, s);
+    const i = this.grid.idx(s.cx, s.cy);
+    if (s.def.blocks) this.grid.placeBlocking(i, s.id, s.def.navCost);
+    else this.grid.placeTrap(i, s.id);
+    this.events.emit('structureAdded', s);
   }
 
   removeStructure(id: number, destroyed: boolean): void {

@@ -1,9 +1,12 @@
 import { reactive } from 'vue';
-import type { SaveData } from '../app/save';
-import { defaultSave } from '../app/save';
-import type { Quality } from '../render/view';
+import type { Difficulty } from '../game/data/difficulty';
+import type { Quality } from '../game/data/quality';
+import type { MedalBreakdown } from '../game/meta/progress';
+import { defaultSave, type SaveData } from '../game/save/schema';
 
-export type Screen = 'menu' | 'play' | 'pause' | 'bench' | 'cards' | 'result';
+export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result';
+
+export type LobbyTab = 'deploy' | 'armory' | 'engineering' | 'supply' | 'records' | 'codex' | 'settings';
 
 export interface Banner {
   text: string;
@@ -17,26 +20,62 @@ export interface ResultInfo {
   reason: string;
   night: number;
   kills: number;
+  headshotKills: number;
   scrap: number;
   time: number;
   newBest: boolean;
+  difficulty: Difficulty;
+  medals: MedalBreakdown;
+}
+
+/** 检查点的摘要：大厅里显示"继续第 n 天" */
+export interface CheckpointInfo {
+  night: number;
+  difficulty: Difficulty;
+  savedAt: number;
+  scrap: number;
+  hp: number;
+  maxHp: number;
 }
 
 /** 界面层状态：当前在哪个界面、横幅、结算信息、存档统计 */
 export const ui = reactive({
   screen: 'menu' as Screen,
+  lobbyTab: 'deploy' as LobbyTab,
   banner: { text: '', sub: '', id: 0 } as Banner,
   result: null as ResultInfo | null,
   save: defaultSave() as SaveData,
+  checkpoint: null as CheckpointInfo | null,
   cards: [] as string[],
+  /** 这一局新达成的成就（结算页显示） */
+  achievements: [] as string[],
+  /** 结算页显示"继续：无尽模式" */
+  canEndless: false,
+  /** 当前在训练场（暂停菜单换成"离开训练场"） */
+  inTraining: false,
+  /** 训练场：显示弹道偏离表（H 切换） */
+  dropHint: true,
+  /** 这个黎明还能重抽几次 */
+  rerolls: 0,
+  /** 屏幕角落的短提示（自动保存、坏档……）；id 自增让组件重播动画 */
+  toast: { text: '', warn: false, id: 0 },
   /** 游戏通过它把"开始 / 重新开始 / 回主菜单 / 继续"等动作交给应用层 */
   actions: {
-    start: () => {},
+    enterLobby: () => {},
+    deploy: (_d: Difficulty, _sidearm: string | null) => {},
+    continueRun: () => {},
+    training: () => {},
+    daily: () => {},
+    buyMeta: (_id: string) => {},
     resume: () => {},
     restart: () => {},
-    toMenu: () => {},
+    /** 放弃本局：按已经撑过的夜数结算勋章，回大厅 */
+    abandon: () => {},
+    toLobby: () => {},
+    endless: () => {},
     closeBench: () => {},
     pickCard: (_id: string) => {},
+    reroll: () => {},
     buy: (_k: string) => {},
     upgrade: (_k: string) => {},
     equip: (_k: string) => {},
@@ -45,6 +84,10 @@ export const ui = reactive({
     setSensitivity: (_s: number) => {},
   },
 });
+
+export function toast(text: string, warn = false): void {
+  ui.toast = { text, warn, id: ui.toast.id + 1 };
+}
 
 export const fmtTime = (sec: number): string => {
   const s = Math.max(0, Math.round(sec));

@@ -10,7 +10,7 @@ export interface Pos {
  * 把圆从阻挡格里推出来，沿墙面滑动而不是停下。
  * 返回是否发生过碰撞。
  */
-export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number): boolean {
+export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number, fine = false): boolean {
   let hit = false;
   for (let iter = 0; iter < 3; iter++) {
     let moved = false;
@@ -19,6 +19,23 @@ export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number): boolean {
     for (let cy = cy0 - 1; cy <= cy0 + 1; cy++) {
       for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
         if (!grid.isBlocked(cx, cy)) continue;
+        // 精细碰撞（玩家用）：细障碍按圆柱处理，可以贴着树干、灯杆走过去
+        const ci = grid.idx(cx, cy);
+        const post = fine && grid.inBounds(cx, cy) && (grid.structure[ci] as number) < 0 ? (grid.post[ci] as number) : 0;
+        if (post > 0) {
+          const ox = p.x - (cx - HALF_W + 0.5);
+          const oz = p.z - (cy - HALF_H + 0.5);
+          const d = Math.hypot(ox, oz);
+          const need = post + r;
+          if (d >= need) continue;
+          if (d > 1e-6) {
+            p.x += (ox / d) * (need - d);
+            p.z += (oz / d) * (need - d);
+          } else p.x += need;
+          moved = true;
+          hit = true;
+          continue;
+        }
         const minX = cx - HALF_W;
         const minZ = cy - HALF_H;
         const maxX = minX + 1;

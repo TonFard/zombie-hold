@@ -4,6 +4,8 @@ import { INF } from '../nav/flowfield';
 import { rectDist, resolveCircleVsGrid } from '../world/collision';
 import { GRID_H, GRID_W, HALF_H, HALF_W } from '../world/grid';
 import type { Game } from '../sim';
+import { FLASHLIGHT } from '../data/modifiers';
+import { spitAt } from './hazards';
 
 /** 沿路径向前看几格，找最远的看得见的路点（拉直路径） */
 const LOOK = 6;
@@ -26,7 +28,7 @@ function think(g: Game, z: Zombie): void {
   const pdz = player.z - z.z;
   const pd = Math.hypot(pdx, pdz);
 
-  const aggro = def.aggro * g.aggroScale;
+  const aggro = def.aggro * g.aggroScale * (g.flashOn ? FLASHLIGHT.aggro : 1);
   if (player.alive && aggro > 0) {
     if (z.goal === 'core' && pd < aggro) z.goal = 'player';
     else if (z.goal === 'player' && pd > aggro * 1.5) z.goal = 'core';
@@ -162,7 +164,7 @@ function move(g: Game, z: Zombie, i: number, dt: number): void {
       const dz = z.wpZ - z.z;
       const dl = Math.hypot(dx, dz);
       if (dl > 1e-4) {
-        const slow = grid.slow[grid.indexAt(z.x, z.z)] ? 0.6 : 1;
+        const slow = (grid.slow[grid.indexAt(z.x, z.z)] ? 0.6 : 1) * (z.slowT > 0 ? 1 - z.slowK : 1) * (z.hasteT > 0 ? 1 + z.hasteK : 1) * g.run.modSpeed;
         const sp = z.speed * slow * Math.min(1, dl / 0.15 + 0.3);
         dvx = (dx / dl) * sp;
         dvz = (dz / dl) * sp;
@@ -362,6 +364,129 @@ function track(g: Game, z: Zombie, i: number, dt: number): void {
   if (z.stuckTime > z.maxStuck) z.maxStuck = z.stuckTime;
 }
 
+/**
+ * 巨像冲锋：玩家在 14 米内且看得见时，停下蓄力（地上画红线），然后沿直线冲过去，
+ * 撞到玩家 / 建筑造成重击；冲完硬直 3 秒，胸口的核心裸露（弱点倍率）。返回 true = 这一帧由冲锋接管
+ */
+function charge(g: Game, z: Zombie, i: number, dt: number): boolean {
+  const c = z.def.charge!;
+  const p = g.player;
+  z.chargeCd -= dt;
+  if (z.chargeState === 0) {
+    if (z.chargeCd > 0 || !p.alive) return false;
+    const d = Math.hypot(p.x - z.x, p.z - z.z);
+    if (d > c.range || d < 3 || !g.grid.sweptClear(z.x, z.z, p.x, p.z, z.radius * 0.8)) return false;
+    z.chargeState = 1;
+    z.chargeT = c.windup;
+    z.chargeDX = (p.x - z.x) / d;
+    z.chargeDZ = (p.z - z.z) / d;
+    g.events.emit('bossCharge', { id: z.id, stage: 'windup', x: z.x, z: z.z, dx: z.chargeDX, dz: z.chargeDZ, len: c.speed * c.time });
+  }
+  z.chargeT -= dt;
+  z.attackTarget = 'none';
+  z.hasWp = false;
+  z.state = 'move';
+  if (z.chargeState === 1) {
+    // 蓄力：原地，面朝冲锋方向
+    z.vx = z.vz = 0;
+    z.yaw = Math.atan2(z.chargeDX, z.chargeDZ);
+    if (z.chargeT <= 0) {
+      z.chargeState = 2;
+      z.chargeT = c.time;
+      g.events.emit('bossCharge', { id: z.id, stage: 'go', x: z.x, z: z.z, dx: z.chargeDX, dz: z.chargeDZ, len: 0 });
+    }
+    return true;
+  }
+  if (z.chargeState === 2) {
+    const nx = z.x + z.chargeDX * c.speed * dt;
+    const nz = z.z + z.chargeDZ * c.speed * dt;
+    // 撞到玩家
+    if (p.alive && Math.hypot(p.x - nx, p.z - nz) < z.radius + p.radius + 0.2) {
+      g.damagePlayer(c.damage * g.config.zombieDamage);
+      p.vx += z.chargeDX * 6;
+      p.vz += z.chargeDZ * 6;
+      z.chargeT = 0;
+    }
+    // 撞到墙或建筑：停下，建筑吃重击
+    const cx = g.grid.cellX(nx + z.chargeDX * z.radius);
+    const cy = g.grid.cellY(nz + z.chargeDZ * z.radius);
+    if (g.grid.isBlocked(cx, cy)) {
+      const sid = g.grid.inBounds(cx, cy) ? (g.grid.structure[g.grid.idx(cx, cy)] as number) : -1;
+      if (sid >= 0) g.damageStructure(sid, c.damage * 3);
+      z.chargeT = 0;
+    } else {
+      z.x = nx;
+      z.z = nz;
+    }
+    z.vx = z.chargeDX * c.speed;
+    z.vz = z.chargeDZ * c.speed;
+    z.walkPhase += c.speed * dt * 1.6;
+    if (z.chargeT <= 0) {
+      z.chargeState = 3;
+      z.chargeT = c.stun;
+      g.events.emit('bossCharge', { id: z.id, stage: 'stun', x: z.x, z: z.z, dx: 0, dz: 0, len: 0 });
+    }
+    void i;
+    return true;
+  }
+  // 硬直：胸口核心裸露
+  z.vx = z.vz = 0;
+  if (z.chargeT <= 0) {
+    z.chargeState = 0;
+    z.chargeCd = c.cd;
+  }
+  return true;
+}
+
+/** 吐酸者：看得见玩家（或炮塔）且在射程内时停下来吐酸，冷却期间照常走 */
+function spitter(g: Game, z: Zombie, dt: number): void {
+  z.spitCd -= dt;
+  if (z.attackTarget !== 'none' || z.spitCd > 0) return;
+  const range = z.def.spitRange as number;
+  const p = g.player;
+  let tx = 0;
+  let tz = 0;
+  let found = false;
+  if (p.alive && Math.hypot(p.x - z.x, p.z - z.z) < range && g.grid.segmentClear(z.x, z.z, p.x, p.z, false)) {
+    tx = p.x + p.vx * 0.6;
+    tz = p.z + p.vz * 0.6;
+    found = true;
+  } else {
+    for (const s of g.structures.values()) {
+      if (s.kind === 'barricade' || s.kind === 'spikes') continue;
+      const sx = s.cx - HALF_W + 0.5;
+      const sz = s.cy - HALF_H + 0.5;
+      if (Math.hypot(sx - z.x, sz - z.z) < range) {
+        tx = sx;
+        tz = sz;
+        found = true;
+        break;
+      }
+    }
+  }
+  if (!found) return;
+  z.spitCd = z.def.spitInterval as number;
+  z.yaw = Math.atan2(tx - z.x, tz - z.z);
+  spitAt(g, z, tx, tz);
+}
+
+/** 尖啸者：玩家进入索敌范围后尖叫，周围的僵尸加速 */
+function screamer(g: Game, z: Zombie, dt: number): void {
+  const sc = z.def.scream;
+  if (!sc) return;
+  z.screamCd -= dt;
+  if (z.screamCd > 0) return;
+  const p = g.player;
+  if (!p.alive || Math.hypot(p.x - z.x, p.z - z.z) > z.def.aggro) return;
+  z.screamCd = sc.cd;
+  g.events.emit('scream', { x: z.x, z: z.z, radius: sc.radius });
+  for (const o of g.zombies) {
+    if (!o.alive || o === z || Math.hypot(o.x - z.x, o.z - z.z) > sc.radius) continue;
+    o.hasteT = sc.time;
+    o.hasteK = sc.boost;
+  }
+}
+
 export function stepZombies(g: Game, dt: number): void {
   const zs = g.zombies;
   const n = zs.length;
@@ -377,7 +502,26 @@ export function stepZombies(g: Game, dt: number): void {
   for (let i = 0; i < n; i++) {
     const z = zs[i]!;
     if (!z.alive) continue;
+    if (z.dummy) {
+      z.vx = z.vz = 0;
+      if (z.hitFlash > 0) z.hitFlash -= dt;
+      continue;
+    }
+    if (z.hasteT > 0) z.hasteT -= dt;
+    // 硬直 / 眩晕：原地不动、不攻击，击退照样生效
+    if (z.stunT > 0) {
+      z.stunT -= dt;
+      z.vx = z.vz = 0;
+      z.state = 'move';
+      z.attackTarget = 'none';
+      z.hasWp = false;
+      move(g, z, i, dt);
+      continue;
+    }
+    if (z.def.charge && g.config.extras && charge(g, z, i, dt)) continue;
     think(g, z);
+    if (z.def.spitRange) spitter(g, z, dt);
+    if (z.def.scream) screamer(g, z, dt);
     move(g, z, i, dt);
   }
   for (let i = 0; i < n; i++) {

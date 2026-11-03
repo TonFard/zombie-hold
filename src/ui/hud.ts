@@ -1,8 +1,10 @@
 import { reactive } from 'vue';
 import type { StructureKind } from '../game/data/structures';
-import { WEAPON_ORDER, WEAPONS, statsAt, sustainedDps, type WeaponKind } from '../game/data/weapons';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, statsAt, sustainedDps, type WeaponKind } from '../game/data/weapons';
 import type { Game } from '../game/sim';
 import { reasonText } from '../game/systems/building';
+import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifiers';
+import { PULSE } from '../game/systems/hazards';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import type { Phase } from '../game/systems/run';
 
@@ -33,6 +35,18 @@ export interface WeaponRow {
   canUpgrade: boolean;
   /** 特殊能力标签：穿透、范围、点燃…… */
   specials: string[];
+  /** 射程（米）和射程内伤害衰减后剩下的比例 */
+  range: number;
+  rangeMin: number;
+  headMult: number;
+  /** 这一局的等级上限（局外成长决定，5–8） */
+  cap: number;
+  /** 还没在大厅解锁，工坊里买不了 */
+  locked: boolean;
+  /** 已解锁但零件不够时还差多少（够了或已拥有为 0） */
+  short: number;
+  /** 买不了时的原因（locked 时显示） */
+  lockNote: string;
 }
 
 const specialsOf = (kind: WeaponKind, tier: number): string[] => {
@@ -44,6 +58,9 @@ const specialsOf = (kind: WeaponKind, tier: number): string[] => {
   if (st.ramp > 0) out.push('射速递增');
   if (st.split > 0) out.push('分裂');
   if (st.pellets > 1) out.push(`${st.pellets} 弹丸`);
+  if (st.refund > 0) out.push('爆头返弹');
+  if (st.slowHit > 0) out.push(`减速 ${Math.round(st.slowHit * 100)}%`);
+  if (adsAt(kind, tier).scope) out.push('瞄准镜');
   return out;
 };
 
@@ -54,7 +71,40 @@ export const hud = reactive({
   stamina: 100,
   maxStamina: 100,
   weaponName: '',
+  weaponKind: 'pistol' as WeaponKind,
+  /** M12：手雷、推搡、手电、脉冲、连杀、词缀和挑战 */
+  extras: {
+    on: false,
+    frags: 0,
+    fires: 0,
+    useFire: false,
+    shoveCd: 0,
+    battery: 1,
+    flashOn: false,
+    pulseCd: 0,
+    pulseCharge: 0,
+    pulseNear: false,
+    combo: 0,
+    comboMult: 1,
+    mod: '',
+    challenge: '',
+    chDone: false,
+    chProgress: '',
+  },
+  /** 雷达范围倍率（浓雾夜减半） */
+  radarScale: 1,
+  /** 训练场统计（由应用层抄进来） */
+  training: { hits: 0, headHits: 0, kills: 0, headKills: 0, lastDist: 0, lastHead: false },
   tier: 0,
+  /** 当前武器射程（米） */
+  range: 0,
+  /** 瞄准进度 0–1，瞄准镜武器完全举镜时显示镜框 */
+  ads: 0,
+  scope: false,
+  /** 爆头命中标记 */
+  hitHead: false,
+  crouch: 0,
+  sliding: false,
   mag: 0,
   magMax: 0,
   /** 换弹进度 0–1，-1 = 没在换弹 */
@@ -95,6 +145,10 @@ export const hud = reactive({
   /** 光标处不能建的原因；空串 = 可以建 */
   buildMsg: '',
   buildOk: false,
+  /** 这一局能建的建筑、已建炮塔数 / 上限 */
+  buildKinds: [] as StructureKind[],
+  turrets: 0,
+  turretCap: 0,
 });
 
 let lastHp = 100;
@@ -119,8 +173,8 @@ export const radar = {
   solid: null as Uint8Array | null,
 };
 
-const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, breaker: 3, colossus: 4 };
-const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2 };
+const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, breaker: 3, colossus: 4, spitter: 5, screamer: 6 };
+const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2, hmg: 1, flamer: 1, mortar: 1 };
 
 export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: number }): void {
   const p = game.player;
@@ -164,10 +218,16 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.stamina = p.stamina;
   hud.maxStamina = p.maxStamina;
   hud.weaponName = WEAPONS[p.weapon].name;
+  hud.weaponKind = p.weapon;
   hud.tier = p.tier;
+  hud.range = st.range;
+  hud.ads = p.ads;
+  hud.scope = adsAt(p.weapon, p.tier).scope;
+  hud.crouch = p.crouch;
+  hud.sliding = p.slide > 0;
   hud.mag = slot.mag;
   hud.magMax = st.mag;
-  hud.reload = p.reloadTimer > 0 ? 1 - p.reloadTimer / st.reload : -1;
+  hud.reload = p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1;
   hud.scrap = game.scrap;
   hud.kills = game.stats.kills;
   hud.coreHp = Math.ceil(game.core.hp);
@@ -178,7 +238,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.hurt = Math.max(0, hud.hurt - dt * 1.8);
   hud.locked = input.locked;
   // 准星随散布和后坐力张开
-  hud.spread = 10 + st.spread * 2.2 + p.recoil * 10 + (p.sprinting ? 8 : 0);
+  // 准星随散布、移动、后坐力张开，瞄准时收拢（和 fireWeapon 里的散布同一套系数）
+  const moveK = Math.min(1, Math.hypot(p.vx, p.vz) / 3.4);
+  const hip = (1 + 0.35 * moveK) * (1 - 0.2 * p.crouch);
+  hud.spread = (6 + st.spread * 2.4 * hip + p.recoil * 10 + (p.sprinting ? 10 : 0)) * (1 - 0.8 * p.ads);
   const run = game.run;
   hud.phase = run.phase;
   hud.night = run.night;
@@ -198,7 +261,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
     hud.weapons = WEAPON_ORDER.map((k, i) => {
       const slot = game.loadout[k];
       const def = WEAPONS[k];
-      const up = slot.tier < 5 ? def.upgrades[slot.tier] : undefined;
+      const cap = Math.min(MAX_TIER, game.config.tierCap[k]);
+      const state = game.buyState(k);
+      const locked = state === 'locked';
+      const up = slot.tier < cap ? def.upgrades[slot.tier] : undefined;
       const dps = sustainedDps(statsAt(k, slot.tier));
       return {
         kind: k,
@@ -213,14 +279,57 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         nextDesc: up?.desc ?? '',
         nextCost: up?.cost ?? 0,
         dpsAfter: slot.owned ? (up ? sustainedDps(statsAt(k, slot.tier + 1)) : dps) : sustainedDps(statsAt(k, 1)),
-        canBuy: !slot.owned && game.scrap >= def.price,
+        canBuy: state === 'ok',
+        short: state === 'scrap' ? Math.ceil(def.price - game.scrap) : 0,
+        lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁（大厅 · 军械库）',
         canUpgrade: slot.owned && !!up && game.scrap >= up.cost,
-        specials: specialsOf(k, slot.owned ? slot.tier : 5),
+        specials: specialsOf(k, slot.owned ? slot.tier : MAX_TIER),
+        range: statsAt(k, slot.tier).range,
+        rangeMin: def.falloff[1],
+        headMult: def.headMult,
+        cap,
+        locked,
       };
     });
   }
+  // ---- M12 ----
+  const x = hud.extras;
+  x.on = game.config.extras;
+  if (x.on) {
+    const h = game.hz;
+    x.frags = h.frags;
+    x.fires = h.fires;
+    x.useFire = h.useFire && h.fires > 0;
+    x.shoveCd = h.shoveCd;
+    x.battery = game.battery / FLASHLIGHT.battery;
+    x.flashOn = game.flashOn;
+    x.pulseCd = h.pulseCd;
+    x.pulseCharge = h.pulseCharge;
+    x.pulseNear = Math.hypot(p.x - game.core.x, p.z - game.core.z) <= PULSE.reach;
+    x.combo = game.comboT > 0 ? game.combo : 0;
+    x.comboMult = comboMult(game.combo);
+    x.mod = run.mod;
+    x.challenge = run.challenge;
+    x.chDone = run.chDone;
+    x.chProgress =
+      run.challenge === 'pistol'
+        ? `${run.chPistol} / ${CHALLENGES.pistol.goal}`
+        : run.challenge === 'blitz'
+          ? `${run.chWindow.length} / ${CHALLENGES.blitz.goal}`
+          : run.challenge === 'headshot'
+            ? `${run.chKills ? Math.round((run.chHeads / run.chKills) * 100) : 0}%（${run.chKills} 杀）`
+            : run.challenge === 'nobreach'
+              ? run.chBreached
+                ? '已失败'
+                : '保持中'
+              : '';
+  }
+  hud.radarScale = run.phase === 'night' && run.mod ? nightMod(run.mod).radar : 1;
   hud.buildMode = game.buildMode;
   hud.buildKind = game.buildKind;
   hud.buildOk = game.buildCursor.valid;
   hud.buildMsg = reasonText(game.buildCursor.reason);
+  if (hud.buildKinds.length !== game.config.structures.length) hud.buildKinds = [...game.config.structures];
+  hud.turrets = game.turretCount();
+  hud.turretCap = game.config.turretCap;
 }

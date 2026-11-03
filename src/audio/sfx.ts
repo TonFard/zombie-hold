@@ -48,6 +48,24 @@ export class Sfx {
         e.noise({ dur: 0.4, vol: 0.14, delay: 0.05, filter: { type: 'lowpass', freq: 650, to: 200 }, out });
         break;
       }
+      case 'sniper': {
+        if (!e.gate('shot-sniper', 0.2)) return;
+        const out = e.flat(1) ?? undefined;
+        // 很响的爆裂声 + 低沉的回声，0.35 秒后拉栓
+        e.noise({ dur: 0.16, vol: 0.85, filter: { type: 'highpass', freq: 900 * j }, out });
+        e.tone({ freq: 240 * j, to: 40, dur: 0.3, vol: 0.8, out });
+        e.noise({ dur: 0.8, vol: 0.18, delay: 0.06, filter: { type: 'lowpass', freq: 700, to: 150 }, out });
+        e.noise({ dur: 0.05, vol: 0.22, delay: 0.38, filter: { type: 'bandpass', freq: 2400, q: 3 }, out });
+        e.noise({ dur: 0.05, vol: 0.26, delay: 0.62, filter: { type: 'bandpass', freq: 3200, q: 3 }, out });
+        break;
+      }
+      case 'lmg': {
+        if (!e.gate('shot-lmg', 0.05)) return;
+        const out = e.flat(0.9) ?? undefined;
+        e.noise({ dur: 0.1, vol: 0.55, filter: { type: 'bandpass', freq: 1300 * j, q: 0.7 }, out });
+        e.tone({ freq: 180 * j, to: 52, dur: 0.14, vol: 0.5, out });
+        break;
+      }
       case 'launcher': {
         if (!e.gate('shot-launcher', 0.2)) return;
         const out = e.flat(1) ?? undefined;
@@ -88,6 +106,36 @@ export class Sfx {
       e.noise({ dur: 0.04, vol: 0.34, delay: 0.08, filter: { type: 'bandpass', freq: 3000, q: 3 }, out });
       e.tone({ freq: 1800, to: 900, dur: 0.04, vol: 0.1, type: 'square', delay: 0.08, filter: { type: 'bandpass', freq: 2000, q: 3 }, out });
     }
+  }
+
+  /** 滑铲：衣服摩擦地面的沙沙声 */
+  slide(): void {
+    const e = this.e;
+    if (!e.gate('slide', 0.3)) return;
+    const out = e.flat(0.6) ?? undefined;
+    e.noise({ dur: 0.55, vol: 0.3, filter: { type: 'bandpass', freq: 900, to: 400, q: 0.8 }, out });
+  }
+
+  /** 近战挥动；hit = 打中了 */
+  melee(hit: boolean): void {
+    const e = this.e;
+    if (!e.ready) return;
+    const out = e.flat(0.8) ?? undefined;
+    if (!hit) {
+      e.noise({ dur: 0.14, vol: 0.22, filter: { type: 'bandpass', freq: 1400, to: 600, q: 1.2 }, out });
+      return;
+    }
+    e.noise({ dur: 0.08, vol: 0.5, filter: { type: 'lowpass', freq: 900 }, out });
+    e.tone({ freq: 140 * jit(0.15), to: 50, dur: 0.12, vol: 0.5, out });
+  }
+
+  /** 爆头击杀返还子弹 */
+  refund(): void {
+    const e = this.e;
+    if (!e.gate('refund', 0.08)) return;
+    const out = e.flat(0.6) ?? undefined;
+    e.tone({ freq: 2200, to: 2600, dur: 0.05, vol: 0.12, type: 'triangle', out });
+    e.noise({ dur: 0.03, vol: 0.16, delay: 0.03, filter: { type: 'bandpass', freq: 3600, q: 3 }, out });
   }
 
   weaponSwitch(): void {
@@ -170,6 +218,13 @@ export class Sfx {
         e.tone({ freq: 88 * j, to: 60, dur: 0.7, vol: 0.24, type: 'square', filter: { type: 'lowpass', freq: 420, q: 3 }, attack: 0.05, out });
         e.tone({ freq: 760, to: 520, dur: 0.18, vol: 0.06, type: 'triangle', delay: 0.1, out });
         break;
+      case 'spitter':
+        e.tone({ freq: 140 * j, to: 90 * j, dur: 0.6, vol: 0.18, type: 'sawtooth', vibrato: { rate: 18, depth: 0.1 }, filter: { type: 'bandpass', freq: 700, q: 3 }, attack: 0.05, out });
+        e.noise({ dur: 0.5, vol: 0.12, filter: { type: 'bandpass', freq: 2200, q: 2 }, out });
+        break;
+      case 'screamer':
+        e.tone({ freq: 620 * j, to: 900 * j, dur: 0.4, vol: 0.12, type: 'sawtooth', vibrato: { rate: 14, depth: 0.06 }, filter: { type: 'bandpass', freq: 1800, q: 2 }, attack: 0.03, out });
+        break;
       case 'colossus':
         e.tone({ freq: 56, to: 34, dur: 1.9, vol: 0.55, type: 'sawtooth', vibrato: { rate: 4.5, depth: 0.06 }, filter: { type: 'lowpass', freq: 260, to: 120, q: 3 }, attack: 0.25, out });
         e.noise({ dur: 1.7, vol: 0.3, filter: { type: 'lowpass', freq: 500, to: 120 }, attack: 0.2, out });
@@ -184,7 +239,7 @@ export class Sfx {
     if (!e.gate(colossus ? 'die-boss' : 'die', colossus ? 0.5 : 0.045)) return;
     const out = e.spatial(x, z, colossus ? 1.2 : 0.6);
     if (!out) return;
-    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46 }[kind] * jit(0.1);
+    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46, spitter: 120, screamer: 260 }[kind] * jit(0.1);
     const len = colossus ? 1.4 : kind === 'bloater' ? 0.5 : 0.34;
     e.tone({ freq: base * 1.3, to: base * 0.4, dur: len, vol: colossus ? 0.6 : 0.24, type: 'sawtooth', filter: { type: 'lowpass', freq: 700, to: 180, q: 1.5 }, out });
     e.noise({ dur: colossus ? 0.6 : 0.16, vol: colossus ? 0.5 : 0.24, filter: { type: 'lowpass', freq: 600, to: 200 }, out });

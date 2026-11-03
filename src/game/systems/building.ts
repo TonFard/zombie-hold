@@ -1,10 +1,10 @@
-import { BUILD_RANGE, REPAIR_HP_PER_SCRAP, REPAIR_RANGE, SELL_REFUND, SPIKES, STRUCTURES, STRUCTURE_ORDER, TURRET } from '../data/structures';
+import { BUILD_RANGE, REPAIR_HP_PER_SCRAP, REPAIR_RANGE, SELL_REFUND, SPIKES, STRUCTURES, TURRETS, isTurret, type TurretKind } from '../data/structures';
 import type { Structure } from '../entities/structure';
 import { angleDiff } from '../core/math';
 import { HALF_H, HALF_W } from '../world/grid';
 import type { Game } from '../sim';
 
-export type BuildReason = 'ok' | 'range' | 'scrap' | 'zone' | 'occupied' | 'blocked';
+export type BuildReason = 'ok' | 'range' | 'scrap' | 'zone' | 'occupied' | 'blocked' | 'locked' | 'cap';
 
 export interface BuildCursor {
   cx: number;
@@ -20,6 +20,8 @@ const REASON_TEXT: Record<BuildReason, string> = {
   zone: '这里不能建造（只能建在内院和入口附近）',
   occupied: '这格已经有东西了',
   blocked: '有人站在这里',
+  locked: '还没解锁（大厅 · 工程部）',
+  cap: '炮塔数量已达上限',
 };
 
 export const reasonText = (r: BuildReason): string => REASON_TEXT[r];
@@ -28,6 +30,8 @@ export const reasonText = (r: BuildReason): string => REASON_TEXT[r];
 export function checkPlace(g: Game, cx: number, cy: number): BuildReason {
   const def = STRUCTURES[g.buildKind];
   const { grid, player } = g;
+  if (!g.config.structures.includes(g.buildKind)) return 'locked';
+  if (isTurret(g.buildKind) && g.turretCount() >= g.config.turretCap) return 'cap';
   if (!grid.inBounds(cx, cy)) return 'zone';
   const i = grid.idx(cx, cy);
   const wx = cx - HALF_W + 0.5;
@@ -133,7 +137,7 @@ export function updateBuildMode(g: Game, dt: number): void {
   g.buildCursor = { cx, cy, valid: reason === 'ok', reason };
 
   if (inp.select > 0) {
-    const k = STRUCTURE_ORDER[inp.select - 1];
+    const k = g.config.structures[inp.select - 1];
     if (k) g.buildKind = k;
     inp.select = 0;
   }
@@ -150,30 +154,35 @@ export function updateBuildMode(g: Game, dt: number): void {
 
 // ---------------------------------------------------------------- 炮塔与地刺
 
-function updateTurret(g: Game, s: Structure, dt: number): void {
+function updateTurret(g: Game, s: Structure, kind: TurretKind, dt: number): void {
+  const t = TURRETS[kind];
   s.sinceShot += dt;
   s.cd -= dt;
   const sx = s.cx - HALF_W + 0.5;
   const sz = s.cy - HALF_H + 0.5;
-  const range = TURRET.range;
+  const range = t.range;
+  // 迫击炮是曲射，不需要视线
+  const indirect = kind === 'mortar';
 
   // 炮塔自己占着的格子本身就是"阻挡"，视线要从格子边缘开始查，否则永远看不到任何东西
   const sees = (tx: number, tz: number): boolean => {
+    if (indirect) return true;
     const dx = tx - sx;
     const dz = tz - sz;
     const len = Math.hypot(dx, dz);
     if (len < 0.7) return true;
     return g.grid.segmentClear(sx + (dx / len) * 0.75, sz + (dz / len) * 0.75, tx, tz, false);
   };
+  const inRange = (d: number, slack: number) => d <= range + slack && d >= t.minRange - slack;
 
   // 目标：射程内、看得见的僵尸里，离发电机最近的那个
   let target = g.zombies.find((z) => z.id === s.target && z.alive) ?? null;
-  if (target && (Math.hypot(target.x - sx, target.z - sz) > range + 0.5 || !sees(target.x, target.z))) target = null;
+  if (target && (!inRange(Math.hypot(target.x - sx, target.z - sz), 0.5) || !sees(target.x, target.z))) target = null;
   if (!target) {
     let bestD = Infinity;
     for (const z of g.zombies) {
       if (!z.alive) continue;
-      if (Math.hypot(z.x - sx, z.z - sz) > range) continue;
+      if (!inRange(Math.hypot(z.x - sx, z.z - sz), 0)) continue;
       if (!sees(z.x, z.z)) continue;
       const d = Math.hypot(z.x - g.core.x, z.z - g.core.z);
       if (d < bestD) {
@@ -187,17 +196,35 @@ function updateTurret(g: Game, s: Structure, dt: number): void {
 
   const want = Math.atan2(target.x - sx, target.z - sz);
   const diff = angleDiff(s.aim, want);
-  const step = TURRET.turn * dt;
+  const step = t.turn * dt;
   s.aim += Math.abs(diff) < step ? diff : Math.sign(diff) * step;
 
-  if (s.cd <= 0 && Math.abs(angleDiff(s.aim, want)) < 0.18) {
-    s.cd += 1 / (TURRET.rate * g.mods.turretRate);
+  if (s.cd <= 0 && Math.abs(angleDiff(s.aim, want)) < (kind === 'flamer' ? t.cone : 0.18)) {
+    s.cd += 1 / (t.rate * g.mods.turretRate * (g.run.phase === 'night' && g.run.mod === 'blackout' ? 0.6 : 1));
     s.sinceShot = 0;
     const dx = target.x - sx;
     const dz = target.z - sz;
     const len = Math.hypot(dx, dz) || 1;
+    const dmg = t.damage * g.mods.turret;
     g.events.emit('turretShot', { id: s.id, x0: sx + (dx / len) * 0.55, z0: sz + (dz / len) * 0.55, x1: target.x, z1: target.z });
-    g.damageZombie(target, TURRET.damage * g.mods.turret, { kx: (dx / len) * 0.4, kz: (dz / len) * 0.4 });
+    if (kind === 'flamer') {
+      // 扇形内所有看得见的僵尸都挨烧
+      for (const z of g.zombies) {
+        if (!z.alive) continue;
+        const d = Math.hypot(z.x - sx, z.z - sz);
+        if (d > range + z.radius) continue;
+        if (Math.abs(angleDiff(s.aim, Math.atan2(z.x - sx, z.z - sz))) > t.cone || !sees(z.x, z.z)) continue;
+        g.damageZombie(z, dmg, { burn: t.burn * g.mods.turret, silent: true });
+      }
+    } else if (kind === 'mortar') {
+      // 炮弹固定飞 1.6 秒，落点是开火时目标所在的位置
+      const T = 1.6;
+      // 从炮塔自己格子的阻挡高度（1.4 米）之上发射，否则一出膛就撞上自己
+      const y0 = 1.6;
+      g.projectiles.push({ x: sx, y: y0, z: sz, vx: dx / T, vy: (-y0 + 0.5 * 9.8 * T * T) / T, vz: dz / T, life: T + 0.3, damage: dmg, aoe: t.aoe, split: 0, bomblet: false });
+    } else {
+      g.damageZombie(target, dmg, { kx: (dx / len) * 0.4, kz: (dz / len) * 0.4 });
+    }
   }
   if (s.cd < -0.1) s.cd = -0.1;
 }
@@ -233,7 +260,7 @@ export function updateStructures(g: Game, dt: number): void {
   // 先拷贝：地刺耐久耗尽会在遍历中删除自己
   for (const s of [...g.structures.values()]) {
     if (!g.structures.has(s.id)) continue;
-    if (s.kind === 'turret') updateTurret(g, s, dt);
+    if (isTurret(s.kind)) updateTurret(g, s, s.kind, dt);
     else if (s.kind === 'spikes') updateSpikes(g, s, dt);
   }
 }

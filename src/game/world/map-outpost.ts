@@ -19,6 +19,30 @@ interface PropOpts {
   style?: WallStyle;
 }
 
+/** 没写 h 时各类障碍的高度（米），和 render/props.ts 里的模型对齐 */
+const PROP_HEIGHT: Partial<Record<PropKind, number>> = {
+  container: 2.4,
+  car: 1.35,
+  crate: 0.9,
+  barrier: 0.9,
+  pump: 1.6,
+  rack: 2.0,
+  chunk: 1.3,
+  barrel: 0.95,
+  sandbag: 0.85,
+  lamp: 4.2,
+  generator: 2.0,
+  workbench: 1.1,
+};
+
+/** 细障碍：按圆柱碰撞（半径，米） */
+const POST_RADIUS: Partial<Record<PropKind, number>> = {
+  tree: 0.2,
+  lamp: 0.11,
+  pillar: 0.2,
+  barrel: 0.34,
+};
+
 /** [a,b) 去掉门洞之后剩下的段 */
 function segments(a: number, b: number, gaps: Array<[number, number]>): Array<[number, number]> {
   const sorted = gaps.slice().sort((p, q) => p[0] - q[0]);
@@ -60,7 +84,19 @@ class MapBuilder {
     if (o.side !== undefined) p.side = o.side;
     if (o.style !== undefined) p.style = o.style;
     this.props.push(p);
-    if (p.solid) this.markSolid(x0, y0, x1, y1);
+    if (p.solid) {
+      this.markSolid(x0, y0, x1, y1);
+      // 子弹 / 视线用的障碍高度，和渲染出来的模型高度一致
+      const h = p.h ?? PROP_HEIGHT[kind] ?? 2.4;
+      const post = POST_RADIUS[kind] ?? 0;
+      for (let y = y0; y < y1; y++) {
+        for (let x = x0; x < x1; x++) {
+          const i = this.grid.idx(x, y);
+          this.grid.height[i] = Math.max(this.grid.height[i] as number, h);
+          this.grid.post[i] = post;
+        }
+      }
+    }
     return p;
   }
 
@@ -181,10 +217,11 @@ export function buildOutpost(seed = 20260207): MapData {
   ] as const) {
     b.prop('crate', x, y, x + 1, y + 1, { h: 0.9 });
   }
-  b.prop('sandbag', 31, 36, 33, 37, { solid: false, variant: 0 });
-  b.prop('sandbag', 47, 42, 49, 43, { solid: false, variant: 1 });
-  b.prop('barrel', 29, 48, 30, 49, { solid: false });
-  b.prop('barrel', 30, 48, 31, 49, { solid: false });
+  // 沙袋、油桶都是实体掩体：挡人挡僵尸，子弹从上面能飞过去
+  b.prop('sandbag', 31, 36, 33, 37, { variant: 0 });
+  b.prop('sandbag', 47, 42, 49, 43, { variant: 1 });
+  b.prop('barrel', 29, 48, 30, 49);
+  b.prop('barrel', 30, 48, 31, 49);
 
   // ---------- 西北：公寓楼 ----------
   b.ground(6, 6, 19, 12, G.Floor);
@@ -245,8 +282,8 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('pump', 62, 18, 63, 20, { h: 1.6 });
   b.prop('pump', 65, 18, 66, 20, { h: 1.6 });
   b.prop('car', 73, 9, 77, 11, { variant: 1 });
-  b.prop('barrel', 71, 14, 72, 15, { solid: false });
-  b.prop('barrel', 72, 14, 73, 15, { solid: false });
+  b.prop('barrel', 71, 14, 72, 15);
+  b.prop('barrel', 72, 14, 73, 15);
 
   // ---------- 东南：仓库和集装箱巷道 ----------
   b.ground(58, 58, 74, 69, G.Floor);
@@ -267,7 +304,7 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('rack', 67, 60, 72, 61, { h: 2.0 });
   b.prop('rack', 60, 66, 64, 67, { h: 2.0 });
   b.prop('rack', 67, 66, 72, 67, { h: 2.0 });
-  b.prop('crate', 65, 63, 67, 65, { h: 1.3 });
+  b.prop('crate', 65, 63, 67, 65, { h: 1.84 });
   b.prop('container', 56, 72, 62, 74, { variant: 0 });
   b.prop('container', 66, 72, 72, 74, { variant: 2 });
   b.prop('container', 53, 59, 55, 65, { variant: 1 });
@@ -356,7 +393,8 @@ export function buildOutpost(seed = 20260207): MapData {
   const lamps: Array<{ x: number; z: number }> = [];
   for (const [x, y] of lampCells) {
     if (g.solid[g.idx(x, y)]) continue;
-    b.prop('lamp', x, y, x + 1, y + 1, { solid: false, h: 4.2 });
+    // 灯杆是实体（细圆柱碰撞），玩家能贴着走过去，子弹打中会冒火花
+    b.prop('lamp', x, y, x + 1, y + 1, { h: 4.2 });
     lamps.push({ x: x - HALF_W + 0.5, z: y - HALF_H + 0.5 });
   }
 

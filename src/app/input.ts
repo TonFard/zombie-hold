@@ -2,11 +2,13 @@ import { clamp } from '../game/core/math';
 import { BUILD_RANGE } from '../game/data/structures';
 import type { Game } from '../game/sim';
 import { HALF_H, HALF_W } from '../game/world/grid';
-import { EYE_HEIGHT, type Look } from '../render/cameraRig';
+import type { Look } from '../render/core/cameraRig';
 
 /** 非建造时，瞄准点放在正前方这么远（只用来给逻辑层一个方向） */
 const AIM_FAR = 40;
 const MAX_PITCH = 1.45;
+/** 单个鼠标事件超过这么多像素就当成假位移丢掉 */
+const SPIKE = 220;
 /** 鼠标每像素转多少弧度（灵敏度 1.0 时） */
 const RAD_PER_PX = 0.0022;
 /** 建造模式下，视线最多往前找多远 */
@@ -20,7 +22,8 @@ export class InputController {
   readonly look: Look = { yaw: 0, pitch: 0 };
   /** 灵敏度倍率 */
   sensitivity = 1;
-  enabled = true;
+  /** 由界面状态机打开（进入一局 / 训练场）；菜单和大厅里关着，点按钮不会锁定鼠标 */
+  enabled = false;
   /** 开发 / 无头截图用：假装已经锁定了指针 */
   assumeLocked = false;
 
@@ -38,21 +41,48 @@ export class InputController {
     const g = this.game.input;
     if (!this.enabled) return;
     if (e.code === 'KeyR') g.reload = true;
-    if (e.code === 'KeyB') g.toggleBuild = true;
-    if (e.code === 'KeyE') g.use = true;
+    // F：开关建造模式；E：交互（工坊由应用层处理，其余时候修理）；V：近战
+    if (e.code === 'KeyF') g.toggleBuild = true;
+    if (e.code === 'KeyE' && !this.onInteract?.()) g.use = true;
+    if (e.code === 'KeyV') g.melee = true;
+    // I：检视武器（纯表现，逻辑层不知道）
+    if (e.code === 'KeyI') this.onInspect?.();
+    if (e.code === 'KeyG') g.grenade = true;
+    if (e.code === 'KeyQ') g.pulse = true;
+    if (e.code === 'KeyT') g.flashlight = !g.flashlight;
+    // B：切换手雷种类（爆炸 / 燃烧）
+    if (e.code === 'KeyB') this.game.hz.useFire = !this.game.hz.useFire;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') g.confirm = true;
-    if (e.code >= 'Digit1' && e.code <= 'Digit5') g.select = Number(e.code.slice(5));
+    if (e.code >= 'Digit1' && e.code <= 'Digit7') g.select = Number(e.code.slice(5));
   };
   private readonly onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
+  /** E 键先问应用层要不要处理（例如打开工坊），返回 true 就不再当成修理 */
+  onInteract: (() => boolean) | null = null;
+  onInspect: (() => void) | null = null;
+  /** 刚进入指针锁定后丢掉的事件数（第一下常常带着锁定前的整段位移） */
+  private skipMoves = 0;
   private readonly onMove = (e: MouseEvent) => {
     if (!this.enabled || !this.locked) return;
+    if (this.skipMoves > 0) {
+      this.skipMoves--;
+      return;
+    }
+    // Windows 上的 Chromium 在指针锁定时偶尔会报一个几百像素的假位移，镜头会猛地一甩：
+    // 正常手速下一个事件很少超过 120 像素，超过 SPIKE 的整个丢掉，而不是截断后照样转
+    if (Math.abs(e.movementX) > SPIKE || Math.abs(e.movementY) > SPIKE) return;
     this.turn(e.movementX, e.movementY);
+  };
+  private readonly onLockChange = () => {
+    if (document.pointerLockElement !== this.canvas) return;
+    this.skipMoves = 2;
+    // 锁定请求是异步的：如果完成时已经回到菜单 / 大厅，马上释放，免得光标消失
+    if (!this.enabled) document.exitPointerLock();
   };
   private readonly onDown = (e: MouseEvent) => {
     if (!this.enabled) return;
-    // 还没锁定时，第一下点击只负责锁定，不开火
+    // 还没锁定时，第一下点击只负责锁定，不开火；只有点在画面上才锁（点界面按钮不锁）
     if (!this.locked) {
-      this.requestLock();
+      if (e.target === this.canvas) this.requestLock();
       return;
     }
     if (e.button === 0) this.mouseDown = true;
@@ -80,12 +110,16 @@ export class InputController {
     window.addEventListener('mouseup', this.onUp);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('contextmenu', this.onContext);
+    document.addEventListener('pointerlockchange', this.onLockChange);
   }
 
   /** 转动视角（像素）。鼠标事件和测试都走这里 */
+  private pullDown = 0;
+
   turn(dx: number, dy: number): void {
-    const k = RAD_PER_PX * this.sensitivity;
+    const k = (RAD_PER_PX * this.sensitivity) / Math.max(1, this.zoom * 0.85);
     const l = this.look;
+    if (dy > 0) this.pullDown += clamp(dy, 0, 150) * k;
     l.yaw -= clamp(dx, -150, 150) * k;
     if (l.yaw > Math.PI) l.yaw -= Math.PI * 2;
     else if (l.yaw < -Math.PI) l.yaw += Math.PI * 2;
@@ -99,8 +133,17 @@ export class InputController {
 
   requestLock(): void {
     if (this.locked || !this.canvas.requestPointerLock) return;
-    // 新版浏览器返回 Promise，被拒绝时（例如刚按过 Esc）静默忽略，等玩家再点一下
-    void Promise.resolve(this.canvas.requestPointerLock()).catch(() => undefined);
+    // 优先要原始鼠标输入（unadjustedMovement）：绕开系统的指针加速，也能避开 Windows 上的跳变；
+    // 不支持就退回普通锁定。被拒绝时（例如刚按过 Esc）静默忽略，等玩家再点一下
+    // 必须在点击事件里同步调用，浏览器才认这是用户手势
+    const c = this.canvas as HTMLCanvasElement & { requestPointerLock(o?: { unadjustedMovement?: boolean }): Promise<void> | void };
+    const plain = (): void => void Promise.resolve(c.requestPointerLock()).catch(() => undefined);
+    try {
+      const r = c.requestPointerLock({ unadjustedMovement: true });
+      if (r instanceof Promise) r.catch((err: unknown) => ((err as { name?: string } | null)?.name === 'NotSupportedError' ? plain() : undefined));
+    } catch {
+      plain();
+    }
   }
 
   releaseLock(): void {
@@ -120,8 +163,12 @@ export class InputController {
       g.toggleBuild = false;
       g.sell = false;
       g.confirm = false;
+      g.melee = false;
+      g.crouch = false;
+      g.ads = false;
       return;
     }
+    this.absorbKick();
     const k = this.keys;
     const fw = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const st = (k.has('KeyD') || k.has('ArrowRight') ? 1 : 0) - (k.has('KeyA') || k.has('ArrowLeft') ? 1 : 0);
@@ -131,10 +178,30 @@ export class InputController {
     g.moveX = sy * fw - cy * st;
     g.moveZ = cy * fw + sy * st;
     g.sprint = k.has('ShiftLeft') || k.has('ShiftRight');
+    // 蹲：C（不用 Ctrl，Ctrl+W 会直接关掉浏览器标签页）
+    g.crouch = k.has('KeyC');
     const locked = this.locked;
     g.fire = this.mouseDown && locked;
-    g.sell = (this.rightDown && locked) || k.has('KeyX');
+    // 右键：建造模式下是拆除，其他时候是瞄准
+    g.sell = (this.rightDown && locked && this.game.buildMode) || k.has('KeyX');
+    g.ads = this.rightDown && locked && !this.game.buildMode;
+    g.aimPitch = this.look.pitch;
     this.aim();
+  }
+
+  /** 瞄准时灵敏度随视野缩小（放大 3.5 倍时转得慢 3.5 倍左右，准星下的东西移动速度不变） */
+  zoom = 1;
+
+  /** 后坐力把视线抬高后，玩家往下压枪就是在抵消它：从鼠标的俯仰里扣掉，避免回落时视线掉到原来的下面 */
+  absorbKick(): void {
+    const p = this.game.player;
+    const l = this.look;
+    if (p.kickPitch > 0 && this.pullDown > 0) {
+      const take = Math.min(p.kickPitch, this.pullDown);
+      p.kickPitch -= take;
+      l.pitch += take;
+    }
+    this.pullDown = 0;
   }
 
   /** 根据视线更新瞄准点：建造模式找准星指到的格子，其他时候放在正前方 */
@@ -142,7 +209,9 @@ export class InputController {
     const { game } = this;
     const g = game.input;
     const p = game.player;
-    const { yaw, pitch } = this.look;
+    const yaw = this.look.yaw;
+    const pitch = this.look.pitch + p.kickPitch;
+    const eye = p.eye;
     const cp = Math.cos(pitch);
     const hx = Math.sin(yaw);
     const hz = Math.cos(yaw);
@@ -157,7 +226,7 @@ export class InputController {
     const grid = game.grid;
     for (let t = 0.25; t < BUILD_SCAN * 2; t += 0.07) {
       const x = p.x + dx * t;
-      const y = EYE_HEIGHT + dy * t;
+      const y = eye + dy * t;
       const z = p.z + dz * t;
       if (Math.hypot(x - p.x, z - p.z) > BUILD_SCAN) break;
       if (y <= 0) {
@@ -169,7 +238,7 @@ export class InputController {
       const cy2 = Math.floor(z + HALF_H);
       if (!grid.inBounds(cx, cy2)) break;
       const i = grid.idx(cx, cy2);
-      const hit = (grid.structure[i] ?? -1) >= 0 ? 1.15 : grid.solid[i] ? 3 : 0;
+      const hit = (grid.structure[i] ?? -1) >= 0 ? 1.15 : grid.solid[i] ? grid.height[i] || 3 : 0;
       if (hit > 0 && y <= hit) {
         g.aimX = cx - HALF_W + 0.5;
         g.aimZ = cy2 - HALF_H + 0.5;
@@ -183,6 +252,7 @@ export class InputController {
   }
 
   dispose(): void {
+    document.removeEventListener('pointerlockchange', this.onLockChange);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     window.removeEventListener('mousemove', this.onMove);

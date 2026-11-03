@@ -1,4 +1,5 @@
 import { ALIVE_CAP, bossFor } from '../game/data/waves';
+import type { WeaponKind } from '../game/data/weapons';
 import type { Game, GameEvents } from '../game/sim';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import { Ambience } from './ambience';
@@ -8,6 +9,10 @@ import { Sfx } from './sfx';
 export interface AudioSystem {
   engine: AudioEngine;
   sfx: Sfx;
+  /** 某种武器改用采样音效（TACZ 模型）：预加载这些 ogg，并停掉它的合成枪声 / 换弹声 */
+  useSamples(kind: WeaponKind, urls: string[]): void;
+  /** 播放一个采样（玩家自己的声音，不做空间化） */
+  sample(url: string, gain: number): void;
   /** 在用户手势里调用：创建 / 恢复 AudioContext 并启动环境声 */
   unlock(): void;
   setVolume(v: number): void;
@@ -30,9 +35,21 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   const sx = (cx: number) => cx - HALF_W + 0.5;
   const sz = (cy: number) => cy - HALF_H + 0.5;
 
-  on('shot', (e) => sfx.shot(e.kind));
-  on('reload', (e) => sfx.reload(e.start, e.kind));
+  // 用 TACZ 模型的武器：枪声和换弹声由模型的动画音效负责，合成的就不放了
+  const sampled = new Set<WeaponKind>();
+  on('shot', (e) => {
+    if (!sampled.has(e.kind)) sfx.shot(e.kind);
+  });
+  on('reload', (e) => {
+    if (!sampled.has(e.kind)) sfx.reload(e.start, e.kind);
+  });
   on('weaponSwitch', () => sfx.weaponSwitch());
+  on('slide', () => sfx.slide());
+  on('meleeSwing', () => sfx.melee(false));
+  on('meleeHit', (e) => {
+    if (e.zombie) sfx.melee(true);
+  });
+  on('refund', () => sfx.refund());
   on('impact', (e) => sfx.impact(e.x, e.z, e.flesh));
   on('zombieHit', (e) => {
     if (e.crit) sfx.crit(e.zombie.x, e.zombie.z);
@@ -83,10 +100,22 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   });
   on('runEnded', (e) => (e.won ? sfx.win() : sfx.lose()));
 
+  const pending: string[] = [];
   return {
     engine,
     sfx,
+    useSamples(kind, urls) {
+      sampled.add(kind);
+      for (const u of urls) {
+        if (engine.ready) engine.load(u);
+        else pending.push(u);
+      }
+    },
+    sample(url, gain) {
+      engine.sample(url, gain, engine.flat(0.9) ?? undefined);
+    },
     unlock() {
+      for (const u of pending.splice(0)) engine.load(u);
       engine.unlock();
       ambience.start();
     },

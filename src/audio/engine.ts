@@ -128,6 +128,41 @@ export class AudioEngine {
     this.noiseBuf = buf;
   }
 
+  /** 采样音效（TACZ 枪的 ogg）：先 load，加载好之后 sample 才会响 */
+  private readonly samples = new Map<string, AudioBuffer | null>();
+
+  load(url: string): void {
+    const ctx = this.ctx;
+    if (!ctx || this.samples.has(url)) return;
+    this.samples.set(url, null);
+    fetch(url)
+      .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((b) => ctx.decodeAudioData(b))
+      .then((buf) => this.samples.set(url, buf))
+      .catch((e: unknown) => console.warn('音效加载失败', url, e));
+  }
+
+  /** 播放已加载的采样；还没加载就先加载，这一次不响 */
+  sample(url: string, gain = 1, out?: AudioNode): void {
+    const ctx = this.ctx;
+    const dest = out ?? this.bus;
+    if (!ctx || !dest) return;
+    const buf = this.samples.get(url);
+    if (buf === undefined) this.load(url);
+    if (!buf || this.busy()) return;
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const g = ctx.createGain();
+    g.gain.value = gain;
+    src.connect(g);
+    g.connect(dest);
+    this.voices++;
+    src.onended = () => {
+      this.voices--;
+    };
+    src.start();
+  }
+
   /** 0–1，按平方映射成增益，听感更均匀 */
   setVolume(v: number): void {
     this.vol = Math.min(1, Math.max(0, v));

@@ -47,10 +47,11 @@ export interface Boss {
   title: string;
 }
 
-/** 第 5、10 夜有首领 */
+/** 第 5、10 夜有首领；无尽模式里每 5 夜一个，越来越硬 */
 export function bossFor(n: number): Boss | null {
   if (n === 5) return { kind: 'colossus', hpScale: 1, escorts: 4, title: '巨像·初代' };
   if (n === 10) return { kind: 'colossus', hpScale: 6500 / 2400, escorts: 8, title: '巨像·终焉' };
+  if (n > 10 && n % 5 === 0) return { kind: 'colossus', hpScale: (6500 / 2400) * (1 + 0.35 * ((n - 10) / 5)), escorts: Math.min(16, 8 + (n - 10) / 5 * 2), title: `巨像·第 ${n} 夜` };
   return null;
 }
 

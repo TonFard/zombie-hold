@@ -9,11 +9,14 @@
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc --noEmit",
-    "sim:nav": "tsx scripts/sim-nav.ts",
-    "sim:combat": "tsx scripts/sim-combat.ts",
-    "sim:build": "tsx scripts/sim-build.ts",
-    "sim:run": "tsx scripts/sim-run.ts",
-    "check:balance": "tsx scripts/check-balance.ts"
+    "sim:nav": "tsx scripts/sims/nav.ts",
+    "sim:combat": "tsx scripts/sims/combat.ts",
+    "sim:build": "tsx scripts/sims/build.ts",
+    "sim:run": "tsx scripts/sims/run.ts",
+    "sim:meta": "tsx scripts/sims/meta.ts",
+    "sim:extras": "tsx scripts/sims/extras.ts",
+    "check:balance": "tsx scripts/check-balance.ts",
+    "check:deps": "tsx scripts/tools/check-deps.ts"
   },
   "dependencies": {
     "three": "^0.187.0",

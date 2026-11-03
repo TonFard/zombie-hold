@@ -52,8 +52,32 @@ export class Navigator {
       this.playerAccum = 0;
       this.playerSmall.compute([cell]);
       this.playerLarge.compute([cell]);
+      this.fieldCell = cell;
       this.recomputes += 2;
     }
+  }
+
+  /** 玩家场是按哪一格算的 */
+  private fieldCell = -1;
+
+  /** 寻路状态（检查点存档用：读档后玩家场在什么时候、按哪一格重算要和原来一样，模拟才能逐帧一致） */
+  exportState(): { cell: number; fieldCell: number; accum: number; dirty: boolean } {
+    return { cell: this.playerCell, fieldCell: this.fieldCell, accum: this.playerAccum, dirty: this.playerDirty };
+  }
+
+  /** 在建筑全部放回之后调用 */
+  importState(s: { cell: number; fieldCell: number; accum: number; dirty: boolean }): void {
+    this.structVersion = this.grid.structVersion;
+    this.coreSmall.compute(this.coreCells);
+    this.coreLarge.compute(this.coreCells);
+    if (s.fieldCell >= 0) {
+      this.playerSmall.compute([s.fieldCell]);
+      this.playerLarge.compute([s.fieldCell]);
+    }
+    this.fieldCell = s.fieldCell;
+    this.playerCell = s.cell;
+    this.playerAccum = s.accum;
+    this.playerDirty = s.dirty;
   }
 
   /**
