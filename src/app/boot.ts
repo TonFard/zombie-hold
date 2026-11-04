@@ -154,6 +154,9 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
         menuT += dt;
         view.rig.setView(0.5 + Math.sin(menuT * 0.12) * 2, -1, ui.screen === 'lobby' ? 30 : 36, ui.screen === 'lobby' ? 30 : 36, menuT * 4.5 - 20);
       }
+      // 黎明选卡：每帧检查，而不是只在 1.5 秒后检查一次。
+      // 之前那一刻刚好在暂停 / 指针锁丢了，卡牌界面就永远不出来，游戏卡在"黎明"没有下一天
+      if (game.run.phase === 'cards' && ui.screen === 'play' && performance.now() >= cardsAt) screens.set('cards');
       view.render(dt);
       // 瞄准放大时鼠标灵敏度跟着降低
       input.zoom = view.rig.mode === 'fps' ? view.rig.zoomNow : 1;
@@ -338,12 +341,12 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
     game.buildMode = false;
     refreshHud();
   };
+  /** 黎明后多久弹出卡牌（先让玩家看一眼"黎明"横幅） */
+  let cardsAt = 0;
   game.events.on('cardsOffered', ({ ids }) => {
     ui.cards = ids;
     ui.rerolls = game.run.rerollsLeft;
-    later(1500, () => {
-      if (game.run.phase === 'cards' && ui.screen === 'play') screens.set('cards');
-    });
+    if (ui.screen !== 'cards') cardsAt = performance.now() + 1500;
   });
   game.events.on('runEnded', ({ won, reason }) => {
     settle(won, reason);

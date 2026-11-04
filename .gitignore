@@ -4,3 +4,4 @@ dist
 .logs-*.txt
 *.log
 .vendor
+release

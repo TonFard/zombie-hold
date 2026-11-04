@@ -55,6 +55,12 @@ function setPhase(g: Game, phase: Phase): void {
   g.events.emit('phase', { phase, night: g.run.night });
 }
 
+/**
+ * 正式局的尸潮密度：总数 ×1.4、每批 ×1.5、批次间隔 ×0.8（同屏上限 ALIVE_CAP 不变）。
+ * 只升级手枪 + 四座炮塔也能守到第九夜，太松了。沙盒（模拟脚本）照旧
+ */
+export const RANKED_DENSITY = { count: 1.4, batch: 1.5, interval: 0.8 };
+
 /** 开始新的一局：第 1 天 */
 export function startRun(g: Game): void {
   g.run.night = 1;
@@ -170,7 +176,7 @@ function startNight(g: Game): void {
   r.chBreached = false;
   r.chWindow = [];
   r.chDone = false;
-  r.total = Math.round(nightCount(r.night) * g.config.zombieCount * (r.mod ? m.count : 1));
+  r.total = Math.round(nightCount(r.night) * g.config.zombieCount * (r.mod ? m.count : 1) * (g.config.extras ? RANKED_DENSITY.count : 1));
   r.toSpawn = r.total;
   r.spawnTimer = 2.5;
   r.bossId = -1;
@@ -272,7 +278,8 @@ function updateNight(g: Game, dt: number): void {
   if (r.toSpawn > 0) {
     r.spawnTimer -= dt;
     if (r.spawnTimer <= 0 && g.zombies.length < ALIVE_CAP) {
-      const want = Math.min(batchSize(r.night), r.toSpawn, ALIVE_CAP - g.zombies.length);
+      const dense = g.config.extras ? RANKED_DENSITY : null;
+      const want = Math.min(Math.round(batchSize(r.night) * (dense?.batch ?? 1)), r.toSpawn, ALIVE_CAP - g.zombies.length);
       const gates = pickGates(g, 1 + g.rng.int(0, 2));
       let made = 0;
       const m = nightMod(r.mod);
@@ -288,7 +295,7 @@ function updateNight(g: Game, dt: number): void {
         }
       }
       r.toSpawn -= made;
-      r.spawnTimer = made < want ? 0.6 : batchInterval(r.night);
+      r.spawnTimer = made < want ? 0.6 : batchInterval(r.night) * (dense?.interval ?? 1);
     }
     return;
   }

@@ -23,6 +23,15 @@ export const STRUCTURES: Record<StructureKind, StructureDef> = {
   mortar: { kind: 'mortar', name: '迫击炮', desc: '射程 6–20，炮弹走抛物线，落地范围爆炸', cost: 170, hp: 140, blocks: true, navCost: 30 },
 };
 
+/**
+ * 正式局（config.extras）的建筑价格：炮塔太便宜，手枪 + 四座炮塔就能守到很后面。
+ * 沙盒（模拟脚本）照旧用上面的 cost，旧的 sim 结果不变
+ */
+export const RANKED_COST: Partial<Record<StructureKind, number>> = { turret: 160, hmg: 240, flamer: 220, mortar: 280 };
+
+/** 这一局里某种建筑的价格 */
+export const costOf = (k: StructureKind, ranked: boolean): number => (ranked ? (RANKED_COST[k] ?? STRUCTURES[k].cost) : STRUCTURES[k].cost);
+
 /** 会自动开火、计入炮塔数量上限的建筑 */
 export type TurretKind = 'turret' | 'hmg' | 'flamer' | 'mortar';
 export const isTurret = (k: StructureKind): k is TurretKind => k === 'turret' || k === 'hmg' || k === 'flamer' || k === 'mortar';

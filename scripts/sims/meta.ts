@@ -230,9 +230,17 @@ console.log('\n== 开局应用加成 ==');
   const later = bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-rifle': 1, 'cap-smg': 2, 'unlock-hmg': 1 } });
   widenMeta(gr, later);
   gr.scrap = 9999;
-  check(gr.buyWeapon('rifle'), '读档继续后，大厅里新解锁的突击步枪工坊里能买');
   for (let i = 0; i < 9; i++) gr.upgradeWeapon('smg');
   check(gr.loadout.smg.tier === 7, `读档继续后，新买的冲锋枪上限生效（${gr.loadout.smg.tier}）`);
+  check(gr.buyWeapon('rifle'), '读档继续后，大厅里新解锁的突击步枪工坊里能买');
+  // 已经带着手枪 + 冲锋枪：买步枪换掉手里的冲锋枪
+  check(gr.carried().join() === 'pistol,rifle' && gr.player.weapon === 'rifle' && gr.loadout.smg.tier === 0, `最多带两把：买步枪换掉手里的冲锋枪（${gr.carried().join()}）`);
+  gr.input.cycle = 1;
+  gr.update(STEP);
+  check(gr.player.weapon === 'pistol', '滚轮切到另一把');
+  gr.input.select = 2;
+  gr.update(STEP);
+  check(gr.player.weapon === 'rifle', '数字键 2 = 第二个枪位');
   check(gr.config.structures.includes('hmg') && gr.player.maxHp === 100, '新解锁的炮塔也能用；生命这类开局加成不重复叠加');
 
   // 哪些枪能当随身武器带

@@ -1,4 +1,4 @@
-# 尸潮 · 死守 (zombie-hold)
+# 黎明 (zombie-hold)
 
 第一人称 3D 据点防守游戏。守住中央发电机,撑过 10 个夜晚;通关后可以继续无尽模式。每局结束结算勋章,在大厅里买局外成长。玩法与设计见 [docs/PLAN.md](docs/PLAN.md)。
 
@@ -104,3 +104,13 @@ scripts/sims         无头模拟测试
 scripts/tools        截图、音效自检、依赖检查
 docs                 设计文档
 ```
+
+## 桌面版（Windows）
+
+用 Electron 打包，强制用独立显卡，失去焦点时也不降帧。
+
+- `npm run desktop`：打包网页后用桌面窗口启动
+- `npm run desktop:dev`：连 `npm run dev` 的开发服务器调试（F12 开发者工具）
+- `npm run dist:win`：打出 `release/Dawn-Setup-<版本>.exe`（安装包）和 `release/Dawn-Portable-<版本>.exe`（免安装）
+
+F11 切换全屏 / 窗口。国内下载 Electron 慢时，先设置 `ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/` 和 `ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/`。

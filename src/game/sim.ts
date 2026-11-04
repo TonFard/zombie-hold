@@ -5,6 +5,9 @@ import { STRUCTURES, isTurret, type StructureKind } from './data/structures';
 import { EYE_HEIGHT } from './data/ballistics';
 import { COMBO_WINDOW, ELITE_REWARD, FLASHLIGHT, comboMult } from './data/modifiers';
 import { MAX_TIER, WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from './data/weapons';
+
+/** 正式局最多随身带几把枪（滚轮切换） */
+export const CARRY_MAX = 2;
 import type { ZombieKind } from './data/zombies';
 import type { Bullet } from './entities/bullet';
 import type { Projectile } from './entities/projectile';
@@ -97,6 +100,8 @@ export interface PlayerInput {
   reload: boolean;
   /** 0 = 无，1–5 = 切到第几把武器（建造模式下是选建筑）；逻辑层读取后清零 */
   select: number;
+  /** 边沿触发：滚轮切到下一把 / 上一把（+1 / -1；建造模式下切建筑）；逻辑层读取后清零 */
+  cycle: number;
   /** 边沿触发：E 键交互（修理附近的建筑 / 发电机；靠近工坊时由应用层打开工坊） */
   use: boolean;
   /** 边沿触发：F 键开关建造模式 */
@@ -263,6 +268,7 @@ export class Game {
     sprint: false,
     reload: false,
     select: 0,
+    cycle: 0,
     use: false,
     toggleBuild: false,
     sell: false,
@@ -508,9 +514,9 @@ export class Game {
     return true;
   }
 
-  /** 胖子死亡时爆开酸液：伤害范围内的玩家和建筑 */
+  /** 胖子死亡时爆开酸液：伤害范围内的玩家和建筑。M12 起范围加大（沙盒保持原值，旧的 sim 结果不变） */
   private acidBurst(x: number, z: number): void {
-    const radius = 2.2;
+    const radius = this.config.extras ? 3.4 : 2.2;
     this.events.emit('acid', { x, z, radius });
     const p = this.player;
     if (p.alive && Math.hypot(p.x - x, p.z - z) < radius + p.radius) this.damagePlayer(20);
@@ -563,6 +569,11 @@ export class Game {
 
   // ---------------- 武器 ----------------
 
+  /** 身上的枪（按武器顺序） */
+  carried(): WeaponKind[] {
+    return WEAPON_ORDER.filter((k) => this.loadout[k].owned);
+  }
+
   /** 工坊里这把枪能不能买：逻辑和界面都用这一个判断，免得两边对不上 */
   buyState(kind: WeaponKind): 'owned' | 'locked' | 'scrap' | 'ok' {
     if (this.loadout[kind].owned) return 'owned';
@@ -571,14 +582,34 @@ export class Game {
     return 'ok';
   }
 
+  /**
+   * 买枪。正式局（extras）最多带两把：已经有两把时，买新枪会换掉手里的那把（手里的就是要扔的），
+   * 被换掉的枪等级清零、不退零件
+   */
   buyWeapon(kind: WeaponKind): boolean {
     const slot = this.loadout[kind];
     const price = WEAPONS[kind].price;
     if (this.buyState(kind) !== 'ok') return false;
     this.scrap -= price;
+    let dropped: WeaponKind | null = null;
+    if (this.config.extras && this.carried().length >= CARRY_MAX) {
+      dropped = this.player.weapon;
+      const old = this.loadout[dropped];
+      old.owned = false;
+      old.tier = 0;
+      old.mag = 0;
+    }
     slot.owned = true;
     slot.tier = 0;
     slot.mag = statsAt(kind, 0).mag;
+    if (dropped) {
+      // 换下来的那把在手上：直接拿新枪
+      this.player.weapon = kind;
+      this.player.tier = 0;
+      this.player.reloadTimer = 0;
+      this.player.ads = 0;
+      this.events.emit('weaponSwitch', { kind });
+    }
     return true;
   }
 

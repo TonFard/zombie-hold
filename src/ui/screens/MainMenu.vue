@@ -11,8 +11,8 @@ const hasRecord = computed(() => s.value.runs > 0);
   <div v-if="ui.screen === 'menu'" class="menu">
     <div class="left">
       <div class="logo">
-        <h1>尸潮</h1>
-        <h2>死 守</h2>
+        <h1>黎明</h1>
+        <h2>DAWN</h2>
       </div>
       <p class="tag">守住发电机，撑过十个夜晚</p>
 

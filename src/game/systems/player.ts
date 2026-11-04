@@ -55,6 +55,7 @@ export function updatePlayer(g: Game, dt: number): void {
     p.vz = 0;
     p.ads = 0;
     inp.select = 0;
+    inp.cycle = 0;
     inp.reload = false;
     inp.melee = false;
     inp.grenade = false;
@@ -74,9 +75,17 @@ export function updatePlayer(g: Game, dt: number): void {
 
   // ---- 切枪 ----
   if (inp.select > 0) {
-    const k = WEAPON_ORDER[inp.select - 1];
+    // 正式局：数字键是第几个随身枪位（1 / 2）；沙盒照旧是第几把武器
+    const k = g.config.extras ? g.carried()[inp.select - 1] : WEAPON_ORDER[inp.select - 1];
     if (k) switchWeapon(g, k);
     inp.select = 0;
+  }
+  if (inp.cycle !== 0) {
+    const list = g.carried();
+    const i = list.indexOf(p.weapon);
+    const k = list[(i + inp.cycle + list.length) % list.length];
+    if (k && list.length > 1) switchWeapon(g, k);
+    inp.cycle = 0;
   }
 
   // ---- 移动 ----
@@ -164,7 +173,9 @@ export function updatePlayer(g: Game, dt: number): void {
   }
   if (inp.melee) {
     inp.melee = false;
-    if (p.meleeTimer <= 0 && !g.buildMode) {
+    // M12：V 就是推搡，冷却没好时按了不出手（之前冷却中也能挥一下，枪托的击退看起来和推搡一样）
+    const cooling = g.config.extras && g.hz.shoveCd > 0;
+    if (p.meleeTimer <= 0 && !g.buildMode && !cooling) {
       p.meleeTimer = MELEE_TIME;
       p.reloadTimer = 0;
       p.ads = 0;

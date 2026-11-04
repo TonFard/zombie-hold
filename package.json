@@ -1,9 +1,9 @@
 {
   "name": "zombie-hold",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "尸潮 · 死守：第一人称 3D 据点防守",
+  "description": "黎明：第一人称 3D 据点防守",
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",
@@ -16,7 +16,13 @@
     "sim:meta": "tsx scripts/sims/meta.ts",
     "sim:extras": "tsx scripts/sims/extras.ts",
     "check:balance": "tsx scripts/check-balance.ts",
-    "check:deps": "tsx scripts/tools/check-deps.ts"
+    "check:deps": "tsx scripts/tools/check-deps.ts",
+    "tacz:import": "node scripts/tools/tacz-import.mjs",
+    "tacz:shots": "node scripts/tools/tacz-shots.mjs",
+    "props:import": "node scripts/tools/props-import.mjs",
+    "desktop": "vite build && node electron/run.cjs",
+    "desktop:dev": "node electron/run.cjs --dev",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "three": "^0.187.0",
@@ -26,10 +32,62 @@
     "@types/node": "^22.0.0",
     "@types/three": "^0.187.0",
     "@vitejs/plugin-vue": "^6.0.10",
+    "electron": "45.2.2",
+    "electron-builder": "26.18.0",
     "puppeteer-core": "^25.16.0",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vite": "^8.3.5",
     "vue-tsc": "^3.3.14"
+  },
+  "main": "electron/main.cjs",
+  "author": "TonFard",
+  "build": {
+    "appId": "com.tonfard.zombiehold",
+    "productName": "Dawn",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/main.cjs",
+      "!node_modules/**/*"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "executableName": "Dawn"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "黎明",
+      "artifactName": "Dawn-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Dawn-Portable-${version}.${ext}"
+    },
+    "electronFuses": {
+      "runAsNode": false,
+      "enableNodeCliInspectArguments": false,
+      "onlyLoadAppFromAsar": true
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
   }
 }

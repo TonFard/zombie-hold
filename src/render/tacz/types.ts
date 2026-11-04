@@ -51,11 +51,37 @@ export interface Bone {
   cubes?: Cube[];
 }
 
+/** 动作 → 片段名（导入时按命名规则挑好；数组下标 = 扩容弹匣等级 0–3） */
+export interface Roles {
+  draw: string | null;
+  shoot: string | null;
+  shootLast: string | null;
+  reloadTactical: Array<string | null>;
+  reloadEmpty: Array<string | null>;
+  inspect: Array<string | null>;
+  inspectEmpty: Array<string | null>;
+  staticIdle: string | null;
+  boltCaught: string | null;
+  /** 快慢机位置（static_auto / static_semi），保持在最后一帧 */
+  fireMode: string | null;
+  /** 栓动 / 泵动：每发之后的拉栓 */
+  bolt: string | null;
+  /** 逐发装填（管状弹仓）：intro → loop × 缺几发 → end */
+  tube: { intro: string; introEmpty: string; loop: string; end: string } | null;
+}
+
+/** public/tacz/manifest.json */
+export interface TaczManifest {
+  enabled: boolean;
+  weapons: Record<string, { dir: string; warnings: string[]; errors: string[] }>;
+}
+
 export interface GunJson {
   id: string;
   texture: { w: number; h: number };
   bones: Bone[];
   anims: Record<string, Clip>;
+  roles: Roles;
   display: {
     modelFov: number;
     zoomModelFov: number;

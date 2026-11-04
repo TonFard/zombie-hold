@@ -1,7 +1,7 @@
 import { BufferGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from 'three';
 import { Rng } from '../../game/core/rng';
 import { GRID_H, GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
-import type { MapData } from '../../game/world/types';
+import type { MapData, PropKind } from '../../game/world/types';
 import { makeGroundTexture } from './ground';
 import { Builder, Mats, Pal, toGroup } from '../kit';
 import { buildGeneratorCore, buildProp } from './props';
@@ -13,6 +13,8 @@ export interface MapView {
   /** 发电机能量核心的材质，渲染层用它做脉动 */
   coreMaterial: MeshBasicMaterial;
   scrapBoxes: Group[];
+  /** 重建静态道具，跳过这些种类 */
+  skipKinds(skip: ReadonlySet<PropKind>): void;
   dispose(): void;
 }
 
@@ -59,6 +61,33 @@ function scrapBox(): Group {
   return toGroup(b.build());
 }
 
+/** 地图道具按 16×16 格分块合并成几个大网格；skip 里的种类不建（换成了写实模型） */
+function buildStatics(map: MapData, skip: ReadonlySet<PropKind>): { group: Group; geos: BufferGeometry[] } {
+  const builders = new Map<number, Builder>();
+  const get = (k: number): Builder => {
+    let b = builders.get(k);
+    if (!b) {
+      b = new Builder();
+      builders.set(k, b);
+    }
+    return b;
+  };
+  for (const p of map.props) if (!skip.has(p.kind)) buildProp(get(chunkOf((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2)), p);
+  cliffs(get);
+
+  const group = new Group();
+  const geos: BufferGeometry[] = [];
+  for (const b of builders.values()) {
+    const built = b.build();
+    for (const k of ['matte', 'metal', 'glow'] as const) {
+      const geo = built[k];
+      if (geo) geos.push(geo);
+    }
+    group.add(toGroup(built));
+  }
+  return { group, geos };
+}
+
 export function buildMapView(map: MapData, anisotropy: number): MapView {
   const group = new Group();
 
@@ -74,29 +103,10 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
   outer.receiveShadow = true;
   group.add(outer);
 
-  // ---- 静态道具：按 16×16 格分块合并 ----
-  const builders = new Map<number, Builder>();
-  const get = (k: number): Builder => {
-    let b = builders.get(k);
-    if (!b) {
-      b = new Builder();
-      builders.set(k, b);
-    }
-    return b;
-  };
-  for (const p of map.props) buildProp(get(chunkOf((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2)), p);
-  cliffs(get);
-
+  // ---- 静态道具 ----
+  let statics = buildStatics(map, new Set());
+  group.add(statics.group);
   const geos: BufferGeometry[] = [];
-  for (const b of builders.values()) {
-    const built = b.build();
-    const g = toGroup(built);
-    for (const k of ['matte', 'metal', 'glow'] as const) {
-      const geo = built[k];
-      if (geo) geos.push(geo);
-    }
-    group.add(g);
-  }
 
   // ---- 发电机能量核心 ----
   const coreMaterial = (Mats.glow as MeshBasicMaterial).clone();
@@ -122,8 +132,15 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
     group,
     coreMaterial,
     scrapBoxes,
+    skipKinds(skip) {
+      group.remove(statics.group);
+      for (const g of statics.geos) g.dispose();
+      statics = buildStatics(map, skip);
+      group.add(statics.group);
+    },
     dispose() {
       groundTex.dispose();
+      for (const g of statics.geos) g.dispose();
       for (const g of geos) g.dispose();
       ground.geometry.dispose();
       outer.geometry.dispose();

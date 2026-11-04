@@ -2,7 +2,7 @@ import { Euler, Group, Matrix3, Matrix4, Object3D, Quaternion, TextureLoader, Ve
 import type { WeaponKind } from '../../game/data/weapons';
 import { compileClip, CONSTRAINT, Pose, Track, type CompiledClip, type PlayMode, type Runner, type SfxFn } from './anim';
 import { TaczModel } from './model';
-import type { GunJson } from './types';
+import type { GunJson, TaczManifest } from './types';
 
 /**
  * TACZ 枪械的第一人称表现：模型 + 动画状态机 + 摄像机定位，规则照搬 TACZ 默认状态机
@@ -21,9 +21,6 @@ import type { GunJson } from './types';
  * 瞄准时再按 constraint 节点的系数把动画造成的晃动抵消掉一部分，准星才不会乱跳。
  */
 
-/** 哪些武器用 TACZ 模型（目录名 = public/tacz/ 下的子目录） */
-export const TACZ_GUNS: Partial<Record<WeaponKind, string>> = { pistol: 'glock_17' };
-
 /** TACZ 模型空间（1 = 一格）到视角模型场景（米）的缩放。以摄像机为中心等比缩放，画面不变，只是数值接近真实尺寸 */
 export const TACZ_SCALE = 0.2;
 const DEG = Math.PI / 180;
@@ -34,8 +31,9 @@ export interface TaczFrame {
   ads: number;
   /** 换弹进度 0–1，-1 = 没在换弹 */
   reload: number;
-  /** 弹匣里剩几发 */
+  /** 弹匣里剩几发 / 弹匣容量（逐发装填按差值决定塞几发） */
   mag: number;
+  magMax: number;
   /** 扩容弹匣等级 0–3 */
   xmag: number;
   speed: number;
@@ -68,6 +66,8 @@ export class TaczRig {
 
   private readonly pose: Pose;
   private readonly base = new Track(false);
+  /** 快慢机（static_auto / static_semi）：TACZ 里是混合轨道，只转保险拨片 */
+  private readonly fireModeTrack = new Track(true);
   private readonly bolt = new Track(false);
   private readonly adsTrack = new Track(false);
   private readonly main = new Track(false);
@@ -94,7 +94,14 @@ export class TaczRig {
   private walkDist = 0;
   private shootCd = 0;
   private lastMag = 1;
+  private xmag = 0;
+  /** 逐发装填的时间线 */
+  private tube: { segs: Array<{ clip: string; len: number }>; total: number; idx: number; runner: Runner | null } | null = null;
+  /** 距离拉栓还有几秒（-1 = 不拉） */
+  private boltIn = -1;
+  private boltInterval = 0.5;
   private nextKick = 0;
+  private readonly roles: GunJson['roles'];
 
   constructor(
     readonly json: GunJson,
@@ -102,12 +109,13 @@ export class TaczRig {
     private readonly baseUrl: string,
   ) {
     this.model = new TaczModel(json, texture);
+    this.roles = json.roles;
     this.root = this.model.root;
     this.root.matrixAutoUpdate = false;
     for (const [name, c] of Object.entries(json.anims)) this.clips.set(name, compileClip(name, c));
     this.pose = new Pose(json.bones.map((b) => b.name));
     for (let i = 0; i < KICK_TRACKS; i++) this.kicks.push(new Track(true));
-    this.tracks = [this.base, this.bolt, this.adsTrack, this.main, ...this.kicks, this.move, this.slideTrack];
+    this.tracks = [this.base, this.fireModeTrack, this.bolt, this.adsTrack, this.main, ...this.kicks, this.move, this.slideTrack];
     this.sfx = (p) => this.onSound?.(`${this.baseUrl}sfx/${p}.ogg`, 0.75);
     this.fov = { hip: json.display.modelFov, ads: json.display.zoomModelFov };
 
@@ -140,8 +148,8 @@ export class TaczRig {
     return [...set].map((p) => `${this.baseUrl}sfx/${p}.ogg`);
   }
 
-  private play(track: Track, name: string, mode: PlayMode, transition = 0): Runner | null {
-    const c = this.clips.get(name);
+  private play(track: Track, name: string | null | undefined, mode: PlayMode, transition = 0): Runner | null {
+    const c = name ? this.clips.get(name) : undefined;
     return c ? track.play(c, mode, transition) : null;
   }
 
@@ -149,20 +157,32 @@ export class TaczRig {
     return this.main.clipName?.startsWith('inspect') ?? false;
   }
 
+  /**
+   * 动画里没有逐个音效关键帧时（有的枪包只给一整段录音），就在动作开始时播显示配置里的整段音效，
+   * 和 TACZ 的 SoundPlayManager 一样
+   */
+  private wholeSound(key: string, clip: Runner | null): void {
+    if (clip && clip.clip.sfx.length) return;
+    const s = this.json.display.sounds[key];
+    if (s) this.onSound?.(`${this.baseUrl}sfx/${s}.ogg`, 0.75);
+  }
+
   /** 拿出这把枪：所有动作从头开始 */
   draw(): void {
     for (const t of this.tracks) t.stop();
     this.reloadRunner = null;
+    this.tube = null;
+    this.boltIn = -1;
     this.wasReloading = false;
     this.moveState = 'idle';
     this.walkMode = this.runMode = -1;
     this.sliding = this.aiming = false;
-    this.play(this.main, 'draw', 'once');
+    this.wholeSound('draw', this.play(this.main, this.roles.draw, 'once'));
     this.runOverlay = true;
   }
 
-  /** 开一枪。interval = 两发之间的秒数 */
-  fire(interval: number): void {
+  /** 开一枪。interval = 两发之间的秒数；last = 打完这发弹匣空了 */
+  fire(interval: number, last = false): void {
     this.shootCd = interval;
     if (this.inspecting) this.main.stop(0.2);
     // 优先用空闲的轨道；都在播就挤掉最早的那个
@@ -171,16 +191,24 @@ export class TaczRig {
       track = this.kicks[this.nextKick % KICK_TRACKS] as Track;
       this.nextKick++;
     }
-    this.play(track, 'shoot', 'once');
+    this.play(track, (last && this.roles.shootLast) || this.roles.shoot, 'once');
+    // 打空了就不拉栓（空仓换弹的 intro 里自带上膛）
+    if (this.roles.bolt && !last) {
+      this.boltIn = Math.min(0.1, interval * 0.15);
+      this.boltInterval = interval;
+    }
     const s = this.json.display.sounds.shoot;
     if (s) this.onSound?.(`${this.baseUrl}sfx/${s}.ogg`, 1);
   }
 
   inspect(): void {
-    if (this.reloadRunner || this.wasReloading) return;
+    if (this.reloadRunner || this.tube || this.wasReloading) return;
     if (!this.main.isStopped() && !this.inspecting) return;
-    const name = this.lastMag <= 0 && this.clips.has('inspect_empty') ? 'inspect_empty' : 'inspect';
-    if (this.play(this.main, name, 'once', 0.2)) this.runOverlay = false;
+    const empty = this.lastMag <= 0;
+    const r = this.play(this.main, (empty ? this.roles.inspectEmpty : this.roles.inspect)[this.xmag], 'once', 0.2);
+    if (!r) return;
+    this.runOverlay = false;
+    this.wholeSound(empty ? 'inspect_empty' : 'inspect', r);
   }
 
   /** 调试 / 截图用：直接在主轨道上播一个片段 */
@@ -188,26 +216,64 @@ export class TaczRig {
     return this.play(this.main, name, 'once', 0.2) !== null;
   }
 
-  private startReload(f: TaczFrame): void {
+  /**
+   * 逐发装填：把 intro + loop × 缺几发 排成一条时间线，整条按游戏的换弹进度推进；
+   * 游戏里换弹结束（弹仓一次补满）时再按正常速度播 end。和弹匣枪"cooldown 之后的收尾"是一个意思。
+   */
+  private startTube(f: TaczFrame, t: NonNullable<GunJson['roles']['tube']>): void {
     const empty = f.mag <= 0;
-    const std = empty ? 'reload_empty' : 'reload_tactical';
-    let name = std;
-    if (f.xmag > 0 && this.clips.has(`${std}_xmag`)) name = `${std}_xmag`;
-    const runner = this.play(this.main, name, 'once', 0.2);
+    const intro = empty ? t.introEmpty : t.intro;
+    // 空仓的 intro 自己会往膛里塞一发
+    const need = Math.max(0, f.magMax - f.mag - (empty && t.introEmpty !== t.intro ? 1 : 0));
+    const len = (n: string) => this.clips.get(n)?.end ?? 0;
+    const segs = [{ clip: intro, len: len(intro) }];
+    for (let i = 0; i < need; i++) segs.push({ clip: t.loop, len: len(t.loop) });
+    this.tube = { segs, total: segs.reduce((n, s) => n + s.len, 0), idx: -1, runner: null };
+    this.runOverlay = true;
+  }
+
+  private seekTube(p: number): void {
+    const tb = this.tube;
+    if (!tb) return;
+    let t = Math.min(1, Math.max(0, p)) * tb.total;
+    let i = 0;
+    while (i < tb.segs.length - 1 && t >= (tb.segs[i] as { len: number }).len) {
+      t -= (tb.segs[i] as { len: number }).len;
+      i++;
+    }
+    const seg = tb.segs[i] as { clip: string; len: number };
+    if (i !== tb.idx) {
+      tb.idx = i;
+      tb.runner = this.play(this.main, seg.clip, 'hold', i === 0 ? 0.2 : 0);
+      if (tb.runner) tb.runner.speed = 0;
+    }
+    tb.runner?.seek(Math.min(t, seg.len), this.sfx);
+  }
+
+  private startReload(f: TaczFrame): void {
+    if (this.roles.tube) {
+      this.startTube(f, this.roles.tube);
+      return;
+    }
+    const empty = f.mag <= 0;
+    const list = empty ? this.roles.reloadEmpty : this.roles.reloadTactical;
+    const runner = this.play(this.main, list[f.xmag], 'once', 0.2);
     if (!runner) return;
     // 游戏里的换弹时间对应动画里"可以开火"的时间点（TACZ 的 cooldown），动画按这个比例加速或放慢
     const cd = this.json.data.reload?.cooldown;
-    const stdClip = this.clips.get(std);
+    const stdClip = list[0] ? this.clips.get(list[0]) : undefined;
     let cool = runner.clip.end * 0.85;
     if (cd && stdClip && stdClip.end > 0) cool = (empty ? cd.empty : cd.tactical) * (runner.clip.end / stdClip.end);
     this.reloadCool = Math.min(runner.clip.end, cool);
     runner.speed = 0;
     this.reloadRunner = runner;
     this.runOverlay = true;
+    this.wholeSound(empty ? 'reload_empty' : 'reload_tactical', runner);
   }
 
   update(dt: number, f: TaczFrame): void {
     this.lastMag = f.mag;
+    this.xmag = f.xmag;
     // ---- 主轨道：换弹由游戏进度驱动
     const reloading = f.reload >= 0;
     if (reloading && !this.wasReloading) this.startReload(f);
@@ -216,15 +282,34 @@ export class TaczRig {
       this.reloadRunner.speed = 1;
       this.reloadRunner = null;
     }
+    if (!reloading && this.tube) {
+      this.tube = null;
+      this.play(this.main, this.roles.tube?.end, 'once', 0.1);
+    }
     this.wasReloading = reloading;
     if (this.reloadRunner) this.reloadRunner.seek(f.reload * this.reloadCool, this.sfx);
+    if (this.tube) this.seekTube(f.reload);
+
+    // 栓动 / 泵动：开火后稍等一下拉栓，拉栓动作压缩到两发的间隔里
+    if (this.boltIn >= 0) {
+      this.boltIn -= dt;
+      if (this.boltIn < 0 && !reloading && f.mag > 0) {
+        const r = this.play(this.main, this.roles.bolt, 'once', 0.1);
+        if (r) {
+          r.speed = Math.max(1, r.clip.end / Math.max(0.2, this.boltInterval * 0.9 - 0.08));
+          this.runOverlay = true;
+        }
+      }
+    }
     if (this.inspecting && (reloading || f.ads > 0.05 || (f.sprinting && f.speed > 1.2) || f.busy)) this.main.stop(0.2);
     if (this.main.isStopped()) this.runOverlay = false;
 
-    // ---- 持枪姿势、空仓挂机
-    if (this.base.isStopped()) this.play(this.base, 'static_idle', 'loop');
+    // ---- 持枪姿势、快慢机位置、空仓挂机
+    if (this.base.isStopped()) this.play(this.base, this.roles.staticIdle, 'loop');
+    if (this.fireModeTrack.isStopped()) this.play(this.fireModeTrack, this.roles.fireMode, 'hold');
+    const caught = this.roles.boltCaught;
     if (f.mag <= 0 && !reloading) {
-      if (this.bolt.clipName !== 'static_bolt_caught') this.play(this.bolt, 'static_bolt_caught', 'loop');
+      if (caught && this.bolt.clipName !== caught) this.play(this.bolt, caught, 'loop');
     } else if (f.mag > 0 && !this.bolt.isStopped()) this.bolt.stop();
 
     // ---- 移动、滑铲、瞄准
@@ -448,6 +533,28 @@ export class TaczRig {
   dispose(): void {
     this.model.dispose();
   }
+}
+
+/**
+ * 读 public/tacz/manifest.json（npm run tacz:import 生成）。
+ * 配置里 enabled=false 时不启用；URL 加 ?tacz=1 强制启用、?tacz=0 强制关闭，方便预览。
+ * 没导入过（文件不存在）就当作没有 TACZ 枪。
+ */
+export async function loadTaczManifest(): Promise<Partial<Record<WeaponKind, string>>> {
+  const q = new URLSearchParams(window.location.search).get('tacz');
+  if (q === '0') return {};
+  let m: TaczManifest;
+  try {
+    const res = await fetch(`${import.meta.env.BASE_URL}tacz/manifest.json`, { cache: 'no-cache' });
+    if (!res.ok) return {};
+    m = (await res.json()) as TaczManifest;
+  } catch {
+    return {};
+  }
+  if (!m.enabled && q !== '1') return {};
+  const out: Partial<Record<WeaponKind, string>> = {};
+  for (const [kind, w] of Object.entries(m.weapons)) out[kind as WeaponKind] = w.dir;
+  return out;
 }
 
 export async function loadTacz(id: string): Promise<TaczRig> {

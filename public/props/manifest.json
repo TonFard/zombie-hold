@@ -1,0 +1,58 @@
+{
+  "enabled": false,
+  "hdri": "env.hdr",
+  "assets": {
+    "Barrel_01": {
+      "file": "Barrel_01/Barrel_01.gltf",
+      "tris": 2682
+    },
+    "Barrel_02": {
+      "file": "Barrel_02/Barrel_02.gltf",
+      "tris": 2688
+    },
+    "barrel_03": {
+      "file": "barrel_03/barrel_03.gltf",
+      "tris": 1473
+    },
+    "wooden_crate_01": {
+      "file": "wooden_crate_01/wooden_crate_01.gltf",
+      "tris": 6576
+    },
+    "plastic_container": {
+      "file": "plastic_container/plastic_container.gltf",
+      "tris": 4070
+    },
+    "wooden_military_crate": {
+      "file": "wooden_military_crate/wooden_military_crate.gltf",
+      "tris": 7996
+    },
+    "concrete_road_barrier": {
+      "file": "concrete_road_barrier/concrete_road_barrier.gltf",
+      "tris": 6000
+    },
+    "worn_metal_rack": {
+      "file": "worn_metal_rack/worn_metal_rack.gltf",
+      "tris": 6372
+    },
+    "street_lamp_01": {
+      "file": "street_lamp_01/street_lamp_01.gltf",
+      "tris": 5148
+    },
+    "cardboard_box_01": {
+      "file": "cardboard_box_01/cardboard_box_01.gltf",
+      "tris": 2500
+    },
+    "metal_jerrycan": {
+      "file": "metal_jerrycan/metal_jerrycan.gltf",
+      "tris": 3000
+    },
+    "trashbag": {
+      "file": "trashbag/trashbag.gltf",
+      "tris": 4482
+    },
+    "old_tyre": {
+      "file": "old_tyre/old_tyre.gltf",
+      "tris": 2880
+    }
+  }
+}

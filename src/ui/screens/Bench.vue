@@ -44,6 +44,7 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
               <template v-else-if="!w.owned">
                 <button class="buy" :disabled="!w.canBuy" @click="ui.actions.buy(w.kind)"><span class="d">◆</span>{{ w.price }} 购买</button>
                 <span v-if="w.short > 0" class="short">已解锁 · 零件还差 {{ w.short }}</span>
+                <span v-else-if="w.swapOut" class="short">最多带两把 · 会换掉手里的{{ w.swapOut }}</span>
               </template>
               <template v-else-if="w.nextName">
                 <button class="up" :disabled="!w.canUpgrade" @click="ui.actions.upgrade(w.kind)"><span class="d">◆</span>{{ w.nextCost }} 升级：{{ w.nextName }}</button>
@@ -60,7 +61,7 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
       </div>
 
       <div class="foot">
-        <span>满级手枪也不如其他武器升 1 级——想打得更远，就换枪。</span>
+        <span>最多随身带两把枪，滚轮或 1 / 2 切换；买第三把会换掉手里那把（等级清零）。</span>
         <button class="close" @click="ui.actions.closeBench()">关闭（E / Esc）</button>
       </div>
     </div>

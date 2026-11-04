@@ -214,7 +214,8 @@ export class Effects {
   // ---------------------------------------------------------------- 射击
 
   private onShot(kind: WeaponKind, yaw: number): void {
-    this.viewmodel.fire(kind, 1 / statsAt(kind, this.game.player.tier).rate);
+    // 逻辑层先扣子弹再发事件：这时弹匣为 0 就是打完了最后一发
+    this.viewmodel.fire(kind, 1 / statsAt(kind, this.game.player.tier).rate, this.game.loadout[kind].mag <= 0);
     const m = this.viewmodel.muzzleWorld(this.muzzle, this.rig.camera);
     this.flashT = 0.06;
     this.flashLight.position.copy(m);
@@ -230,10 +231,15 @@ export class Effects {
     const fz = Math.cos(yaw);
     const shell = kind === 'shotgun';
     const big = kind === 'sniper' || kind === 'lmg';
+    // 弹壳从枪口后方 0.2 米处弹出，但离眼睛至少 0.9 米：TACZ 模型的枪口离镜头只有 0.3–0.4 米，
+    // 不往前推的话弹壳贴着镜头飞过去，会糊成一大块色块（程序模型的枪口本来就在 0.8 米左右）
+    const cam = this.rig.camera.position;
+    const ahead = (m.x - cam.x) * fx + (m.z - cam.z) * fz - 0.2;
+    const back = 0.2 - Math.max(0, 0.9 - ahead);
     this.particles.spawn({
-      x: m.x - fx * 0.2,
+      x: m.x - fx * back,
       y: m.y + 0.03,
-      z: m.z - fz * 0.2,
+      z: m.z - fz * back,
       vx: rx * this.rng.range(1.6, 2.6) + fx * 0.3 + this.rng.range(-0.4, 0.4),
       vy: this.rng.range(1.6, 2.6),
       vz: rz * this.rng.range(1.6, 2.6) + fz * 0.3 + this.rng.range(-0.4, 0.4),

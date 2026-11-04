@@ -1,7 +1,7 @@
 import { reactive } from 'vue';
-import type { StructureKind } from '../game/data/structures';
+import { costOf, type StructureKind } from '../game/data/structures';
 import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, statsAt, sustainedDps, type WeaponKind } from '../game/data/weapons';
-import type { Game } from '../game/sim';
+import { CARRY_MAX, type Game } from '../game/sim';
 import { reasonText } from '../game/systems/building';
 import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifiers';
 import { PULSE } from '../game/systems/hazards';
@@ -47,6 +47,8 @@ export interface WeaponRow {
   short: number;
   /** 买不了时的原因（locked 时显示） */
   lockNote: string;
+  /** 已经带满两把时，买这把会换掉谁（空串 = 不换） */
+  swapOut: string;
 }
 
 const specialsOf = (kind: WeaponKind, tier: number): string[] => {
@@ -147,6 +149,8 @@ export const hud = reactive({
   buildOk: false,
   /** 这一局能建的建筑、已建炮塔数 / 上限 */
   buildKinds: [] as StructureKind[],
+  /** 这一局每种建筑的价格（正式局炮塔更贵） */
+  buildCosts: {} as Partial<Record<StructureKind, number>>,
   turrets: 0,
   turretCap: 0,
 });
@@ -281,6 +285,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         dpsAfter: slot.owned ? (up ? sustainedDps(statsAt(k, slot.tier + 1)) : dps) : sustainedDps(statsAt(k, 1)),
         canBuy: state === 'ok',
         short: state === 'scrap' ? Math.ceil(def.price - game.scrap) : 0,
+        swapOut: !slot.owned && game.config.extras && game.carried().length >= CARRY_MAX ? WEAPONS[p.weapon].name : '',
         lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁（大厅 · 军械库）',
         canUpgrade: slot.owned && !!up && game.scrap >= up.cost,
         specials: specialsOf(k, slot.owned ? slot.tier : MAX_TIER),
@@ -329,7 +334,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.buildKind = game.buildKind;
   hud.buildOk = game.buildCursor.valid;
   hud.buildMsg = reasonText(game.buildCursor.reason);
-  if (hud.buildKinds.length !== game.config.structures.length) hud.buildKinds = [...game.config.structures];
+  if (hud.buildKinds.length !== game.config.structures.length) {
+    hud.buildKinds = [...game.config.structures];
+    hud.buildCosts = Object.fromEntries(game.config.structures.map((k) => [k, costOf(k, game.config.extras)]));
+  }
   hud.turrets = game.turretCount();
   hud.turretCap = game.config.turretCap;
 }

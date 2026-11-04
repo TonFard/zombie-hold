@@ -21,7 +21,7 @@ import {
 import { clamp, lerp } from '../../game/core/math';
 import type { WeaponKind } from '../../game/data/weapons';
 import type { Lighting } from '../core/lighting';
-import { loadTacz, TACZ_GUNS, TACZ_SCALE, type TaczRig } from '../tacz/rig';
+import { loadTacz, loadTaczManifest, TACZ_SCALE, type TaczRig } from '../tacz/rig';
 import { Arm } from './arms';
 import { buildWeapon, type WeaponModel } from './';
 
@@ -51,6 +51,8 @@ const PLACE: Record<WeaponKind, { x: number; y: number; z: number; s: number }> 
 /** 枪口火光亮度（近距离点光源，数值比世界里的小得多） */
 const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 2.2, smg: 2, shotgun: 5.5, rifle: 3, sniper: 5, lmg: 3.2, launcher: 6.5 };
 const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun: 1.3, rifle: 0.95, sniper: 1.4, lmg: 1.05, launcher: 1.5 };
+/** FLASH_SIZE 按枪口离镜头这么远（米，程序模型腰射时大约的距离）调的；更近就按比例缩小 */
+const FLASH_REF_DIST = 0.55;
 /** 开火时整枪后坐的力度 */
 const KICK: Record<WeaponKind, number> = { pistol: 1, smg: 0.55, shotgun: 1.8, rifle: 0.75, sniper: 2.2, lmg: 0.7, launcher: 1.9 };
 
@@ -106,8 +108,9 @@ export interface ViewModelState {
   sliding: boolean;
   /** 冲刺结束后的抬枪时间（秒） */
   sprintOut: number;
-  /** 弹匣里剩几发（TACZ 枪：战术 / 空仓换弹、空仓挂机） */
+  /** 弹匣里剩几发 / 容量（TACZ 枪：战术 / 空仓换弹、空仓挂机、逐发装填塞几发） */
   mag: number;
+  magMax: number;
   /** 前进 / 右移速度（米/秒，带符号；TACZ 枪选走路动画） */
   fwd: number;
   side: number;
@@ -195,7 +198,7 @@ export class ViewModel {
     // 枪口火光：两张交叉的发光面片 + 中心一张
     const tex = flashTexture();
     // 从枪后面往前看，面片的背面朝向镜头，所以必须双面
-    const mat = new MeshBasicMaterial({ map: tex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, color: new Color(2.4, 1.7, 1.0), side: DoubleSide });
+    const mat = new MeshBasicMaterial({ map: tex, transparent: true, blending: AdditiveBlending, depthWrite: false, toneMapped: false, color: new Color(1.7, 1.2, 0.7), side: DoubleSide });
     const quad = new PlaneGeometry(0.7, 0.42);
     const a = new Mesh(quad, mat);
     a.position.z = 0.3;
@@ -208,16 +211,29 @@ export class ViewModel {
     this.flash.visible = false;
     this.root.rotation.order = 'YXZ';
 
-    // TACZ 模型异步加载；加载好之前（或加载失败）这把枪继续用程序模型
-    for (const [kind, id] of Object.entries(TACZ_GUNS) as Array<[WeaponKind, string]>) {
-      loadTacz(id)
-        .then((rig) => {
-          rig.onSound = (url, gain) => this.onSound?.(url, gain);
-          this.tacz.set(kind, rig);
-          this.onTaczReady?.(kind, rig.soundUrls());
-        })
-        .catch((e: unknown) => console.warn(`TACZ 模型 ${id} 加载失败，继续用程序模型：`, e));
-    }
+    // TACZ 模型异步加载（清单由 npm run tacz:import 生成）；加载好之前、加载失败、没启用时继续用程序模型
+    void loadTaczManifest().then((guns) => {
+      for (const [kind, id] of Object.entries(guns) as Array<[WeaponKind, string]>) {
+        loadTacz(id)
+          .then((rig) => {
+            if (this.disposed) {
+              rig.dispose();
+              return;
+            }
+            rig.onSound = (url, gain) => this.onSound?.(url, gain);
+            this.tacz.set(kind, rig);
+            this.onTaczReady?.(kind, rig.soundUrls());
+          })
+          .catch((e: unknown) => console.warn(`TACZ 模型 ${id} 加载失败，继续用程序模型：`, e));
+      }
+    });
+  }
+
+  private disposed = false;
+
+  /** 调试 / 截图用：哪些武器的 TACZ 模型已经加载好了 */
+  taczLoaded(): WeaponKind[] {
+    return [...this.tacz.keys()];
   }
 
   /** 检视武器（TACZ 枪才有动画） */
@@ -228,6 +244,12 @@ export class ViewModel {
   /** 调试用：当前 TACZ 枪直接播一个动画片段 */
   debugPlay(name: string): boolean {
     return this.taczRig?.debugPlay(name) ?? false;
+  }
+
+  /** 调试用：当前 TACZ 枪某个动作对应的片段名（截图脚本用） */
+  debugRole(role: 'reloadTactical' | 'reloadEmpty' | 'inspect' | 'draw'): string {
+    const r = this.taczRig?.json.roles[role];
+    return (Array.isArray(r) ? r[0] : r) ?? '';
   }
 
   /** 世界环境贴图和光照同步到这个独立场景（光不能同时挂在两个场景里） */
@@ -300,17 +322,25 @@ export class ViewModel {
   }
 
   /** 开火：枪口火光 + 近处补光 + 整枪后坐 + 机构动作。interval = 两发之间的秒数 */
-  fire(kind: WeaponKind, interval = 0.3): void {
+  fire(kind: WeaponKind, interval = 0.3, last = false): void {
     const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3);
     const s = this.taczRig ? TACZ_SCALE : PLACE[kind].s;
-    this.flash.scale.setScalar((0.3 * k) / s);
+    // 火光按"屏幕上看起来多大"来定：枪口离镜头越近（TACZ 手枪腰射只有 0.25 米、开镜时枪口就在眼前），
+    // 同样的世界尺寸在屏幕上就越大，不按距离缩放会糊满全屏。开镜时再小一点，不挡准星
+    this.root.updateMatrixWorld(true);
+    this.taczRig?.root.updateMatrixWorld(true);
+    this.flash.parent?.getWorldPosition(this.tmp);
+    this.camera.worldToLocal(this.tmp);
+    const near = clamp(-this.tmp.z / FLASH_REF_DIST, 0.25, 1);
+    this.flash.scale.setScalar(((0.3 * k) / s) * near * (1 - 0.55 * this.adsK));
     this.flash.rotation.z = Math.random() * 6.28;
     this.flash.visible = true;
     this.flashT = 0.055;
-    this.flashPeak = FLASH_LIGHT[kind];
+    // 补光也一样：离得近时手臂、袖子会被照成一大片橙色
+    this.flashPeak = FLASH_LIGHT[kind] * near * near;
     if (this.taczRig) {
       // 后坐、套筒都在 TACZ 的 shoot 动画里
-      this.taczRig.fire(Math.max(0.06, interval));
+      this.taczRig.fire(Math.max(0.06, interval), last);
       return;
     }
     this.cycleT = 0;
@@ -532,6 +562,7 @@ export class ViewModel {
       ads: aimK,
       reload: s.reload,
       mag: s.mag,
+      magMax: s.magMax,
       xmag: 0,
       speed: s.speed,
       fwd: s.fwd,
@@ -653,6 +684,7 @@ export class ViewModel {
   }
 
   dispose(): void {
+    this.disposed = true;
     if (this.taczRig) this.scene.remove(this.taczRig.root);
     for (const rig of this.tacz.values()) rig.dispose();
     this.tacz.clear();

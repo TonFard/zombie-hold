@@ -1,4 +1,4 @@
-import { BUILD_RANGE, REPAIR_HP_PER_SCRAP, REPAIR_RANGE, SELL_REFUND, SPIKES, STRUCTURES, TURRETS, isTurret, type TurretKind } from '../data/structures';
+import { BUILD_RANGE, REPAIR_HP_PER_SCRAP, REPAIR_RANGE, SELL_REFUND, SPIKES, STRUCTURES, TURRETS, costOf, isTurret, type TurretKind } from '../data/structures';
 import type { Structure } from '../entities/structure';
 import { angleDiff } from '../core/math';
 import { HALF_H, HALF_W } from '../world/grid';
@@ -50,7 +50,7 @@ export function checkPlace(g: Game, cx: number, cy: number): BuildReason {
     if (player.alive && hits(player.x, player.z, player.radius)) return 'blocked';
     for (const z of g.zombies) if (z.alive && hits(z.x, z.z, z.radius)) return 'blocked';
   }
-  if (g.scrap < def.cost) return 'scrap';
+  if (g.scrap < costOf(def.kind, g.config.extras)) return 'scrap';
   return 'ok';
 }
 
@@ -60,14 +60,15 @@ export function tryPlace(g: Game, cx: number, cy: number): boolean {
   const def = STRUCTURES[g.buildKind];
   const s = g.addStructure(g.buildKind, cx, cy);
   if (!s) return false;
-  g.scrap -= def.cost;
+  const cost = costOf(def.kind, g.config.extras);
+  g.scrap -= cost;
   return true;
 }
 
 export function sellStructure(g: Game, id: number): boolean {
   const s = g.structures.get(id);
   if (!s) return false;
-  const refund = Math.floor(s.def.cost * SELL_REFUND);
+  const refund = Math.floor(costOf(s.kind, g.config.extras) * SELL_REFUND);
   g.scrap += refund;
   g.removeStructure(id, false);
   g.events.emit('scrap', { x: s.cx - HALF_W + 0.5, z: s.cy - HALF_H + 0.5, amount: refund });
@@ -140,6 +141,13 @@ export function updateBuildMode(g: Game, dt: number): void {
     const k = g.config.structures[inp.select - 1];
     if (k) g.buildKind = k;
     inp.select = 0;
+  }
+  if (inp.cycle !== 0) {
+    const list = g.config.structures;
+    const i = list.indexOf(g.buildKind);
+    const k = list[(i + inp.cycle + list.length) % list.length];
+    if (k) g.buildKind = k;
+    inp.cycle = 0;
   }
   if (g.placeCd > 0) return;
   if (inp.fire) {

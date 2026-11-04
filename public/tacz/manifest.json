@@ -1,0 +1,47 @@
+{
+  "enabled": false,
+  "weapons": {
+    "pistol": {
+      "dir": "glock_17",
+      "warnings": [
+        "缺 1 个音效文件：p24_pi_golf17_stockskel_raise"
+      ],
+      "errors": []
+    },
+    "smg": {
+      "dir": "ump45",
+      "warnings": [
+        "脚本里有流程不会播的片段：bolt, run_hold, over_heat, static_over_heating",
+        "缺 15 个音效文件：ump45_raise_quick, ump45_reload_raise, ump45_reload_magout, ump45_reload_magin, ump45_reload_end, ump45_reload_empty_raise, ump45_reload_fast_magout, ump45_reload_empty_magin, ump45_reload_empty_fast_charge, ump45_reload_empty_bolt_release, ump45_reload_empty_end, ump45_reload_fast_xmaglrg_raise, ump45_reload_empty_maghit, ump45_drop_quick, ump45_reload_fast_end"
+      ],
+      "errors": []
+    },
+    "shotgun": {
+      "dir": "m870",
+      "warnings": [
+        "脚本里有流程不会播的片段：inspect_01"
+      ],
+      "errors": []
+    },
+    "rifle": {
+      "dir": "ak12",
+      "warnings": [],
+      "errors": []
+    },
+    "sniper": {
+      "dir": "svd",
+      "warnings": [
+        "脚本里有流程不会播的片段：bolt, run_hold, over_heat, static_over_heating"
+      ],
+      "errors": []
+    },
+    "lmg": {
+      "dir": "m249",
+      "warnings": [
+        "脚本里有流程不会播的片段：static_ammo_display",
+        "缺 5 个音效文件：bruenmk9_raise, m249/m249_reload_empty, m249/m249_reload_tactical, m249/m249_inspect, m249/m249_inspect_empty"
+      ],
+      "errors": []
+    }
+  }
+}

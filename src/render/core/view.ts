@@ -11,7 +11,7 @@ import type { Quality } from '../../game/data/quality';
 import type { Game } from '../../game/sim';
 import { MELEE_TIME } from '../../game/systems/player';
 import { Actors } from '../actors/actors';
-import { adsAt } from '../../game/data/weapons';
+import { adsAt, statsAt } from '../../game/data/weapons';
 import { CameraRig, type Look } from './cameraRig';
 import { Effects } from '../fx/effects';
 import { Lighting } from './lighting';
@@ -21,6 +21,7 @@ import { buildMapView, type MapView } from '../world/mapMesh';
 import { PostFX } from './postfx';
 import { StructureViews } from '../world/structureViews';
 import { ExtrasView } from '../world/extrasView';
+import { buildRealProps, loadPropsManifest, REAL_KINDS, type RealProps } from '../world/realProps';
 
 /** 把游戏状态画出来。逻辑层不依赖这里 */
 export class GameView {
@@ -38,6 +39,8 @@ export class GameView {
   readonly structures: StructureViews;
   readonly extras: ExtrasView;
   private readonly map: MapView;
+  private realProps: RealProps | null = null;
+  private disposed = false;
   quality: Quality = 'high';
   private time = 0;
   /** 昼夜过渡：当前值朝目标值缓慢靠近 */
@@ -80,6 +83,16 @@ export class GameView {
     this.scene.add(this.sky.mesh);
     this.map = buildMapView(game.map, this.renderer.capabilities.getMaxAnisotropy());
     this.scene.add(this.map.group);
+    // 写实道具异步加载，好了再把对应的程序道具撤掉
+    void loadPropsManifest().then(async (m) => {
+      if (!m || this.disposed) return;
+      const real = await buildRealProps(game.map, m, this.renderer);
+      if (this.disposed) return real.dispose();
+      this.realProps = real;
+      this.map.skipKinds(REAL_KINDS);
+      this.scene.add(real.group);
+      if (real.envMap) this.scene.environment = real.envMap;
+    });
     this.actors = new Actors(this.scene, game);
 
     const w = canvas.clientWidth || window.innerWidth;
@@ -198,6 +211,7 @@ export class GameView {
         sliding: p.slide > 0,
         sprintOut: p.sprintOut,
         mag: game.loadout[p.weapon].mag,
+        magMax: statsAt(p.weapon, p.tier).mag,
         // 速度投到视线方向：前方 = (sin yaw, cos yaw)，右方 = (-cos yaw, sin yaw)
         fwd: p.vx * Math.sin(this.look.yaw) + p.vz * Math.cos(this.look.yaw),
         side: -p.vx * Math.cos(this.look.yaw) + p.vz * Math.sin(this.look.yaw),
@@ -215,6 +229,8 @@ export class GameView {
   }
 
   dispose(): void {
+    this.disposed = true;
+    this.realProps?.dispose();
     window.removeEventListener('resize', this.onResize);
     for (const f of this.offEvents) f();
     this.structures.dispose();

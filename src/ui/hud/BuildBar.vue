@@ -3,17 +3,17 @@ import { computed } from 'vue';
 import { STRUCTURES, isTurret } from '../../game/data/structures';
 import { hud } from '../hud';
 
-const items = computed(() => hud.buildKinds.map((k, i) => ({ kind: k, key: i + 1, def: STRUCTURES[k], turret: isTurret(k) })));
+const items = computed(() => hud.buildKinds.map((k, i) => ({ kind: k, key: i + 1, def: STRUCTURES[k], cost: hud.buildCosts[k] ?? STRUCTURES[k].cost, turret: isTurret(k) })));
 </script>
 
 <template>
   <div v-if="hud.buildMode" class="build">
     <div class="title"><i></i>建造模式<i></i></div>
     <div class="cards">
-      <div v-for="it in items" :key="it.kind" class="card" :class="{ on: hud.buildKind === it.kind, poor: hud.scrap < it.def.cost || (it.turret && hud.turrets >= hud.turretCap) }">
+      <div v-for="it in items" :key="it.kind" class="card" :class="{ on: hud.buildKind === it.kind, poor: hud.scrap < it.cost || (it.turret && hud.turrets >= hud.turretCap) }">
         <div class="key">{{ it.key }}</div>
         <div class="name">{{ it.def.name }}</div>
-        <div class="cost"><span class="d">◆</span>{{ it.def.cost }}</div>
+        <div class="cost"><span class="d">◆</span>{{ it.cost }}</div>
         <div class="desc">{{ it.def.desc }}</div>
       </div>
     </div>

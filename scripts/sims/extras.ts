@@ -11,7 +11,7 @@ import { Game, STEP } from '../../src/game/sim';
 import { fireWeapon } from '../../src/game/systems/combat';
 import { EXPLOSIVE, EXPLOSIVE_PLAYER_MULT, GRENADE, PULSE, SHOVE, blast, registerExplosives, throwGrenade } from '../../src/game/systems/hazards';
 import { segmentVsZombie } from '../../src/game/systems/hitvolume';
-import { checkChallenge, continueEndless, skipDay, startRun } from '../../src/game/systems/run';
+import { RANKED_DENSITY, checkChallenge, continueEndless, skipDay, startRun } from '../../src/game/systems/run';
 
 const failures: string[] = [];
 const check = (ok: boolean, msg: string) => {
@@ -154,6 +154,21 @@ console.log('\n== 推搡（V） ==');
   z.z = 4.6;
   run(g, 0.8);
   check(g.stats.attacksOnPlayer === attacks, '硬直期间不会攻击');
+  // 冷却中再按 V：不出手，也不再推开 / 硬直
+  z.stunT = 0;
+  const swings = g.player.meleeTimer;
+  g.input.melee = true;
+  run(g, 0.05);
+  check(g.hz.shoveCd > 0 && g.player.meleeTimer <= swings && z.stunT === 0, '推搡冷却中按 V 没有反应');
+  run(g, SHOVE.cd);
+  // 冷却好了：换一只血厚的胖子放在正前方（行尸吃第二下枪托会被打死）
+  z.hp = 0;
+  z.alive = false;
+  const z2 = g.spawnZombie('bloater', 0.5, 5.3)!;
+  g.player.yaw = 0;
+  g.input.melee = true;
+  run(g, 0.2);
+  check(z2.alive && z2.stunT > 0.5, '冷却好了以后又能推');
 }
 
 console.log('\n== 发电机电击脉冲（Q） ==');
@@ -222,7 +237,7 @@ console.log('\n== 夜晚词缀 ==');
     const z = g.zombies.find((q) => q.kind === 'walker');
     const elites = g.zombies.filter((q) => q.elite).length;
     let ok = g.run.modSpeed === m.speed && g.run.modScrap === m.scrap;
-    if (m.count !== 1) ok &&= g.run.total === Math.round(Math.round(12 + 5.5 * 4 + 0.35 * 16) * m.count);
+    if (m.count !== 1) ok &&= g.run.total === Math.round(Math.round(12 + 5.5 * 4 + 0.35 * 16) * m.count * RANKED_DENSITY.count);
     if (m.hp !== 1 && z) ok &&= Math.abs(z.maxHp - Math.round(60 * 1.3 * m.hp)) <= 1;
     if (m.elite) ok &&= elites >= 1 && g.zombies.some((q) => q.elite && q.maxHp >= 60 * 1.3 * ELITE_HP - 1);
     check(ok, `${m.name}：${m.desc}`);

@@ -111,7 +111,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
 <template>
   <div v-if="ui.screen === 'lobby'" class="lobby">
     <header>
-      <div class="brand">尸潮 · <span>据点</span></div>
+      <div class="brand">黎明 · <span>据点</span></div>
       <nav>
         <button v-for="t in tabs" :key="t.id" :class="{ on: ui.lobbyTab === t.id }" @click="ui.lobbyTab = t.id">{{ t.name }}</button>
       </nav>

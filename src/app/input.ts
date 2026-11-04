@@ -98,6 +98,15 @@ export class InputController {
     this.rightDown = false;
   };
   private readonly onContext = (e: Event) => e.preventDefault();
+  /** 滚轮：切换随身的两把枪（建造模式下切建筑）。触控板一次滚动会连发很多事件，限制一下频率 */
+  private wheelAt = 0;
+  private readonly onWheel = (e: WheelEvent) => {
+    if (!this.enabled || !this.locked || e.deltaY === 0) return;
+    const now = performance.now();
+    if (now - this.wheelAt < 150) return;
+    this.wheelAt = now;
+    this.game.input.cycle = e.deltaY > 0 ? 1 : -1;
+  };
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
@@ -110,6 +119,7 @@ export class InputController {
     window.addEventListener('mouseup', this.onUp);
     window.addEventListener('blur', this.onBlur);
     window.addEventListener('contextmenu', this.onContext);
+    window.addEventListener('wheel', this.onWheel, { passive: true });
     document.addEventListener('pointerlockchange', this.onLockChange);
   }
 
@@ -159,6 +169,7 @@ export class InputController {
       g.sprint = false;
       g.reload = false;
       g.select = 0;
+      g.cycle = 0;
       g.use = false;
       g.toggleBuild = false;
       g.sell = false;
@@ -260,6 +271,7 @@ export class InputController {
     window.removeEventListener('mouseup', this.onUp);
     window.removeEventListener('blur', this.onBlur);
     window.removeEventListener('contextmenu', this.onContext);
+    window.removeEventListener('wheel', this.onWheel);
     this.releaseLock();
   }
 }
