@@ -53,7 +53,11 @@ const PAL: Record<number, { a: RGB; b: RGB }> = {
   [Ground.Gravel]: { a: hex(0x6b665c), b: hex(0x8d877a) },
 };
 
-export function makeGroundTexture(grid: Grid, anisotropy: number): CanvasTexture {
+/**
+ * overlay = true：不画底色，只画细节层（标线、裂缝、油渍、血迹、草丛、接触阴影、边缘压暗），
+ * 透明底，叠在写实贴图上（realSurfaces.ts）。
+ */
+export function makeGroundTexture(grid: Grid, anisotropy: number, overlay = false): CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
@@ -69,7 +73,7 @@ export function makeGroundTexture(grid: Grid, anisotropy: number): CanvasTexture
     const cy = Math.min(GRID_H - 1, Math.max(0, Math.floor(gy)));
     return grid.ground[cy * GRID_W + cx] as number;
   };
-  for (let py = 0; py < SIZE; py++) {
+  for (let py = 0; py < (overlay ? 0 : SIZE); py++) {
     for (let px = 0; px < SIZE; px++) {
       const gx = px / PPC;
       const gy = py / PPC;
@@ -111,7 +115,7 @@ export function makeGroundTexture(grid: Grid, anisotropy: number): CanvasTexture
       data[i + 3] = 255;
     }
   }
-  ctx.putImageData(img, 0, 0);
+  if (!overlay) ctx.putImageData(img, 0, 0);
 
   const cell = (v: number) => v * PPC;
   const isGround = (gx: number, gy: number, g: number) => groundAt(gx, gy) === g;

@@ -20,6 +20,8 @@ export type PropKind =
   | 'fence' // 铁丝网栅栏（装饰）
   | 'generator' // 发电机
   | 'workbench' // 武器工坊
+  | 'pallet' // 托盘 / 木板堆
+  | 'dumpster' // 垃圾箱
   | 'scrapbox'; // 零件箱（可拾取）
 
 export type Side = 'N' | 'S' | 'W' | 'E';

@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "hdri": "env.hdr",
   "assets": {
     "Barrel_01": {
@@ -53,6 +53,388 @@
     "old_tyre": {
       "file": "old_tyre/old_tyre.gltf",
       "tris": 2880
+    },
+    "dead_quiver_trunk": {
+      "file": "dead_quiver_trunk/dead_quiver_trunk.gltf",
+      "tris": 7996
+    },
+    "tree_stump_01": {
+      "file": "tree_stump_01/tree_stump_01.gltf",
+      "tris": 4996
+    },
+    "rock_face_02": {
+      "file": "rock_face_02/rock_face_02.gltf",
+      "tris": 7998
+    },
+    "rock_face_01": {
+      "file": "rock_face_01/rock_face_01.gltf",
+      "tris": 7998
+    },
+    "portable_generator": {
+      "file": "portable_generator/portable_generator.gltf",
+      "tris": 7289
+    },
+    "tool_cart": {
+      "file": "tool_cart/tool_cart.gltf",
+      "tris": 5998
+    },
+    "utility_box_02": {
+      "file": "utility_box_02/utility_box_02.gltf",
+      "tris": 6268
+    },
+    "metal_trash_can": {
+      "file": "metal_trash_can/metal_trash_can.gltf",
+      "tris": 4992
+    },
+    "car_sedan1": {
+      "file": "car_sedan1/car_sedan1.gltf",
+      "tris": 9591
+    },
+    "car_sedan2": {
+      "file": "car_sedan2/car_sedan2.gltf",
+      "tris": 10079
+    },
+    "car_crashed": {
+      "file": "car_crashed/car_crashed.gltf",
+      "tris": 8330
+    },
+    "car_truck": {
+      "file": "car_truck/car_truck.gltf",
+      "tris": 9728
+    },
+    "container_blue": {
+      "file": "container_blue/container_blue.gltf",
+      "tris": 8379
+    },
+    "container_rust": {
+      "file": "container_rust/container_rust.gltf",
+      "tris": 9062
+    },
+    "generator_diesel": {
+      "file": "generator_diesel/generator_diesel.gltf",
+      "tris": 10000
+    },
+    "gas_pump": {
+      "file": "gas_pump/gas_pump.gltf",
+      "tris": 7999
+    },
+    "tree_dead": {
+      "file": "tree_dead/tree_dead.gltf",
+      "tris": 3252
+    },
+    "tree_winter": {
+      "file": "tree_winter/tree_winter.gltf",
+      "tris": 9998
+    },
+    "sandbags": {
+      "file": "sandbags/sandbags.gltf",
+      "tris": 7999
+    },
+    "dumpster": {
+      "file": "dumpster/dumpster.gltf",
+      "tris": 3100
+    },
+    "pallets": {
+      "file": "pallets/pallets.gltf",
+      "tris": 7996
+    }
+  },
+  "textures": {
+    "asphalt": "tex/asphalt/",
+    "concrete": "tex/concrete/",
+    "dirt": "tex/dirt/",
+    "grass": "tex/grass/",
+    "gravel": "tex/gravel/",
+    "floor": "tex/floor/",
+    "wall_concrete": "tex/wall_concrete/",
+    "wall_brick": "tex/wall_brick/",
+    "wall_plaster": "tex/wall_plaster/",
+    "wall_metal": "tex/wall_metal/",
+    "trim_metal": "tex/trim_metal/",
+    "trim_paint": "tex/trim_paint/"
+  },
+  "credits": {
+    "Barrel_01": {
+      "name": "Barrel_01",
+      "author": "Jorge Camacho",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Barrel_01"
+    },
+    "Barrel_02": {
+      "name": "Barrel 02",
+      "author": "Jorge Camacho",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Barrel_02"
+    },
+    "barrel_03": {
+      "name": "Barrel 03",
+      "author": "Serhii Khromov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/barrel_03"
+    },
+    "wooden_crate_01": {
+      "name": "Wooden Crate 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_crate_01"
+    },
+    "plastic_container": {
+      "name": "Plastic Container",
+      "author": "PierreB3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastic_container"
+    },
+    "wooden_military_crate": {
+      "name": "Wooden Military Crate",
+      "author": "Prabhjinder Singh",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_military_crate"
+    },
+    "concrete_road_barrier": {
+      "name": "Concrete Road Barrier",
+      "author": "Amal Kumar",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/concrete_road_barrier"
+    },
+    "worn_metal_rack": {
+      "name": "Worn Metal Rack",
+      "author": "Luca B",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/worn_metal_rack"
+    },
+    "street_lamp_01": {
+      "name": "Street Lamp 01",
+      "author": "Josh Dean",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/street_lamp_01"
+    },
+    "cardboard_box_01": {
+      "name": "Cardboard Box 01",
+      "author": "Rahul Chaudhary",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/cardboard_box_01"
+    },
+    "metal_jerrycan": {
+      "name": "Metal Jerrycan",
+      "author": "Sean Buckley",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_jerrycan"
+    },
+    "trashbag": {
+      "name": "Trashbag",
+      "author": "Benny Weimer",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/trashbag"
+    },
+    "old_tyre": {
+      "name": "Old Tyre",
+      "author": "MP",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_tyre"
+    },
+    "dead_quiver_trunk": {
+      "name": "Dead Quiver Trunk",
+      "author": "James Ray Cock, Dario Barresi, Rico Cilliers",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dead_quiver_trunk"
+    },
+    "tree_stump_01": {
+      "name": "Tree Stump 01",
+      "author": "Rob Tuytel",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/tree_stump_01"
+    },
+    "rock_face_02": {
+      "name": "Rock Face 02",
+      "author": "Dario Barresi, Rico Cilliers",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/rock_face_02"
+    },
+    "rock_face_01": {
+      "name": "Rock Face 01",
+      "author": "Dario Barresi",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/rock_face_01"
+    },
+    "portable_generator": {
+      "name": "Portable Generator",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/portable_generator"
+    },
+    "tool_cart": {
+      "name": "Tool Cart",
+      "author": "Savva Zakharov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/tool_cart"
+    },
+    "utility_box_02": {
+      "name": "Utility Box 02",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/utility_box_02"
+    },
+    "metal_trash_can": {
+      "name": "Metal Trash Can",
+      "author": "GurJas Studios",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_trash_can"
+    },
+    "car_sedan1": {
+      "name": "Abandoned Generic Sedan 1 - Game Ready",
+      "author": "Rashad Ibrahimli",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/abandoned-generic-sedan-1-game-ready-6a2169dafc254f399387a679305bb1bf"
+    },
+    "car_sedan2": {
+      "name": "Abandoned Generic Sedan 2 - Game Ready",
+      "author": "Rashad Ibrahimli",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/abandoned-generic-sedan-2-game-ready-db2df46c49f9441286c84c66208ef7ac"
+    },
+    "car_crashed": {
+      "name": "Crashed Abandoned Car - Game Ready",
+      "author": "Rashad Ibrahimli",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/crashed-abandoned-car-game-ready-66ef51a84c9843dda53bf0b4b9020011"
+    },
+    "car_truck": {
+      "name": "Rusty Abandoned Truck with Interior - Game Ready",
+      "author": "Rashad Ibrahimli",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/rusty-abandoned-truck-with-interior-game-ready-68f715c39c07464db59e099bb8dc2d4e"
+    },
+    "container_blue": {
+      "name": "Shipping Container",
+      "author": "Egor Gulyushkin",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/shipping-container-429e58a328374df4921b8a12bc142b28"
+    },
+    "container_rust": {
+      "name": "Freight shipping container - Rusted",
+      "author": "Sousinho",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/freight-shipping-container-rusted-2b787d1a02174d0bbca9eac34eb3a486"
+    },
+    "generator_diesel": {
+      "name": "Diesel generator",
+      "author": "epilogueronin",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/diesel-generator-7a0b72c7d01944a8aafab59d44eb120e"
+    },
+    "gas_pump": {
+      "name": "gas pump",
+      "author": "kunkun",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/gas-pump-add0f902b9164718bd0540e88bf9927e"
+    },
+    "tree_dead": {
+      "name": "Dead Tree",
+      "author": "MaX3Dd",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/dead-tree-33ccce6111604656a4b5709483670ec3"
+    },
+    "tree_winter": {
+      "name": "Winter Tree",
+      "author": "JSLGames",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/winter-tree-ec2a099dbb4e496e9fb85ee4ee68eff0"
+    },
+    "sandbags": {
+      "name": "Sandbag Barrier (Ready for Unreal Engine)",
+      "author": "G4AGamingLabs",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/sandbag-barrier-ready-for-unreal-engine-593800671c8e45eca93b8b7c765c0f77"
+    },
+    "dumpster": {
+      "name": "Street dumpster",
+      "author": "Loïc Norgeot",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/street-dumpster-c0b27fe90dac48aeb44b43fd0fcaf583"
+    },
+    "pallets": {
+      "name": "Wooden Box - Pallet. Game Asset",
+      "author": "SergeyLubivui",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/wooden-box-pallet-game-asset-2a4411c6956f4adeb7877f03436bb742"
+    },
+    "tex:asphalt": {
+      "name": "asphalt_02",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/asphalt_02"
+    },
+    "tex:concrete": {
+      "name": "concrete_floor_worn_001",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/concrete_floor_worn_001"
+    },
+    "tex:dirt": {
+      "name": "dry_ground_01",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dry_ground_01"
+    },
+    "tex:grass": {
+      "name": "sparse_grass",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/sparse_grass"
+    },
+    "tex:gravel": {
+      "name": "gravel_road",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/gravel_road"
+    },
+    "tex:floor": {
+      "name": "wood_floor_worn",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wood_floor_worn"
+    },
+    "tex:wall_concrete": {
+      "name": "concrete_layers_02",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/concrete_layers_02"
+    },
+    "tex:wall_brick": {
+      "name": "red_brick_03",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/red_brick_03"
+    },
+    "tex:wall_plaster": {
+      "name": "painted_plaster_wall",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_plaster_wall"
+    },
+    "tex:wall_metal": {
+      "name": "corrugated_iron_02",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/corrugated_iron_02"
+    },
+    "hdri": {
+      "name": "sunset_jhbcentral",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/sunset_jhbcentral"
+    },
+    "tex:trim_metal": {
+      "name": "rusty_metal_sheet",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/rusty_metal_sheet"
+    },
+    "tex:trim_paint": {
+      "name": "painted_concrete",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_concrete"
     }
   }
 }

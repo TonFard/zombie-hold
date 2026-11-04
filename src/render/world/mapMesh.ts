@@ -1,7 +1,7 @@
 import { BufferGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from 'three';
 import { Rng } from '../../game/core/rng';
 import { GRID_H, GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
-import type { MapData, PropKind } from '../../game/world/types';
+import type { MapData, PropKind, WallStyle } from '../../game/world/types';
 import { makeGroundTexture } from './ground';
 import { Builder, Mats, Pal, toGroup } from '../kit';
 import { buildGeneratorCore, buildProp } from './props';
@@ -13,8 +13,10 @@ export interface MapView {
   /** 发电机能量核心的材质，渲染层用它做脉动 */
   coreMaterial: MeshBasicMaterial;
   scrapBoxes: Group[];
-  /** 重建静态道具，跳过这些种类 */
-  skipKinds(skip: ReadonlySet<PropKind>): void;
+  /** 重建静态道具：skip 里的种类不建，trimWalls 里风格的墙只建细节，cliffs = false 时不建岩壁 */
+  rebuild(o: StaticOpts): void;
+  /** 换成写实地面：原来那张平面藏起来 */
+  hideGround(): void;
   dispose(): void;
 }
 
@@ -61,8 +63,14 @@ function scrapBox(): Group {
   return toGroup(b.build());
 }
 
-/** 地图道具按 16×16 格分块合并成几个大网格；skip 里的种类不建（换成了写实模型） */
-function buildStatics(map: MapData, skip: ReadonlySet<PropKind>): { group: Group; geos: BufferGeometry[] } {
+export interface StaticOpts {
+  skip: ReadonlySet<PropKind>;
+  trimWalls: ReadonlySet<WallStyle>;
+  cliffs: boolean;
+}
+
+/** 地图道具按 16×16 格分块合并成几个大网格；被写实模型替换的部分不建 */
+function buildStatics(map: MapData, o: StaticOpts): { group: Group; geos: BufferGeometry[] } {
   const builders = new Map<number, Builder>();
   const get = (k: number): Builder => {
     let b = builders.get(k);
@@ -72,8 +80,8 @@ function buildStatics(map: MapData, skip: ReadonlySet<PropKind>): { group: Group
     }
     return b;
   };
-  for (const p of map.props) if (!skip.has(p.kind)) buildProp(get(chunkOf((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2)), p);
-  cliffs(get);
+  for (const p of map.props) if (!o.skip.has(p.kind)) buildProp(get(chunkOf((p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2)), p, o.trimWalls);
+  if (o.cliffs) cliffs(get);
 
   const group = new Group();
   const geos: BufferGeometry[] = [];
@@ -104,7 +112,7 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
   group.add(outer);
 
   // ---- 静态道具 ----
-  let statics = buildStatics(map, new Set());
+  let statics = buildStatics(map, { skip: new Set(), trimWalls: new Set(), cliffs: true });
   group.add(statics.group);
   const geos: BufferGeometry[] = [];
 
@@ -132,11 +140,14 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
     group,
     coreMaterial,
     scrapBoxes,
-    skipKinds(skip) {
+    rebuild(o) {
       group.remove(statics.group);
       for (const g of statics.geos) g.dispose();
-      statics = buildStatics(map, skip);
+      statics = buildStatics(map, o);
       group.add(statics.group);
+    },
+    hideGround() {
+      ground.visible = false;
     },
     dispose() {
       groundTex.dispose();

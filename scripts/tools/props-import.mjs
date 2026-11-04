@@ -3,6 +3,7 @@
 // 用法：
 //   npm run props:import               下载（有缓存就跳过）+ 减面 + 压贴图 + 生成 public/props/manifest.json
 //   npm run props:import -- --only car_sedan1
+//   npm run props:import -- --textures 只重新导入贴图和 HDRI（模型不动）
 //   npm run props:import -- --refetch  忽略 .vendor 缓存重新下载
 //
 // 来源：
@@ -337,11 +338,11 @@ async function polyhavenTexture(key, id) {
 // ---------------------------------------------------------------- 主流程
 
 await MeshoptSimplifier.ready;
-const ids = args.only ? [args.only] : Object.keys(cfg.assets);
+const ids = args.textures ? [] : args.only ? [args.only] : Object.keys(cfg.assets);
 const manifestPath = path.join(outDir, 'manifest.json');
 const prev = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
-const manifest = { enabled: !!cfg.enabled, hdri: prev.hdri ?? null, assets: args.only ? prev.assets ?? {} : {}, textures: prev.textures ?? {} };
-const credits = args.only ? prev.credits ?? {} : {};
+const manifest = { enabled: !!cfg.enabled, hdri: prev.hdri ?? null, assets: args.only || args.textures ? prev.assets ?? {} : {}, textures: prev.textures ?? {} };
+const credits = args.only || args.textures ? prev.credits ?? {} : {};
 fs.mkdirSync(outDir, { recursive: true });
 let failed = 0;
 for (const id of ids) {

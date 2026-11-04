@@ -33,11 +33,14 @@ const PROP_HEIGHT: Partial<Record<PropKind, number>> = {
   lamp: 4.2,
   generator: 2.0,
   workbench: 1.1,
+  fence: 2.1,
+  pallet: 0.9,
+  dumpster: 1.3,
 };
 
 /** 细障碍：按圆柱碰撞（半径，米） */
 const POST_RADIUS: Partial<Record<PropKind, number>> = {
-  tree: 0.2,
+  tree: 0.3,
   lamp: 0.11,
   pillar: 0.2,
   barrel: 0.34,
@@ -223,7 +226,8 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('barrel', 29, 48, 30, 49);
   b.prop('barrel', 30, 48, 31, 49);
 
-  // ---------- 西北：公寓楼 ----------
+  // ---------- 西北：废弃居民区（两栋砖楼 + 后巷）----------
+  // 北楼：两间屋，东门通后巷，南门对着院子
   b.ground(6, 6, 19, 12, G.Floor);
   b.walls(
     5,
@@ -234,10 +238,14 @@ export function buildOutpost(seed = 20260207): MapData {
       { side: 'S', at: 9, w: 2 },
       { side: 'E', at: 8, w: 2 },
     ],
-    2.6,
+    2.8,
     'brick',
   );
-  b.prop('wall', 12, 6, 13, 10, { h: 2.6, style: 'brick' });
+  b.prop('wall', 12, 6, 13, 10, { h: 2.8, style: 'brick' });
+  b.prop('rack', 14, 6, 18, 7, { h: 2.0 });
+  b.prop('crate', 6, 11, 8, 12, { h: 0.9, variant: 0 });
+  b.prop('pallet', 16, 11, 18, 12, { h: 0.7 });
+  // 南楼
   b.ground(6, 16, 12, 24, G.Floor);
   b.walls(
     5,
@@ -248,15 +256,21 @@ export function buildOutpost(seed = 20260207): MapData {
       { side: 'N', at: 8, w: 2 },
       { side: 'E', at: 19, w: 2 },
     ],
-    2.6,
+    2.8,
     'brick',
   );
-  b.prop('wall', 6, 20, 9, 21, { h: 2.6, style: 'brick' });
-  b.prop('barrier', 16, 16, 19, 17, { h: 0.9 });
-  b.prop('barrier', 21, 19, 22, 22, { h: 0.9 });
-  b.prop('car', 22, 8, 26, 10, { variant: 0 });
+  b.prop('wall', 6, 20, 9, 21, { h: 2.8, style: 'brick' });
+  b.prop('crate', 10, 22, 12, 24, { h: 1.8, variant: 0 });
+  // 后巷：垃圾箱、托盘、烧毁的车，铁丝网隔开公路
+  b.ground(13, 13, 24, 15, G.Concrete);
+  b.prop('dumpster', 14, 13, 16, 14, { h: 1.3 });
+  b.prop('pallet', 17, 13, 18, 14, { h: 0.9 });
+  b.prop('fence', 15, 17, 23, 18, { h: 2.1 });
+  b.prop('barrier', 21, 20, 22, 23, { h: 0.9 });
+  b.prop('car', 21, 7, 25, 9, { variant: 2 });
+  b.prop('barrel', 22, 11, 23, 12, { variant: 1 });
 
-  // ---------- 东北：加油站 ----------
+  // ---------- 东北：加油站（便利店 + 加油棚）----------
   b.ground(59, 7, 69, 12, G.Floor);
   b.walls(
     58,
@@ -267,25 +281,33 @@ export function buildOutpost(seed = 20260207): MapData {
       { side: 'W', at: 8, w: 2 },
       { side: 'S', at: 63, w: 2 },
     ],
-    2.6,
+    2.8,
     'plaster',
   );
-  b.prop('canopy', 57, 16, 71, 23, { solid: false, h: 3.4 });
+  b.prop('rack', 64, 7, 68, 8, { h: 1.8 });
+  b.prop('rack', 66, 10, 69, 11, { h: 1.8 });
+  b.ground(56, 14, 72, 25, G.Concrete);
+  b.prop('canopy', 57, 16, 71, 23, { solid: false, h: 3.6 });
   for (const [x, y] of [
     [58, 16],
     [69, 16],
     [58, 22],
     [69, 22],
   ] as const) {
-    b.prop('pillar', x, y, x + 1, y + 1, { h: 3.4 });
+    b.prop('pillar', x, y, x + 1, y + 1, { h: 3.6 });
   }
-  b.prop('pump', 62, 18, 63, 20, { h: 1.6 });
-  b.prop('pump', 65, 18, 66, 20, { h: 1.6 });
+  b.prop('pump', 62, 18, 63, 20, { h: 1.7 });
+  b.prop('pump', 66, 18, 67, 20, { h: 1.7 });
+  // 停在油泵边上没开走的车
+  b.prop('car', 64, 17, 66, 21, { variant: 0 });
   b.prop('car', 73, 9, 77, 11, { variant: 1 });
+  // 店后：垃圾箱、托盘、油桶
+  b.prop('dumpster', 71, 6, 73, 7, { h: 1.3 });
+  b.prop('pallet', 71, 11, 73, 12, { h: 0.9 });
   b.prop('barrel', 71, 14, 72, 15);
   b.prop('barrel', 72, 14, 73, 15);
 
-  // ---------- 东南：仓库和集装箱巷道 ----------
+  // ---------- 东南：仓库和集装箱堆场 ----------
   b.ground(58, 58, 74, 69, G.Floor);
   b.walls(
     57,
@@ -297,7 +319,7 @@ export function buildOutpost(seed = 20260207): MapData {
       { side: 'W', at: 62, w: 2 },
       { side: 'E', at: 63, w: 2 },
     ],
-    3.0,
+    3.2,
     'metal',
   );
   b.prop('rack', 60, 60, 64, 61, { h: 2.0 });
@@ -305,9 +327,13 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('rack', 60, 66, 64, 67, { h: 2.0 });
   b.prop('rack', 67, 66, 72, 67, { h: 2.0 });
   b.prop('crate', 65, 63, 67, 65, { h: 1.84 });
-  b.prop('container', 56, 72, 62, 74, { variant: 0 });
-  b.prop('container', 66, 72, 72, 74, { variant: 2 });
+  b.prop('pallet', 69, 63, 71, 64, { h: 0.9 });
+  // 集装箱：南边两排叠了两层，挡住南面的视线
+  b.prop('container', 56, 72, 62, 74, { variant: 0, h: 5.0 });
+  b.prop('container', 66, 72, 72, 74, { variant: 1, h: 5.0 });
   b.prop('container', 53, 59, 55, 65, { variant: 1 });
+  b.prop('container', 45, 67, 51, 69, { variant: 0 });
+  b.prop('pallet', 52, 70, 54, 71, { h: 0.9 });
 
   // ---------- 西南：停车场（车辆残骸迷宫）----------
   for (const y0 of [58, 63, 68]) {
@@ -321,8 +347,9 @@ export function buildOutpost(seed = 20260207): MapData {
       if (b.isFree(ox - 1, oy - 1, ox + w + 1, oy + h + 1)) b.prop('car', ox, oy, ox + w, oy + h, { variant: rng.int(0, 3) });
     }
   }
+  b.prop('dumpster', 3, 55, 5, 56, { h: 1.3 });
 
-  // ---------- 散落的隔离墩，用来改变路线 ----------
+  // ---------- 散落的隔离墩、沙袋，用来改变路线 ----------
   for (const [x0, y0, x1, y1] of [
     [30, 12, 33, 13],
     [47, 14, 50, 15],
@@ -335,6 +362,9 @@ export function buildOutpost(seed = 20260207): MapData {
   ] as const) {
     if (b.isFree(x0, y0, x1, y1)) b.prop('barrier', x0, y0, x1, y1, { h: 0.9 });
   }
+  // 公路上抛锚的车
+  if (b.isFree(6, 36, 10, 38)) b.prop('car', 6, 36, 10, 38, { variant: 3 });
+  if (b.isFree(70, 42, 74, 44)) b.prop('car', 70, 42, 74, 44, { variant: 2 });
 
   // ---------- 刷怪点 ----------
   const spawnDefs: Array<[string, number, number]> = [
