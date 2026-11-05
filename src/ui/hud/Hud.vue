@@ -44,7 +44,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
           <span class="num">{{ scrapNum }}</span>
           <span class="lbl">零件</span>
           <span v-if="gainOn" :key="hud.scrapGain.bump" class="gainchip" :class="{ box: hud.scrapGain.box }" :style="{ opacity: Math.min(1, hud.scrapGain.life * 2.2) }">
-            +{{ hud.scrapGain.n }}<small v-if="hud.scrapGain.box">零件箱</small>
+            +{{ hud.scrapGain.n }}<small v-if="hud.scrapGain.drop">空投</small><small v-else-if="hud.scrapGain.box">零件箱</small>
           </span>
         </div>
         <i class="sep"></i>
@@ -116,7 +116,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
         <span class="cross-ico">✚</span>
         <span class="hp-num">{{ hud.hp }}</span>
         <span class="hp-max">/ {{ hud.maxHp }}</span>
-        <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ Math.round(hud.healPop.n) }}<small>嗜血</small></span>
+        <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ Math.max(1, Math.round(hud.healPop.n)) }}<small>回血</small></span>
       </div>
       <div class="hp">
         <div class="fill" :style="{ width: hpPct + '%' }"></div>
@@ -131,11 +131,12 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
         <div class="pips">
           <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
         </div>
-        <div class="wname">{{ hud.weaponName }}</div>
+        <div class="wname">{{ hud.weaponName }}<small v-if="hud.dual"> ×2</small></div>
       </div>
       <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
         <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
         <span class="cur">{{ hud.mag }}</span><span class="max">/ {{ hud.magMax }}</span>
+        <span v-if="hud.reserve >= 0" class="res" :class="{ out: hud.reserve === 0 }">{{ hud.reserve }}</span>
       </div>
       <div class="abar" :class="{ reloading: hud.reload >= 0 }">
         <div class="fill" :style="{ width: (hud.reload >= 0 ? hud.reload * 100 : magPct) + '%' }"></div>
@@ -143,9 +144,11 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
       <div class="meta">
         <span v-if="stance" class="stance">{{ stance }}</span>
         <span class="range">射程 <b>{{ hud.range }}</b> 米</span>
+        <span v-if="hud.weightSpeed < 0.995" class="wt" :title="`负重 ${hud.weight.toFixed(1)} 千克`">负重 <b>−{{ Math.round((1 - hud.weightSpeed) * 100) }}%</b></span>
       </div>
       <div class="hint" :class="{ busy: hud.reload >= 0 }">
         <template v-if="hud.reload >= 0">换弹中…</template>
+        <template v-else-if="hud.mag === 0 && hud.reserve === 0">没子弹了 · 滚轮换枪</template>
         <template v-else-if="hud.mag === 0"><kbd>R</kbd>换弹</template>
       </div>
     </div>
@@ -726,6 +729,22 @@ kbd {
   margin-left: 6px;
   font-size: 20px;
   color: var(--hud-dim);
+}
+.ammo .res {
+  margin-left: 10px;
+  padding-left: 10px;
+  border-left: 1px solid var(--hud-line);
+  font-size: 18px;
+  color: var(--hud-muted);
+}
+.ammo .res.out {
+  color: #ff5a45;
+}
+.wt b {
+  color: #e8a03f;
+}
+.wname small {
+  color: var(--hud-accent);
 }
 .ammo.lowmag .cur {
   color: var(--hud-accent);

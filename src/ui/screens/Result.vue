@@ -41,6 +41,7 @@ const lines = computed(() => {
         <div v-for="[k, v] in lines" :key="k" class="ml"><span>{{ k }}</span><i>{{ v }}</i></div>
         <div v-if="r.medals.mult !== 1" class="ml"><span>难度倍率</span><i>×{{ r.medals.mult }}</i></div>
         <div class="ml own"><span>现有勋章</span><i>{{ ui.save.meta.medals }}</i></div>
+        <div v-if="r.supplies > 0" class="ml own"><span>补给 +{{ r.supplies }}</span><i>现有 {{ ui.save.meta.supplies }}</i></div>
       </div>
       <div v-if="ui.achievements.length" class="achv">
         <div v-for="a in ui.achievements" :key="a">成就达成 · {{ a }}</div>

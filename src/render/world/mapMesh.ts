@@ -191,7 +191,7 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
   const group = new Group();
 
   // ---- 地面 ----
-  const groundTex = makeGroundTexture(map.grid, anisotropy);
+  const groundTex = makeGroundTexture(map.grid, anisotropy, false, map.coreCells.length ? { cx: ((map.coreCells[0] as number) % 80) + 1, cy: Math.floor((map.coreCells[0] as number) / 80) + 1 } : null, !!map.outpostMarks);
   const ground = new Mesh(new PlaneGeometry(GRID_W, GRID_H), new MeshStandardMaterial({ map: groundTex, roughness: 1, metalness: 0 }));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;

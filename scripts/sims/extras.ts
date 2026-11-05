@@ -93,7 +93,11 @@ console.log('\n== 手雷 ==');
   // 落点大约在前方 ~10 米
   const zs = [0, 1, 2].map((i) => g.spawnZombie('walker', 0.5 + (i - 1) * 0.8, 13)!);
   for (const z of zs) z.dummy = true;
-  check(throwGrenade(g) && g.hz.frags === GRENADE.max - 1, '扔出一颗，数量减一');
+  check(throwGrenade(g) && g.hz.frags === GRENADE.max && g.hz.thrown.length === 0, '按 G 先抬手，还没出手');
+  check(!throwGrenade(g), '抬手中再按 G 不会多扔');
+  run(g, GRENADE.windup + 0.05);
+  check(g.hz.frags === GRENADE.max - 1 && g.hz.thrown.length === 1 && g.hz.throwCd > 0, `抬手 ${GRENADE.windup} 秒后出手，数量减一，进入 ${GRENADE.cd} 秒冷却`);
+  check(!throwGrenade(g), '冷却中扔不了');
   let land = { x: 0, z: 0 };
   g.events.on('explosion', (e) => (land = { x: e.x, z: e.z }));
   run(g, GRENADE.fuse + 0.1);
@@ -101,8 +105,10 @@ console.log('\n== 手雷 ==');
   console.log(`     落点 (${land.x.toFixed(1)}, ${land.z.toFixed(1)})，离投掷点 ${Math.hypot(land.x - 0.5, land.z - 4).toFixed(1)} 米`);
   const dead = zs.filter((z) => !z.alive).length;
   check(Math.hypot(land.x - 0.5, land.z - 4) > 4 && dead >= 1, `手雷平视扔出 5 米左右，炸死了附近的僵尸（${dead}/3）`);
+  run(g, GRENADE.cd);
   throwGrenade(g);
-  check(!throwGrenade(g), '用完了扔不出去');
+  run(g, GRENADE.windup + GRENADE.cd + 0.1);
+  check(g.hz.frags === 0 && !throwGrenade(g), '用完了扔不出去');
   g.invulnerablePlayer = true;
   g.invulnerableCore = true;
   skipDay(g);
@@ -130,7 +136,9 @@ console.log('\n== 手雷 ==');
   f.hz.useFire = true;
   const burnees = [0, 1].map((i) => f.spawnZombie('walker', 0.5 + (i - 0.5) * 0.6, 9.4)!);
   for (const z of burnees) z.dummy = true;
-  check(throwGrenade(f) && f.hz.fires === GRENADE.fireMax - 1 && f.hz.frags === GRENADE.max, '切到燃烧弹后扔出的是燃烧弹，手雷数不变');
+  const okThrow = throwGrenade(f);
+  for (let i = 0; i < Math.ceil((GRENADE.windup + 0.02) / STEP); i++) f.update(STEP);
+  check(okThrow && f.hz.fires === GRENADE.fireMax - 1 && f.hz.frags === GRENADE.max, '切到燃烧弹后扔出的是燃烧弹，手雷数不变');
   run(f, GRENADE.fuse + 0.1);
   check(f.hz.hazards.some((h) => h.kind === 'fire'), '燃烧弹落地留下火焰地面');
   run(f, GRENADE.fire.burn);
@@ -540,6 +548,84 @@ console.log('\n== M13：首领冲锋与弱点 ==');
   check(!!miss && !miss.core, '平时打同一个位置只是身体');
   void hp0;
   stages = [];
+}
+
+console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
+{
+  const { bonusesOf, newMeta, suppliesFor, buyAmmo, buyBench } = await import('../../src/game/meta/progress');
+  const { CHAPTER_BY_ID } = await import('../../src/game/data/chapters');
+  const { switchWeapon } = await import('../../src/game/systems/player');
+  const all = { 'unlock-smg': 1, 'unlock-shotgun': 1, 'unlock-rifle': 1, 'unlock-lmg': 1, dual: 1, 'cap-pistol': 1 };
+  const b = bonusesOf({ ...newMeta(), levels: all });
+
+  // 重量：拿轻机枪走得比手枪慢
+  const speedWith = (k: 'pistol' | 'lmg'): number => {
+    const g = new Game(41);
+    applyMeta(g, b, { difficulty: 'normal', sidearm: null, ammo: { lmg: 300 } });
+    startRun(g);
+    g.zombies.length = 0;
+    g.scrap = 9999;
+    if (k !== 'pistol') g.buyWeapon(k);
+    switchWeapon(g, k);
+    const x0 = g.player.x;
+    g.input.moveX = 1;
+    for (let i = 0; i < 60; i++) g.update(STEP);
+    return Math.abs(g.player.x - x0);
+  };
+  const sp = speedWith('pistol');
+  const sl = speedWith('lmg');
+  check(sl < sp * 0.9, `扛轻机枪 1 秒走 ${sl.toFixed(2)} 米，拿手枪 ${sp.toFixed(2)} 米（重量真的减速）`);
+
+  // 弹药：带进去多少就有多少，打光了换不了弹
+  const g = new Game(42);
+  applyMeta(g, b, { difficulty: 'normal', sidearm: null, ammo: { smg: 40 } });
+  // 弹药有限目前关着（AMMO_LIMITED），这里打开测逻辑本身
+  g.config.ammo = true;
+  g.ammo.smg = 40;
+  startRun(g);
+  g.zombies.length = 0;
+  g.scrap = 9999;
+  g.buyWeapon('smg');
+  switchWeapon(g, 'smg');
+  check(g.loadout.smg.mag === 36 && g.reserveOf('smg') === 4, `买冲锋枪：弹匣装 36，备弹剩 ${g.reserveOf('smg')}`);
+  g.loadout.smg.mag = 0;
+  for (let i = 0; i < 200; i++) g.update(STEP);
+  check(g.loadout.smg.mag === 4 && g.reserveOf('smg') === 0, `打空换弹只能补上剩下的 4 发（弹匣 ${g.loadout.smg.mag}）`);
+  g.loadout.smg.mag = 0;
+  for (let i = 0; i < 200; i++) g.update(STEP);
+  check(g.loadout.smg.mag === 0 && g.player.reloadTimer === 0, '备弹打光：不会再换弹');
+  check(g.reserveOf('pistol') === Infinity, '手枪子弹无限');
+
+  // 双持：弹匣翻倍、射速更高
+  const gd = new Game(43);
+  applyMeta(gd, b, { difficulty: 'normal', sidearm: null });
+  check(gd.config.dual && gd.statsOf('pistol').mag === 24 && gd.statsOf('pistol').rate > 5, `双持手枪：弹匣 ${gd.statsOf('pistol').mag}、射速 ${gd.statsOf('pistol').rate.toFixed(1)}`);
+
+  // 工作台强化：伤害、扩容带进局内
+  let m: ReturnType<typeof newMeta> = { ...newMeta(), levels: all, supplies: 9999 };
+  m = buyBench(m, 'smg', 'damage')!;
+  m = buyBench(m, 'smg', 'mag')!;
+  const gb = new Game(44);
+  applyMeta(gb, bonusesOf(m), { difficulty: 'normal', sidearm: null, bench: m.bench });
+  check(Math.abs(gb.statsOf('smg', 0).damage - 10.6) < 1e-6 && gb.statsOf('smg', 0).mag === 40, `工作台：冲锋枪伤害 10 → ${gb.statsOf('smg', 0).damage.toFixed(1)}，弹匣 36 → ${gb.statsOf('smg', 0).mag}`);
+  const m2 = buyAmmo({ ...newMeta(), supplies: 10 }, 'smg');
+  check(!!m2 && m2.ammo.smg === 120 && m2.supplies === 4 && !buyAmmo(newMeta(), 'pistol'), '补给买子弹：6 补给 = 120 发；手枪不用买');
+
+  const gn = new Game(46);
+  applyMeta(gn, b, { difficulty: 'normal', sidearm: null });
+  check(!gn.config.ammo && gn.reserveOf('smg') === Infinity, '目前正式局所有武器子弹无限');
+
+  // 章节：越往后越难，补给越多
+  const gc = new Game(45, 'city');
+  applyMeta(gc, b, { difficulty: 'normal', sidearm: null, chapter: 'city' });
+  check(gc.config.zombieHp === CHAPTER_BY_ID.city.hp && gc.mapId === 'city', `第四章：僵尸生命 ×${gc.config.zombieHp}`);
+  check(suppliesFor({ difficulty: 'normal', nights: 5, won: false, kills: 100, headshotKills: 0, chapter: 'city' }) > suppliesFor({ difficulty: 'normal', nights: 5, won: false, kills: 100, headshotKills: 0 }), '后面的章节补给更多');
+  const scrapK = (d: 'normal' | 'hard' | 'nightmare', c: 'outpost' | 'city') => {
+    const gs = new Game(47, c);
+    applyMeta(gs, b, { difficulty: d, sidearm: null, chapter: c });
+    return gs.mods.scrap;
+  };
+  check(scrapK('hard', 'outpost') > scrapK('normal', 'outpost') && scrapK('nightmare', 'outpost') > scrapK('hard', 'outpost') && scrapK('normal', 'city') > scrapK('normal', 'outpost'), `零件收入：普通 ×${scrapK('normal', 'outpost')}、困难 ×${scrapK('hard', 'outpost')}、噩梦 ×${scrapK('nightmare', 'outpost')}、第四章普通 ×${scrapK('normal', 'city').toFixed(2)}`);
 }
 
 console.log('\n== M13：空投 ==');

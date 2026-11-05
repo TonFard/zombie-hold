@@ -3,7 +3,10 @@ import { DIFFICULTIES, type Difficulty } from '../data/difficulty';
 import { baseBonuses, type MetaBonuses } from '../data/meta-catalog';
 import type { Daily } from './achievements';
 import { STRUCTURE_ORDER } from '../data/structures';
-import { MAX_TIER, WEAPON_ORDER, statsAt, type WeaponKind } from '../data/weapons';
+import { AMMO_LIMITED, MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind } from '../data/weapons';
+import { CHAPTER_BY_ID } from '../data/chapters';
+import { benchMods } from '../data/bench';
+import type { MapId } from '../world/maps';
 import type { Game } from '../sim';
 
 /** 出征时的选择 */
@@ -11,16 +14,23 @@ export interface Deploy {
   difficulty: Difficulty;
   /** 随身武器：需要买了「随身武器」并且这把枪已解锁 */
   sidearm: WeaponKind | null;
+  /** 章节（地图）；缺省第一章 */
+  chapter?: MapId;
+  /** 工作台等级（存档里的 meta.bench）；缺省没有强化 */
+  bench?: Record<string, number>;
+  /** 带进这一局的子弹（库存整份带上） */
+  ammo?: Partial<Record<WeaponKind, number>>;
 }
 
 /** 按局外加成和难度生成这一局的规则 */
-export function configFor(b: MetaBonuses, d: Difficulty): RunConfig {
+export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpost', bench: Record<string, number> = {}): RunConfig {
   const def = DIFFICULTIES[d];
+  const ch = CHAPTER_BY_ID[chapter];
   return {
     difficulty: d,
-    zombieHp: def.hp,
-    zombieCount: def.count,
-    zombieDamage: def.damage,
+    zombieHp: def.hp * ch.hp,
+    zombieCount: def.count * ch.count,
+    zombieDamage: def.damage * ch.damage,
     tierCap: { ...b.tierCap },
     weapons: WEAPON_ORDER.filter((k) => b.weapons.has(k)),
     structures: STRUCTURE_ORDER.filter((k) => b.structures.has(k)),
@@ -33,6 +43,10 @@ export function configFor(b: MetaBonuses, d: Difficulty): RunConfig {
     fixedMod: '',
     daily: '',
     meta: { ...NO_META },
+    chapter,
+    ammo: AMMO_LIMITED,
+    weaponMods: benchMods(bench),
+    dual: b.dual,
   };
 }
 
@@ -41,10 +55,12 @@ export function configFor(b: MetaBonuses, d: Difficulty): RunConfig {
  * 开局零件在这里加，startRun 再加上固定的 START_SCRAP。
  */
 export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
-  g.config = configFor(b, dep.difficulty);
+  g.config = configFor(b, dep.difficulty, dep.chapter, dep.bench);
+  for (const k of WEAPON_ORDER) if (k !== 'pistol') g.ammo[k] = Math.max(0, Math.floor(dep.ammo?.[k] ?? 0));
   g.mods.turret *= b.turretDamage;
   g.mods.structHp *= b.structHp;
-  g.mods.scrap *= b.scrapGain;
+  // 难度、章节越高零件收入越多（叠在局外的零件收益上）
+  g.mods.scrap *= b.scrapGain * DIFFICULTIES[dep.difficulty].scrap * CHAPTER_BY_ID[dep.chapter ?? 'outpost'].scrap;
   g.mods.armor *= b.armor;
   g.mods.regen += b.regen;
   g.mods.speed *= b.speed;
@@ -60,8 +76,9 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
   if (sidearmOk(b, side)) {
     const slot = g.loadout[side];
     slot.owned = true;
+    slot.carried = true;
     slot.tier = 0;
-    slot.mag = statsAt(side, 0).mag;
+    slot.mag = g.takeAmmo(side, g.statsOf(side, 0).mag);
     // 直接拿在手上：startRun 里第一个白天就会存检查点，要在那之前换好，读档继续时手里才是随身武器
     g.player.weapon = side;
     g.player.tier = 0;
@@ -138,14 +155,16 @@ export function sidearmOk(b: MetaBonuses, k: string | null): k is WeaponKind {
 }
 
 /** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限 */
-export function applyTraining(g: Game, b: MetaBonuses): void {
-  g.config = { ...configFor(b, 'normal'), training: true };
+export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, number> = {}): void {
+  // 训练场：子弹无限，工作台强化照样生效（试枪用）
+  g.config = { ...configFor(b, 'normal', 'outpost', bench), training: true, ammo: false };
   for (const k of WEAPON_ORDER) {
     if (!b.weapons.has(k)) continue;
     const slot = g.loadout[k];
     slot.owned = true;
+    slot.carried = true;
     slot.tier = Math.min(MAX_TIER, b.tierCap[k]);
-    slot.mag = statsAt(k, slot.tier).mag;
+    slot.mag = g.statsOf(k, slot.tier).mag;
   }
   g.player.tier = g.loadout[g.player.weapon].tier;
 }
@@ -156,13 +175,15 @@ export function applyTraining(g: Game, b: MetaBonuses): void {
  */
 export function applyDaily(g: Game, d: Daily): void {
   const base = configFor(baseBonuses(), 'normal');
-  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4 };
+  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4, ammo: false, weaponMods: noMods(), dual: false };
   if (d.weapon !== 'pistol') {
     const slot = g.loadout[d.weapon];
     slot.owned = true;
+    slot.carried = true;
     slot.tier = 0;
-    slot.mag = statsAt(d.weapon, 0).mag;
+    slot.mag = g.statsOf(d.weapon, 0).mag;
     g.loadout.pistol.owned = false;
+    g.loadout.pistol.carried = false;
     g.player.weapon = d.weapon;
     g.player.tier = 0;
   }

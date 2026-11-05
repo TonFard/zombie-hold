@@ -5,7 +5,8 @@ export const HALF_H = GRID_H / 2;
 const COUNT = GRID_W * GRID_H;
 
 /** 地面类型，渲染用 */
-export const Ground = { Grass: 0, Asphalt: 1, Dirt: 2, Concrete: 3, Floor: 4, Gravel: 5 } as const;
+/** 地面种类。Water 是浅水（可走、会减速，渲染成水面）；Sand 是湖岸沙地 */
+export const Ground = { Grass: 0, Asphalt: 1, Dirt: 2, Concrete: 3, Floor: 4, Gravel: 5, Water: 6, Sand: 7, Mud: 8 } as const;
 
 /**
  * 导航与碰撞网格。每格 1×1 世界单位，世界坐标原点在网格中心：

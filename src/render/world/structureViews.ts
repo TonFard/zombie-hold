@@ -13,6 +13,8 @@ import {
   RingGeometry,
   Scene,
   SRGBColorSpace,
+  Sprite,
+  SpriteMaterial,
 } from 'three';
 import { Rng } from '../../game/core/rng';
 import { TURRETS, isTurret } from '../../game/data/structures';
@@ -33,7 +35,22 @@ interface Entry {
   pop: number;
   /** 受击抖动 */
   shake: number;
+  /** 头顶血条：底 + 填充（填充用 center 锚在左边，按比例缩放） */
+  barBg: Sprite;
+  barFill: Sprite;
+  /** 最近一次受击后的秒数：刚挨打时血条更显眼 */
+  hitT: number;
 }
+
+/** 血条离地高度、宽度 */
+const BAR_Y: Record<string, number> = { barricade: 1.55, turret: 1.5, spikes: 0.7, hmg: 1.6, flamer: 1.5, mortar: 1.7 };
+const BAR_W = 0.9;
+const BAR_H = 0.09;
+/** 多远以内显示满血建筑的血条（受损的建筑更远也显示） */
+const BAR_NEAR = 9;
+const BAR_FAR = 34;
+
+const _white = new Color(0xffffff);
 
 const GHOST_H: Record<string, number> = { barricade: 1.25, turret: 1.0, spikes: 0.4, hmg: 1.1, flamer: 1.0, mortar: 1.2 };
 
@@ -101,6 +118,7 @@ export class StructureViews {
         const en = this.entries.get(structure.id);
         if (!en) return;
         en.shake = 0.18;
+        en.hitT = 0;
         const x = structure.cx - HALF_W + 0.5;
         const z = structure.cy - HALF_H + 0.5;
         this.fx.chips(x, z, isTurret(structure.kind) ? [1.6, 1.5, 1.3] : [0.7, 0.5, 0.3], 3, 0.7);
@@ -121,7 +139,18 @@ export class StructureViews {
     root.position.set(s.cx - HALF_W + 0.5, 0, s.cy - HALF_H + 0.5);
     const seed = (s.cx * 131 + s.cy * 17) | 0;
     root.rotation.y = s.kind === 'barricade' ? this.rng.range(-0.06, 0.06) : 0;
-    const en: Entry = { s, root, seed, state: -1, pop: 0.22, shake: 0 };
+    const bg = new Sprite(new SpriteMaterial({ color: 0x05080b, transparent: true, opacity: 0.75, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+    const fill = new Sprite(new SpriteMaterial({ color: 0x7ad04a, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+    bg.scale.set(BAR_W + 0.04, BAR_H + 0.04, 1);
+    fill.scale.set(BAR_W, BAR_H, 1);
+    const y = BAR_Y[s.kind] ?? 1.5;
+    bg.position.set(root.position.x, y, root.position.z);
+    fill.position.copy(bg.position);
+    bg.renderOrder = 40;
+    fill.renderOrder = 41;
+    bg.visible = fill.visible = false;
+    this.scene.add(bg, fill);
+    const en: Entry = { s, root, seed, state: -1, pop: 0.22, shake: 0, barBg: bg, barFill: fill, hitT: 99 };
     if (isTurret(s.kind)) {
       const parts = s.kind === 'turret' ? makeTurret() : makeTurretOf(s.kind);
       root.add(parts.base);
@@ -141,7 +170,9 @@ export class StructureViews {
   private remove(s: Structure, destroyed: boolean): void {
     const en = this.entries.get(s.id);
     if (!en) return;
-    this.scene.remove(en.root);
+    this.scene.remove(en.root, en.barBg, en.barFill);
+    en.barBg.material.dispose();
+    en.barFill.material.dispose();
     this.entries.delete(s.id);
     const { x, z } = en.root.position;
     if (destroyed) {
@@ -154,8 +185,11 @@ export class StructureViews {
 
   update(dt: number): void {
     this.time += dt;
+    const p = this.game.player;
+    const build = this.game.buildMode;
     for (const en of this.entries.values()) {
       const { s, root } = en;
+      this.updateBar(en, dt, Math.hypot(root.position.x - p.x, root.position.z - p.z), build);
       // 出现动画
       if (en.pop > 0) {
         en.pop = Math.max(0, en.pop - dt);
@@ -196,6 +230,35 @@ export class StructureViews {
     this.updateGhost();
   }
 
+  /**
+   * 头顶血条：受损的建筑在 BAR_FAR 米内都显示（刚挨打时更亮），满血的只在走近或建造模式下显示。
+   * 不做深度测试：隔着墙也能看见自己的防线还剩多少血
+   */
+  private updateBar(en: Entry, dt: number, d: number, build: boolean): void {
+    en.hitT += dt;
+    const f = Math.max(0, Math.min(1, en.s.hp / en.s.maxHp));
+    const hurt = f < 0.999;
+    const show = (hurt && d < BAR_FAR) || build || d < BAR_NEAR;
+    en.barBg.visible = en.barFill.visible = show && f > 0;
+    if (!show) return;
+    // 远处稍微放大一点，保证屏幕上看得清
+    const k = 1 + Math.max(0, d - 8) * 0.025;
+    en.barBg.scale.set((BAR_W + 0.04) * k, (BAR_H + 0.04) * k, 1);
+    en.barFill.scale.set(Math.max(0.001, BAR_W * f) * k, BAR_H * k, 1);
+    // 左对齐：填充的锚点放在"底条左边缘"对应的位置
+    en.barFill.center.set(0.5 / Math.max(0.001, f), 0.5);
+    const c = en.barFill.material.color;
+    if (f > 0.6) c.setHex(0x7ad04a);
+    else if (f > 0.3) c.setHex(0xf0b83a);
+    else c.setHex(0xe8553f);
+    // 刚挨打：亮一下
+    const flash = Math.max(0, 1 - en.hitT / 0.25);
+    if (flash > 0) c.lerp(_white, flash * 0.6);
+    const a = hurt || build ? 1 : Math.max(0, 1 - (d - BAR_NEAR + 3) / 3);
+    en.barFill.material.opacity = a;
+    en.barBg.material.opacity = 0.75 * a;
+  }
+
   private updateGhost(): void {
     const g = this.game;
     this.zoneOverlay.visible = g.buildMode;
@@ -226,7 +289,11 @@ export class StructureViews {
 
   dispose(): void {
     for (const f of this.off) f();
-    for (const en of this.entries.values()) this.scene.remove(en.root);
+    for (const en of this.entries.values()) {
+      this.scene.remove(en.root, en.barBg, en.barFill);
+      en.barBg.material.dispose();
+      en.barFill.material.dispose();
+    }
     this.entries.clear();
     this.scene.remove(this.ghost, this.zoneOverlay);
   }

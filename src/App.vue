@@ -11,6 +11,7 @@ import Hud from './ui/hud/Hud.vue';
 import Toast from './ui/hud/Toast.vue';
 import TrainingPanel from './ui/hud/TrainingPanel.vue';
 import ExtrasHud from './ui/hud/ExtrasHud.vue';
+import TabPanel from './ui/hud/TabPanel.vue';
 import Lobby from './ui/screens/Lobby.vue';
 import MainMenu from './ui/screens/MainMenu.vue';
 import PauseMenu from './ui/screens/PauseMenu.vue';
@@ -75,6 +76,7 @@ onBeforeUnmount(() => {
   <Banner />
   <TrainingPanel />
   <ExtrasHud />
+  <TabPanel />
   <MainMenu />
   <Lobby />
   <PauseMenu />

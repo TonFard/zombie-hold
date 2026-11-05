@@ -1,47 +1,49 @@
 <script setup lang="ts">
-import { RARITY_NAME } from '../../game/data/cards';
-import { hud } from '../hud';
+import { ref, watch } from 'vue';
 import { ui } from '../store';
 import Settings from './Settings.vue';
+
+/** 暂停菜单分两页：主页（继续 / 重开 / 放弃）和设置页，不再堆在一起。本局加成在 Tab 面板里 */
+const page = ref<'main' | 'settings' | 'confirm'>('main');
+watch(
+  () => ui.screen,
+  (s) => {
+    if (s === 'pause') page.value = 'main';
+  },
+);
 </script>
 
 <template>
   <div v-if="ui.screen === 'pause'" class="pause">
     <div class="box">
-      <h2>暂 停</h2>
-      <button @click="ui.actions.resume()">继 续</button>
-      <template v-if="ui.screen === 'pause' && ui.inTraining">
-        <button class="danger" @click="ui.actions.toLobby()">离开训练场</button>
+      <template v-if="page === 'main'">
+        <h2>暂 停</h2>
+        <button class="primary" @click="ui.actions.resume()">继续游戏</button>
+        <template v-if="ui.inTraining">
+          <button @click="page = 'settings'">设置</button>
+          <button class="danger" @click="ui.actions.toLobby()">离开训练场</button>
+        </template>
+        <template v-else>
+          <button @click="ui.actions.restart()">重新开始</button>
+          <button @click="page = 'settings'">设置</button>
+          <button class="danger" @click="page = 'confirm'">放弃本局</button>
+        </template>
+        <p class="hint"><kbd>Esc</kbd> 继续 · 按住 <kbd>Tab</kbd> 查看本局属性</p>
       </template>
-      <template v-else>
-        <button @click="ui.actions.restart()">重新开始</button>
-        <button class="danger" @click="ui.actions.abandon()">放弃，回大厅</button>
-      </template>
-      <Settings class="slider" />
-      <p>Esc</p>
-    </div>
 
-    <!-- 本局加成：卡牌（带说明）和局外加成 -->
-    <aside v-if="!ui.inTraining && (hud.buffs.length || hud.metaLines.length)" class="perks" aria-label="本局加成">
-      <h3>本局加成</h3>
-      <ul v-if="hud.buffs.length" class="cards">
-        <li v-for="b in hud.buffs" :key="b.id" :class="b.rarity">
-          <div class="ch">
-            <b>{{ b.name }}</b>
-            <em v-if="b.n > 1">×{{ b.n }}</em>
-            <span class="rar">{{ RARITY_NAME[b.rarity] }}</span>
-          </div>
-          <div class="cd">{{ b.desc }}<template v-if="b.n > 1">（已叠 {{ b.n }} 张）</template></div>
-        </li>
-      </ul>
-      <p v-else class="empty">还没有选过卡牌：每个黎明可以三选一</p>
-      <template v-if="hud.metaLines.length">
-        <h4>局外成长</h4>
-        <div class="meta">
-          <span v-for="l in hud.metaLines" :key="l">{{ l }}</span>
-        </div>
+      <template v-else-if="page === 'settings'">
+        <h2>设 置</h2>
+        <Settings class="settings" />
+        <button @click="page = 'main'">返回</button>
       </template>
-    </aside>
+
+      <template v-else>
+        <h2>放弃本局？</h2>
+        <p class="warn">按已经撑过的夜数结算勋章，回到大厅</p>
+        <button class="danger" @click="ui.actions.abandon()">确认放弃</button>
+        <button @click="page = 'main'">取消</button>
+      </template>
+    </div>
   </div>
 </template>
 
@@ -53,145 +55,80 @@ import Settings from './Settings.vue';
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 56px;
-  background: rgba(3, 5, 8, 0.7);
-  backdrop-filter: blur(3px);
+  background: rgba(3, 5, 8, 0.72);
+  backdrop-filter: blur(4px);
+  font-family: var(--hud-font);
 }
 .box {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  min-width: 280px;
-  text-align: center;
+  gap: 10px;
+  width: 340px;
+  padding: 28px 30px 24px;
+  background: rgba(8, 11, 15, 0.92);
+  border-top: 2px solid var(--hud-accent);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
 h2 {
-  font-size: 28px;
-  letter-spacing: 18px;
-  color: #d9c9a0;
-  margin-bottom: 14px;
-  font-weight: 300;
+  margin-bottom: 12px;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 10px;
+  text-align: center;
+  color: #e6dcc0;
 }
 button {
-  padding: 13px 0;
-  background: rgba(10, 14, 18, 0.8);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 12px 0;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   color: #d8dee4;
+  font: inherit;
   font-size: 15px;
-  letter-spacing: 8px;
-  font-family: inherit;
+  letter-spacing: 4px;
   cursor: pointer;
   transition: 0.15s;
 }
-button:hover {
+button:hover,
+button:focus-visible {
   background: #1d2a36;
-  border-color: #6fd0e8;
+  border-color: var(--hud-cyan);
   color: #fff;
+  outline: none;
 }
-button.danger:hover {
+button.primary {
+  border-color: var(--hud-accent);
+  color: var(--hud-accent);
+}
+button.primary:hover,
+button.primary:focus-visible {
+  background: var(--hud-accent);
+  color: #0b0f14;
+}
+button.danger:hover,
+button.danger:focus-visible {
   background: #3a1c1a;
-  border-color: #e8553f;
+  border-color: var(--hud-danger);
 }
-.slider {
-  margin-top: 10px;
+.settings {
+  margin-bottom: 8px;
 }
-p {
+.hint {
   margin-top: 8px;
   font-size: 12px;
-  letter-spacing: 4px;
-  color: #6f7c88;
+  text-align: center;
+  color: var(--hud-muted);
 }
-p.note {
-  max-width: 300px;
-  margin: 0 auto;
-  letter-spacing: 1px;
-  line-height: 1.6;
-}
-
-/* ---------- 本局加成 ---------- */
-.perks {
-  width: 340px;
-  max-height: 78vh;
-  overflow-y: auto;
-  padding: 16px 18px;
-  background: rgba(10, 14, 18, 0.8);
-  border-top: 2px solid var(--hud-accent);
-}
-h3 {
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  letter-spacing: 6px;
-  color: #d9c9a0;
-}
-h4 {
-  margin: 14px 0 8px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 4px;
-  color: var(--hud-cyan);
-}
-.cards {
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.cards li {
-  --c: #a8b4c0;
-  padding: 6px 10px;
-  background: rgba(255, 255, 255, 0.03);
-  border-left: 3px solid var(--c);
-}
-.cards li.rare {
-  --c: #5ab8f0;
-}
-.cards li.epic {
-  --c: #d08af0;
-}
-.cards li.curse {
-  --c: #e8553f;
-}
-.ch {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-}
-.ch b {
+.warn {
+  margin-bottom: 6px;
   font-size: 13px;
-  font-weight: 600;
-  color: #eef1f3;
+  text-align: center;
+  color: #c8b8a0;
 }
-.ch em {
-  font-style: normal;
-  font-size: 12px;
-  color: var(--c);
-}
-.rar {
-  margin-left: auto;
-  font-size: 10px;
-  letter-spacing: 3px;
-  color: var(--c);
-}
-.cd {
-  margin-top: 3px;
-  font-size: 11px;
-  line-height: 1.5;
-  color: #9aa6b2;
-}
-.empty {
-  margin: 0;
-  letter-spacing: 1px;
-}
-.meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.meta span {
-  padding: 2px 8px;
-  font-size: 11px;
-  color: #d8dee4;
-  background: rgba(111, 208, 232, 0.1);
-  border: 1px solid rgba(111, 208, 232, 0.3);
+kbd {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--hud-line-strong);
+  border-radius: 2px;
+  font: 600 11px/16px var(--hud-font);
 }
 </style>

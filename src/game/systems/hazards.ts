@@ -25,7 +25,7 @@ export const FIRE_DPS = 18;
 export const ACID_DPS = 14;
 
 /** 手雷：每个白天补到爆炸 2 颗、燃烧 1 颗；投掷速度、引信、爆炸 / 燃烧 */
-export const GRENADE = { max: 2, fireMax: 1, speed: 14, fuse: 1.6, frag: { radius: 3.6, damage: 160 }, fire: { radius: 3, damage: 40, burn: 4, dps: 22 } };
+export const GRENADE = { max: 2, fireMax: 1, speed: 14, fuse: 1.6, windup: 0.45, cd: 1.6, frag: { radius: 3.6, damage: 160 }, fire: { radius: 3, damage: 40, burn: 4, dps: 22 } };
 
 /** 推搡：冷却、范围、击退、硬直 */
 export const SHOVE = { cd: 4, range: 2.0, arc: 70 * (Math.PI / 180), push: 5, stun: 1 };
@@ -90,13 +90,16 @@ export interface HazardState {
   /** 下一颗扔燃烧弹（G 切换种类在界面上做） */
   useFire: boolean;
   shoveCd: number;
+  /** 投掷：拉环 / 抬手的剩余时间（> 0 正在扔，到 0 才出手），投掷冷却 */
+  throwT: number;
+  throwCd: number;
   /** 电击脉冲：充能剩余（> 0 正在充能）、冷却剩余 */
   pulseCharge: number;
   pulseCd: number;
 }
 
 export function newHazards(): HazardState {
-  return { hazards: [], explosives: [], spits: [], thrown: [], frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, shoveCd: 0, pulseCharge: 0, pulseCd: 0 };
+  return { hazards: [], explosives: [], spits: [], thrown: [], frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, shoveCd: 0, throwT: 0, throwCd: 0, pulseCharge: 0, pulseCd: 0 };
 }
 
 const GRAVITY = 9.8;
@@ -169,18 +172,33 @@ export function blast(g: Game, x: number, z: number, radius: number, damage: num
 // ---------------------------------------------------------------- 手雷 / 推搡 / 脉冲
 
 /** G：扔一颗手雷（沿视线方向抛物线飞），返回是否扔出 */
+/**
+ * 按 G：先拉环抬手（GRENADE.windup 秒，期间不能开火），然后才出手；扔完有 GRENADE.cd 秒冷却。
+ * 以前按下立刻扔、没有冷却，连按几下一口气全扔出去
+ */
 export function throwGrenade(g: Game): boolean {
   const h = g.hz;
   const p = g.player;
   const fire = h.useFire && h.fires > 0;
-  if (!p.alive || (fire ? h.fires : h.frags) <= 0) return false;
+  if (!p.alive || h.throwT > 0 || h.throwCd > 0 || (fire ? h.fires : h.frags) <= 0) return false;
+  h.throwT = GRENADE.windup;
+  g.events.emit('grenadeWindup', { fire });
+  return true;
+}
+
+/** 抬手结束，真正把手雷扔出去（方向按出手这一刻的视线） */
+function releaseGrenade(g: Game): void {
+  const h = g.hz;
+  const p = g.player;
+  h.throwCd = GRENADE.cd;
+  const fire = h.useFire && h.fires > 0;
+  if (!p.alive || (fire ? h.fires : h.frags) <= 0) return;
   if (fire) h.fires--;
   else h.frags--;
   const pitch = g.input.aimPitch + 0.25;
   const cp = Math.cos(pitch);
   h.thrown.push({ fire, x: p.x + Math.sin(p.yaw) * 0.4, y: p.eye - 0.1, z: p.z + Math.cos(p.yaw) * 0.4, vx: Math.sin(p.yaw) * cp * GRENADE.speed + p.vx * 0.5, vy: Math.sin(pitch) * GRENADE.speed, vz: Math.cos(p.yaw) * cp * GRENADE.speed + p.vz * 0.5, fuse: GRENADE.fuse });
   g.events.emit('grenadeThrown', { fire });
-  return true;
 }
 
 /** 推搡：前方扇形内的僵尸被推开并硬直 1 秒 */
@@ -260,6 +278,14 @@ function landSpit(g: Game, s: Spit): void {
 export function updateHazards(g: Game, dt: number): void {
   const h = g.hz;
   h.shoveCd = Math.max(0, h.shoveCd - dt);
+  h.throwCd = Math.max(0, h.throwCd - dt);
+  if (h.throwT > 0) {
+    h.throwT -= dt;
+    if (h.throwT <= 0) {
+      h.throwT = 0;
+      releaseGrenade(g);
+    }
+  }
   h.pulseCd = Math.max(0, h.pulseCd - dt);
   if (h.pulseCharge > 0) {
     h.pulseCharge -= dt;

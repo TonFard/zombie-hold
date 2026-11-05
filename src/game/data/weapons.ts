@@ -88,6 +88,15 @@ export interface WeaponDef {
   falloff: [number, number];
   ads: AdsDef;
   recoil: RecoilDef;
+  /**
+   * 重量（千克）。正式局里真的会生效：拿在手上越重走得越慢、冲刺越耗体力、切枪 / 举镜越慢；
+   * 身上另一把枪也算一半重量（背着走）
+   */
+  weight: number;
+  /** 弹药：pack = 大厅里一份补给的发数，price = 一份多少补给点；手枪无限子弹 */
+  ammo: { pack: number; price: number } | null;
+  /** 这把枪最好用的场景（工坊和大厅里显示） */
+  role: string;
 }
 
 const s = (o: Partial<WeaponStats>): WeaponStats => ({
@@ -123,6 +132,9 @@ function route(price: number, ups: Array<Omit<UpgradeDef, 'cost'>>): UpgradeDef[
 export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   pistol: {
     kind: 'pistol',
+    weight: 1.0,
+    ammo: null,
+    role: '备用枪，子弹无限；双持后近距离火力翻倍',
     name: 'M9 手枪',
     price: 0,
     muzzle: 160,
@@ -146,6 +158,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   smg: {
     kind: 'smg',
+    weight: 2.6,
+    ammo: { pack: 120, price: 6 },
+    role: '城区巷战、室内：射速高、走得快',
     name: '蝰蛇冲锋枪',
     price: 350,
     muzzle: 190,
@@ -168,6 +183,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   shotgun: {
     kind: 'shotgun',
+    weight: 3.9,
+    ammo: { pack: 24, price: 6 },
+    role: '门口、走廊等狭窄入口：一枪打一片',
     name: '铁砧霰弹枪',
     price: 450,
     muzzle: 130,
@@ -191,6 +209,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   rifle: {
     kind: 'rifle',
+    weight: 3.6,
+    ammo: { pack: 90, price: 7 },
+    role: '荒野开阔地：中远距离点射，穿透一串',
     name: '铁壁突击步枪',
     price: 600,
     muzzle: 240,
@@ -215,6 +236,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   sniper: {
     kind: 'sniper',
+    weight: 5.8,
+    ammo: { pack: 15, price: 8 },
+    role: '湖畔、长街：远距离点杀首领和精英',
     name: '寒鸦狙击步枪',
     price: 800,
     muzzle: 420,
@@ -237,6 +261,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   lmg: {
     kind: 'lmg',
+    weight: 8.5,
+    ammo: { pack: 150, price: 9 },
+    role: '守据点：压住一整个入口，但扛着走不快',
     name: '铁幕轻机枪',
     price: 1000,
     muzzle: 220,
@@ -259,6 +286,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
   },
   launcher: {
     kind: 'launcher',
+    weight: 6.4,
+    ammo: { pack: 8, price: 10 },
+    role: '尸潮扎堆时：范围爆炸，别对着脚下打',
     name: '炼狱榴弹发射器',
     price: 1100,
     muzzle: 0,
@@ -313,4 +343,69 @@ export function falloffAt(kind: WeaponKind, traveled: number, range: number): nu
   const k = traveled / range;
   if (k <= start) return 1;
   return 1 + (min - 1) * Math.min(1, (k - start) / (1 - start));
+}
+
+/**
+ * 局外每把枪自己的强化（大厅 · 军械库里每把枪一张工作台）：伤害、后坐、减重、扩容各 3 级。
+ * 数值是倍率 / 增量，正式局里套在 statsAt 的结果上（effectiveStats）
+ */
+export interface WeaponMod {
+  /** 伤害倍率 */
+  damage: number;
+  /** 后坐力倍率（< 1 更稳） */
+  recoil: number;
+  /** 重量减少的千克数 */
+  lighter: number;
+  /** 弹匣容量倍率 */
+  mag: number;
+}
+
+export const NO_MOD: WeaponMod = { damage: 1, recoil: 1, lighter: 0, mag: 1 };
+
+export function noMods(): Record<WeaponKind, WeaponMod> {
+  const o = {} as Record<WeaponKind, WeaponMod>;
+  for (const k of WEAPON_ORDER) o[k] = { ...NO_MOD };
+  return o;
+}
+
+/**
+ * 弹药有限开关。现在的难度下子弹有限太紧，先全部无限；买子弹、库存、结算退回的代码都留着，
+ * 改成 true 就恢复（大厅武器台的"弹药库存"也跟着出现）
+ */
+export const AMMO_LIMITED = false;
+
+/** 双持手枪：两把一起打（左右交替），弹匣翻倍、射速 ×1.7，但散布变大、不能举镜瞄准 */
+export const DUAL = { mag: 2, rate: 1.7, spread: 1.5, recoil: 0.8, weight: 1.0 };
+
+/** 局外强化 + 双持之后的实际属性 */
+export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = NO_MOD, dual = false): WeaponStats {
+  const st = statsAt(kind, tier);
+  if (mod.damage !== 1) st.damage *= mod.damage;
+  if (mod.mag !== 1) st.mag = Math.max(1, Math.round(st.mag * mod.mag));
+  if (dual && kind === 'pistol') {
+    st.mag *= DUAL.mag;
+    st.rate *= DUAL.rate;
+    st.spread *= DUAL.spread;
+  }
+  return st;
+}
+
+/** 实际重量（千克）：局外减重之后，双持多一把手枪的重量 */
+export function weightOf(kind: WeaponKind, mod: WeaponMod = NO_MOD, dual = false): number {
+  const w = WEAPONS[kind].weight + (dual && kind === 'pistol' ? DUAL.weight : 0) - mod.lighter;
+  return Math.max(0.6, w);
+}
+
+/**
+ * 重量的效果（正式局）：carry = 手上的枪 + 背着的另一把的一半。
+ * 3 千克以内不减速，之后每千克 −3% 移速（最多 −24%）；冲刺耗体力每千克 +4%；切枪和举镜随手上的枪变慢
+ */
+export function weightEffects(hand: number, back: number): { speed: number; stamina: number; handling: number } {
+  const carry = hand + back * 0.5;
+  const over = Math.max(0, carry - 3);
+  return {
+    speed: Math.max(0.76, 1 - 0.03 * over),
+    stamina: 1 + 0.04 * over,
+    handling: 1 + Math.max(0, hand - 2) * 0.06,
+  };
 }

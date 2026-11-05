@@ -1,12 +1,13 @@
 import {
   Box3,
+  BoxGeometry,
   type BufferGeometry,
   EquirectangularReflectionMapping,
   Group,
   InstancedMesh,
   type Material,
   Matrix4,
-  type Mesh,
+  Mesh,
   type MeshStandardMaterial,
   PMREMGenerator,
   Quaternion,
@@ -18,7 +19,7 @@ import type { Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { Rng } from '../../game/core/rng';
-import { HALF_H, HALF_W } from '../../game/world/grid';
+import { GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
 import { FURN_IDS } from '../../game/world/modules';
 import type { FurnitureKind, MapData, Prop, PropKind } from '../../game/world/types';
 import { rectOf } from './props/kit';
@@ -102,6 +103,18 @@ async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Mod
       const sm = mat as MeshStandardMaterial;
       // Sketchfab 模型常带 KHR_materials_specular / 双面；保持原样，只把透明裁切的阈值统一
       if (sm.alphaTest > 0) sm.alphaTest = 0.5;
+      if (sm.transparent) {
+        if (/glass/i.test(sm.name)) {
+          // 真正的玻璃（灯罩、炉门）：保留半透明，但不写深度，免得实例之间排序来回闪
+          sm.depthWrite = false;
+        } else {
+          // 有的模型（蓝色集装箱）整套材质都标成了 BLEND，渲染出来是半透明的：改回不透明
+          sm.transparent = false;
+          sm.opacity = 1;
+          sm.depthWrite = true;
+          sm.alphaTest = 0;
+        }
+      }
     }
     parts.push({ geo: m.geometry, mat: m.material, local: norm.clone().multiply(m.matrixWorld) });
   });
@@ -376,17 +389,49 @@ function cliffs(put: Put, size: Size): void {
   const rng = new Rng(9001);
   const uni = (x: number, y: number, z: number, ry: number, s: number): Place => ({ x, y, z, ry, sx: s, sy: s, sz: s });
   // 每条边单独一组（键名带 #边），这样背后的那几条边能被视锥剔除
-  const edge = (side: string, x: number, z: number, out: number) => {
+  // 以前一排、间距 4.6 米、朝向随机 ±0.5：岩壁是单面扫描，转个角度就露出缝，能从缝里看到外面的天。
+  // 现在两排错开（里排矮、外排高）、间距 3.2 米、朝向只抖 ±0.2，后面再垫一圈实心岩墙（cliffBackdrop）
+  const edge = (side: string, x: number, z: number, out: number, h: number) => {
     const id = rng.pick(ids);
     const s0 = size(id) as Vector3;
-    const s = rng.range(1.0, 1.4) * (4.2 / s0.y);
-    put(`${id}#${side}`, uni(x, -0.4, z, out + rng.range(-0.5, 0.5), s));
+    const s = rng.range(1.0, 1.25) * (h / s0.y);
+    put(`${id}#${side}`, uni(x, -0.4, z, out + rng.range(-0.2, 0.2), s));
   };
-  for (let t = -HALF_W - 2; t <= HALF_W + 2; t += 4.6) {
-    edge('n', t, -HALF_H - 1.8, 0);
-    edge('s', t, HALF_H + 1.8, Math.PI);
-    edge('w', -HALF_W - 1.8, t, Math.PI / 2);
-    edge('e', HALF_W + 1.8, t, -Math.PI / 2);
+  for (let row = 0; row < 2; row++) {
+    const d = row === 0 ? 1.8 : 4.2;
+    const h = row === 0 ? 4.6 : 7.5;
+    const off = row === 0 ? 0 : 1.6;
+    for (let t = -HALF_W - 4 + off; t <= HALF_W + 4; t += 3.2) {
+      edge('n', t, -HALF_H - d, 0, h);
+      edge('s', t, HALF_H + d, Math.PI, h);
+      edge('w', -HALF_W - d, t, Math.PI / 2, h);
+      edge('e', HALF_W + d, t, -Math.PI / 2, h);
+    }
+  }
+}
+
+/** 岩壁背后一圈实心岩墙：借岩壁的材质，盖住两排岩石之间可能还剩的缝 */
+function cliffBackdrop(group: Group, mat: Material, disposables: Array<{ dispose(): void }>): void {
+  const H = 10;
+  const D = 7.2;
+  const L = GRID_W + 2 * D + 4;
+  for (const [x, z, ry] of [
+    [0, -HALF_H - D, 0],
+    [0, HALF_H + D, 0],
+    [-HALF_W - D, 0, Math.PI / 2],
+    [HALF_W + D, 0, Math.PI / 2],
+  ] as const) {
+    const geo = new BoxGeometry(L, H, 2);
+    // 贴图按世界尺寸平铺（盒子默认 UV 是 0–1，拉满 90 米会糊成一团）
+    const uv = geo.getAttribute('uv');
+    for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (L / 6), uv.getY(i) * (H / 6));
+    const m = new Mesh(geo, mat);
+    m.position.set(x, H / 2 - 0.5, z);
+    m.rotation.y = ry;
+    m.receiveShadow = true;
+    m.name = 'cliffBackdrop';
+    group.add(m);
+    disposables.push(geo);
   }
 }
 
@@ -459,6 +504,8 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
       group.add(im);
     }
   }
+  const rockPart = (models.get('rock_face_02') ?? models.get('rock_face_01'))?.parts[0];
+  if (hasCliffs && rockPart) cliffBackdrop(group, Array.isArray(rockPart.mat) ? (rockPart.mat[0] as Material) : rockPart.mat, disposables);
   for (const model of models.values()) {
     for (const part of model.parts) {
       disposables.push(part.geo);

@@ -1,6 +1,6 @@
 import type { AudioSystem } from '../audio';
 import type { Game } from '../game/sim';
-import { bumpPop, hud, markBoxTaken, procCard } from '../ui/hud';
+import { bumpPop, hud, markBoxTaken, markDropTaken, procCard } from '../ui/hud';
 import { ui } from '../ui/store';
 
 /**
@@ -23,13 +23,10 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
     }),
     game.events.on('zombieDied', () => {
       hud.kill = 1;
-      // 嗜血：逻辑层已经加过血了；上一帧快照里没满血才算真的回了血
-      const ls = game.mods.lifesteal;
-      if (ls > 0 && game.player.alive && hud.hp < hud.maxHp) {
-        bumpPop(hud.healPop, Math.min(ls, hud.maxHp - hud.hp));
-        procCard(game, 'lifesteal');
-      }
+      if (game.mods.lifesteal > 0) procCard(game, 'lifesteal');
     }),
+    // 持续回血（嗜血池 / 急救训练）：一小口一小口地回，HUD 上合并成一个 +N
+    game.events.on('healed', ({ amount }) => bumpPop(hud.healPop, amount)),
     // 卡牌触发反馈：闪一下 HUD 上对应的卡牌格
     game.events.on('refund', ({ amount }) => {
       bumpPop(hud.ammoPop, amount);
@@ -43,6 +40,9 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
     }),
     game.events.on('scrapBox', ({ taken }) => {
       if (taken) markBoxTaken();
+    }),
+    game.events.on('airdrop', ({ stage }) => {
+      if (stage === 'taken') markDropTaken();
     }),
     game.events.on('zombieAttack', ({ zombie, target }) => {
       if (target !== 'player') return;

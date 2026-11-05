@@ -13,7 +13,7 @@ import { GRID_H, GRID_W } from '../../game/world/grid';
 import type { Game } from '../../game/sim';
 import { MELEE_TIME } from '../../game/systems/player';
 import { Actors } from '../actors/actors';
-import { adsAt, statsAt } from '../../game/data/weapons';
+import { adsAt } from '../../game/data/weapons';
 import { CameraRig, type Look } from './cameraRig';
 import { Effects } from '../fx/effects';
 import { Lighting } from './lighting';
@@ -259,7 +259,7 @@ export class GameView {
         scope: adsAt(p.weapon, p.tier).scope,
         tier: p.tier,
         alive: p.alive,
-        lowered: game.buildMode,
+        lowered: game.buildMode || game.hz.throwT > 0,
         reload: p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1,
         recoil: p.recoil,
         speed: Math.hypot(p.vx, p.vz),
@@ -272,10 +272,11 @@ export class GameView {
         sliding: p.slide > 0,
         sprintOut: p.sprintOut,
         mag: game.loadout[p.weapon].mag,
-        magMax: statsAt(p.weapon, p.tier).mag,
+        magMax: game.statsOf(p.weapon, p.tier).mag,
         // 速度投到视线方向：前方 = (sin yaw, cos yaw)，右方 = (-cos yaw, sin yaw)
         fwd: p.vx * Math.sin(this.look.yaw) + p.vz * Math.cos(this.look.yaw),
         side: -p.vx * Math.cos(this.look.yaw) + p.vz * Math.sin(this.look.yaw),
+        dual: game.config.dual,
       });
       // TACZ 枪的摄像机动画（开枪、换弹时镜头的轻微晃动）
       this.rig.camera.quaternion.multiply(this.viewmodel.cameraAnim);

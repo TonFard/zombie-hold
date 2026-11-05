@@ -2,7 +2,7 @@ import type { RunConfig } from '../config';
 import { CARD_BY_ID } from '../data/cards';
 import { isDifficulty } from '../data/difficulty';
 import { STRUCTURES, STRUCTURE_ORDER, type StructureKind } from '../data/structures';
-import { MAX_TIER, WEAPON_ORDER, statsAt, type WeaponKind } from '../data/weapons';
+import { MAX_TIER, WEAPON_ORDER, effectiveStats, type WeaponKind } from '../data/weapons';
 import { FINAL_NIGHT } from '../data/waves';
 import { ZOMBIES, type ZombieKind } from '../data/zombies';
 import type { Bullet } from '../entities/bullet';
@@ -13,6 +13,8 @@ import type { Game, GameStats, Mods, PlayerInput, PlayerState, WeaponSlot } from
 import type { HazardState } from '../systems/hazards';
 import { wireChallenges, type RunState } from '../systems/run';
 import { SaveError, isObj, num } from './schema';
+import { CARRY_MAX } from '../data/carry';
+import { isMapId, type MapId } from '../world/maps';
 
 export const RUN_KEY = 'zombie-hold-run-v1';
 
@@ -54,6 +56,9 @@ export interface RunCheckpoint {
   combo: number;
   comboT: number;
   hurtT: number;
+  healPool: number;
+  ammo: Partial<Record<WeaponKind, number>>;
+  healT: number;
   battery: number;
   flashOn: boolean;
   airdrop: { stage: number; t: number; x: number; z: number };
@@ -102,6 +107,9 @@ export function serialize(g: Game, savedAt = 0): RunCheckpoint {
     combo: g.combo,
     comboT: g.comboT,
     hurtT: g.hurtT,
+    healPool: g.healPool,
+    ammo: g.ammo,
+    healT: g.healT,
     battery: g.battery,
     flashOn: g.flashOn,
     airdrop: g.airdrop,
@@ -114,6 +122,16 @@ export function serialize(g: Game, savedAt = 0): RunCheckpoint {
  * 按模板的形状校验：模板里的每个字段都必须存在、类型相同（数字必须有限）；嵌套对象递归；字符串数组逐项是字符串。
  * 多出来的字段丢掉。返回一份新对象。
  */
+function parseAmmo(v: unknown): Partial<Record<WeaponKind, number>> {
+  const out: Partial<Record<WeaponKind, number>> = {};
+  if (!isObj(v)) return out;
+  for (const k of WEAPON_ORDER) {
+    const n = v[k];
+    if (typeof n === 'number' && Number.isFinite(n) && n >= 0) out[k] = Math.min(1e7, Math.floor(n));
+  }
+  return out;
+}
+
 function shaped<T>(template: T, v: unknown, path: string): T {
   if (typeof template === 'number') {
     if (typeof v !== 'number' || !Number.isFinite(v)) throw new SaveError(`${path} 不是数字`);
@@ -150,6 +168,8 @@ const isZombie = (v: unknown): v is ZombieKind => typeof v === 'string' && v in 
 function parseHazards(g: Game, v: unknown): HazardState {
   if (!isObj(v)) throw new SaveError('hz 缺失');
   const base = shaped({ frags: 0, fires: 0, useFire: false, shoveCd: 0, pulseCharge: 0, pulseCd: 0 }, v, 'hz');
+  const throwT = isObj(v) && typeof v.throwT === 'number' && Number.isFinite(v.throwT) ? Math.max(0, Math.min(1, v.throwT)) : 0;
+  const throwCd = isObj(v) && typeof v.throwCd === 'number' && Number.isFinite(v.throwCd) ? Math.max(0, Math.min(5, v.throwCd)) : 0;
   const list = <T>(key: string, t: T): T[] => {
     const a = v[key];
     if (!Array.isArray(a) || a.length > 512) throw new SaveError(`hz.${key} 不合法`);
@@ -163,6 +183,8 @@ function parseHazards(g: Game, v: unknown): HazardState {
   if (explosives.length !== 0 && explosives.length !== expected) throw new SaveError('爆炸物数量和地图不一致');
   return {
     ...base,
+    throwT,
+    throwCd,
     hazards: hazards as HazardState['hazards'],
     explosives: explosives as HazardState['explosives'],
     spits: list('spits', { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }),
@@ -205,6 +227,9 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     combo: num(v, 'combo', 0, 1e6, true),
     comboT: num(v, 'comboT', 0, 60),
     hurtT: num(v, 'hurtT', 0, 1e9),
+    healPool: num(v, 'healPool', 0, 1000),
+    ammo: parseAmmo(v.ammo),
+    healT: num(v, 'healT', 0, 10),
     battery: num(v, 'battery', 0, 60),
     flashOn: v.flashOn === true,
     airdrop: shaped({ stage: 0, t: 0, x: 0, z: 0 }, v.airdrop, 'airdrop'),
@@ -213,6 +238,7 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   // ---- 枚举和范围 ----
   const c = out.config;
   if (!isDifficulty(c.difficulty)) throw new SaveError('config.difficulty 不合法');
+  if (c.chapter !== g.mapId) throw new SaveError('检查点的地图和当前地图不一致');
   if (!c.weapons.every(isWeapon) || !c.structures.every(isStructure)) throw new SaveError('config 里有未知的武器 / 建筑');
   for (const k of WEAPON_ORDER) range(c.tierCap[k], 0, MAX_TIER, `config.tierCap.${k}`);
   range(c.zombieHp, 0.1, 10, 'config.zombieHp');
@@ -238,9 +264,10 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     const s = out.loadout[k];
     range(s.tier, 0, MAX_TIER, `loadout.${k}.tier`);
     if (!Number.isInteger(s.tier)) throw new SaveError(`loadout.${k}.tier 不是整数`);
-    range(s.mag, 0, statsAt(k, s.tier).mag, `loadout.${k}.mag`);
+    range(s.mag, 0, effectiveStats(k, s.tier, out.config.weaponMods?.[k], out.config.dual).mag, `loadout.${k}.mag`);
   }
   if (!out.loadout[p.weapon].owned) throw new SaveError('当前武器没有拥有');
+  if (out.config.extras && WEAPON_ORDER.filter((k) => out.loadout[k].owned && out.loadout[k].carried).length > CARRY_MAX) throw new SaveError('身上的枪超过上限');
 
   // ---- 卡牌 ----
   if (!isObj(v.cardCounts)) throw new SaveError('cardCounts 缺失');
@@ -339,6 +366,9 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
   g.combo = cp.combo;
   g.comboT = cp.comboT;
   g.hurtT = cp.hurtT;
+  g.healPool = cp.healPool;
+  g.ammo = { ...cp.ammo };
+  g.healT = cp.healT;
   g.battery = cp.battery;
   Object.assign(g.airdrop, cp.airdrop);
   if (g.airdrop.stage === 2) g.events.emit('airdrop', { stage: 'land', x: g.airdrop.x, z: g.airdrop.z });
@@ -354,16 +384,17 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
 }
 
 /** 检查点的摘要（大厅显示 "继续"、放弃时结算勋章用）；读不出来返回 null */
-export function peekCheckpoint(raw: string | null): { night: number; phase: string; difficulty: string; savedAt: number; kills: number; headshotKills: number; scrap: number; hp: number; maxHp: number } | null {
+export function peekCheckpoint(raw: string | null): { night: number; phase: string; difficulty: string; chapter: MapId; savedAt: number; kills: number; headshotKills: number; scrap: number; hp: number; maxHp: number; ammo: Partial<Record<WeaponKind, number>> } | null {
   if (!raw) return null;
   try {
-    const o = JSON.parse(raw) as { run?: { night?: unknown; phase?: unknown }; config?: { difficulty?: unknown }; savedAt?: unknown; scrap?: unknown; player?: { hp?: unknown; maxHp?: unknown }; stats?: { kills?: unknown; headshotKills?: unknown } };
+    const o = JSON.parse(raw) as { ammo?: unknown; run?: { night?: unknown; phase?: unknown }; config?: { difficulty?: unknown; chapter?: unknown }; savedAt?: unknown; scrap?: unknown; player?: { hp?: unknown; maxHp?: unknown }; stats?: { kills?: unknown; headshotKills?: unknown } };
     const night = o.run?.night;
     const phase = o.run?.phase;
     const difficulty = o.config?.difficulty;
     if (typeof night !== 'number' || typeof phase !== 'string' || !isDifficulty(difficulty)) return null;
     const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
-    return { night, phase, difficulty, savedAt: n(o.savedAt), kills: n(o.stats?.kills), headshotKills: n(o.stats?.headshotKills), scrap: n(o.scrap), hp: n(o.player?.hp), maxHp: n(o.player?.maxHp) };
+    const chapter = isMapId(o.config?.chapter) ? o.config.chapter : 'outpost';
+    return { night, phase, difficulty, chapter, ammo: parseAmmo(o.ammo), savedAt: n(o.savedAt), kills: n(o.stats?.kills), headshotKills: n(o.stats?.headshotKills), scrap: n(o.scrap), hp: n(o.player?.hp), maxHp: n(o.player?.maxHp) };
   } catch {
     return null;
   }

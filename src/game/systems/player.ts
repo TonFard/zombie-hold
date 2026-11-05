@@ -1,6 +1,6 @@
 import { clamp } from '../core/math';
 import { EYE_HEIGHT } from '../data/ballistics';
-import { WEAPON_ORDER, statsAt, type WeaponKind } from '../data/weapons';
+import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { resolveCircleVsGrid } from '../world/collision';
 import type { Game } from '../sim';
 import { fireWeapon, melee } from './combat';
@@ -25,9 +25,10 @@ const MELEE_HIT_AT = 0.12;
 
 function startReload(g: Game): void {
   const p = g.player;
-  const st = statsAt(p.weapon, p.tier);
+  const st = g.statsOf(p.weapon, p.tier);
   const tactical = g.loadout[p.weapon].mag > 0;
-  p.reloadTotal = Math.max(0.01, st.reload * (tactical ? TACTICAL_RELOAD : 1));
+  // 重的枪换弹也慢一点（重量的"操控"系数）
+  p.reloadTotal = Math.max(0.01, st.reload * (tactical ? TACTICAL_RELOAD : 1) * g.weightNow().handling);
   p.reloadTimer = p.reloadTotal;
   g.events.emit('reload', { kind: p.weapon, start: true });
 }
@@ -35,11 +36,12 @@ function startReload(g: Game): void {
 export function switchWeapon(g: Game, kind: WeaponKind): void {
   const p = g.player;
   const slot = g.loadout[kind];
-  if (!slot.owned || kind === p.weapon) return;
+  // 正式局只能切到带在身上的枪（放在工坊里的要去工坊换）
+  if (!slot.owned || kind === p.weapon || (g.config.extras && !slot.carried)) return;
   p.weapon = kind;
   p.tier = slot.tier;
   p.reloadTimer = 0; // 切枪打断换弹
-  p.fireTimer = 0.25; // 举枪时间
+  p.fireTimer = 0.25 * g.weightNow().handling; // 举枪时间：越重越慢
   p.ramp = 0;
   p.ads = 0; // 换枪要重新举镜
   g.events.emit('weaponSwitch', { kind });
@@ -98,7 +100,8 @@ export function updatePlayer(g: Game, dt: number): void {
     mz /= ml;
   }
   const moving = ml > 0.1;
-  const st = statsAt(p.weapon, p.tier);
+  const st = g.statsOf(p.weapon, p.tier);
+  const wt = g.weightNow();
 
   // 冲刺中按蹲 = 滑铲；滑铲结束后保持蹲姿（松开蹲键就站起来）
   p.slideCd = Math.max(0, p.slideCd - dt);
@@ -121,13 +124,15 @@ export function updatePlayer(g: Game, dt: number): void {
   p.sprinting = wantSprint;
   p.sprintOut = Math.max(0, p.sprintOut - dt);
   const wantAds = adsHeld && !wantSprint && !sliding && p.reloadTimer <= 0 && p.meleeTimer <= 0;
-  p.ads = clamp(p.ads + ((wantAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime), 0, 1);
+  // 双持手枪不能举镜；重的枪举镜慢
+  const canAds = !(g.config.dual && p.weapon === 'pistol');
+  p.ads = clamp(p.ads + ((wantAds && canAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime * wt.handling), 0, 1);
   const crouchTarget = inp.crouch || sliding ? 1 : 0;
   p.crouch = clamp(p.crouch + (crouchTarget - p.crouch) * Math.min(1, dt * 12), 0, 1);
   p.eye = EYE_HEIGHT + (CROUCH_EYE - EYE_HEIGHT) * p.crouch;
 
   if (wantSprint) {
-    p.stamina = Math.max(0, p.stamina - 25 * g.mods.staminaUse * dt);
+    p.stamina = Math.max(0, p.stamina - 25 * g.mods.staminaUse * wt.stamina * dt);
     p.staminaDelay = 0.6;
     if (p.stamina <= 0) p.staminaLock = 0.8;
   } else {
@@ -143,8 +148,12 @@ export function updatePlayer(g: Game, dt: number): void {
     p.vx = p.slideDirX * sp + mx * 0.6;
     p.vz = p.slideDirZ * sp + mz * 0.6;
   } else {
+    // 浅水 / 泥地 / 瓦砾：减速 25%
+    const terrain = g.config.extras && g.grid.slow[g.grid.indexAt(p.x, p.z)] ? 0.75 : 1;
     const speed =
       BASE_SPEED *
+      terrain *
+      wt.speed *
       g.mods.speed *
       (wantSprint ? SPRINT_MULT : 1) *
       (1 - st.adsSlow * p.ads) *
@@ -187,19 +196,23 @@ export function updatePlayer(g: Game, dt: number): void {
   // ---- 换弹与射击 ----
   const slot = g.loadout[p.weapon];
   p.fireTimer = Math.max(-dt, p.fireTimer - dt);
-  const canShoot = !g.buildMode && p.meleeTimer <= 0 && p.sprintOut <= 0 && !wantSprint;
+  // 扔手雷抬手时腾不出手开枪
+  const canShoot = !g.buildMode && p.meleeTimer <= 0 && p.sprintOut <= 0 && !wantSprint && g.hz.throwT <= 0;
 
   if (p.reloadTimer > 0) {
     p.reloadTimer -= dt * g.mods.reload;
     if (p.reloadTimer <= 0) {
       p.reloadTimer = 0;
-      slot.mag = st.mag;
+      // 从备弹里补满（不够就补多少算多少）
+      slot.mag += g.takeAmmo(p.weapon, st.mag - slot.mag);
       g.events.emit('reload', { kind: p.weapon, start: false });
     }
     inp.reload = false;
   } else {
     // 要等上一发的射击间隔走完才能开始换弹，这样实测 DPS 和公式一致
-    if (p.fireTimer <= 0 && p.meleeTimer <= 0 && ((inp.reload && slot.mag < st.mag) || slot.mag <= 0)) {
+    // 没有备弹就换不了（手枪无限）
+    const canReload = g.reserveOf(p.weapon) > 0;
+    if (p.fireTimer <= 0 && p.meleeTimer <= 0 && canReload && ((inp.reload && slot.mag < st.mag) || slot.mag <= 0)) {
       startReload(g);
     } else if (inp.fire && canShoot && p.fireTimer <= 0 && slot.mag > 0) {
       fireWeapon(g);

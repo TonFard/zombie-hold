@@ -1,5 +1,6 @@
 import type { StructureKind } from './structures';
 import { WEAPONS, type WeaponKind } from './weapons';
+import { REGEN_PER_LEVEL } from './heal';
 
 /** 局外成长：大厅里用勋章买的项目。一张表同时给逻辑（加成）和界面（列表）用 */
 export type MetaSection = 'armory' | 'engineering' | 'supply' | 'fitness';
@@ -29,6 +30,8 @@ export interface MetaBonuses {
   tierCap: Record<WeaponKind, number>;
   /** 允许带一把随身武器开局 */
   sidearm: boolean;
+  /** 双持手枪 */
+  dual: boolean;
   structures: Set<StructureKind>;
   turretCap: number;
   turretDamage: number;
@@ -51,9 +54,10 @@ export interface MetaBonuses {
 
 export function baseBonuses(): MetaBonuses {
   return {
-    weapons: new Set<WeaponKind>(['pistol', 'smg']),
+    weapons: new Set<WeaponKind>(['pistol']),
     tierCap: { pistol: 5, smg: 5, shotgun: 5, rifle: 5, sniper: 5, lmg: 5, launcher: 5 },
     sidearm: false,
+    dual: false,
     structures: new Set<StructureKind>(['barricade', 'turret', 'spikes']),
     turretCap: 3,
     turretDamage: 1,
@@ -128,7 +132,7 @@ const CAP_RANKS: Record<WeaponKind, number[]> = {
 };
 
 /** 武器解锁链：霰弹 → 步枪 → 狙击 / 轻机枪 → 榴弹（要先有轻机枪） */
-const UNLOCK_PRE: Partial<Record<WeaponKind, WeaponKind>> = { rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle', launcher: 'lmg' };
+const UNLOCK_PRE: Partial<Record<WeaponKind, WeaponKind>> = { shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle', launcher: 'lmg' };
 
 const unlockWeapon = (k: WeaponKind, price: number, desc: string): MetaItem => {
   const pre = UNLOCK_PRE[k];
@@ -155,7 +159,7 @@ const tierCap = (k: WeaponKind): MetaItem => ({
   desc: '局内工坊能升到第 {n} 级',
   prices: k === 'pistol' ? P(60, 120, 200) : P(120, 220, 360),
   ranks: CAP_RANKS[k],
-  ...(k === 'pistol' || k === 'smg' ? {} : { requires: { id: `unlock-${k}`, level: 1 } }),
+  ...(k === 'pistol' ? {} : { requires: { id: `unlock-${k}`, level: 1 } }),
   apply: (b, lv) => {
     b.tierCap[k] = 5 + lv;
   },
@@ -163,7 +167,8 @@ const tierCap = (k: WeaponKind): MetaItem => ({
 
 export const META_ITEMS: MetaItem[] = [
   // ---- 军械库 ----
-  unlockWeapon('shotgun', 150, '8 弹丸，近距离一喷一片'),
+  unlockWeapon('smg', 80, '射速 13，城区巷战主力'),
+  unlockWeapon('shotgun', 150, '全自动，近距离一喷一片'),
   unlockWeapon('rifle', 250, '射程 32 米，升级后穿透'),
   unlockWeapon('sniper', 380, '初速 420，爆头 ×3，穿透 2'),
   unlockWeapon('lmg', 450, '弹链 100 发，压制减速'),
@@ -175,6 +180,7 @@ export const META_ITEMS: MetaItem[] = [
   tierCap('sniper'),
   tierCap('lmg'),
   tierCap('launcher'),
+  { id: 'dual', section: 'armory', name: '手枪双持', desc: '左右手各一把：弹匣 ×2、射速 ×1.7，散布变大、不能举镜', prices: P(220), ranks: [2], requires: { id: 'cap-pistol', level: 1 }, apply: (b, lv) => { b.dual = lv > 0; } },
   { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）', prices: P(300), ranks: [4], requires: { id: 'unlock-rifle', level: 1 }, apply: (b, lv) => { b.sidearm = lv > 0; } },
   // ---- 工程部 ----
   { id: 'turret-cap', section: 'engineering', name: '炮塔数量上限', desc: '所有炮塔合计最多 {n} 座', prices: P(80, 140, 210, 300, 420), ranks: [1, 2, 4, 5, 6], apply: (b, lv) => { b.turretCap = 3 + lv; } },
@@ -191,7 +197,7 @@ export const META_ITEMS: MetaItem[] = [
   { id: 'reroll', section: 'supply', name: '卡牌重抽', desc: '每个黎明可以重抽一次卡牌', prices: P(250), ranks: [3], apply: (b, lv) => { b.rerolls = lv; } },
   // ---- 体能训练：数值都偏保守，局内卡牌（同类加成更大）才是主力 ----
   { id: 'armor', section: 'fitness', name: '防弹插板', desc: '受到的伤害 −{n}%', prices: P(60, 110, 170, 240), ranks: [0, 2, 4, 6], apply: (b, lv) => { b.armor = 1 - 0.04 * lv; } },
-  { id: 'regen', section: 'fitness', name: '急救训练', desc: '4 秒没受伤后每秒回复 {n} 点生命', prices: P(90, 160, 240), ranks: [1, 3, 5], requires: { id: 'max-hp', level: 1 }, apply: (b, lv) => { b.regen = lv; } },
+  { id: 'regen', section: 'fitness', name: '急救训练', desc: '5 秒没受伤后每秒回复 {n} 点生命', prices: P(90, 160, 240), ranks: [1, 3, 5], requires: { id: 'max-hp', level: 1 }, apply: (b, lv) => { b.regen = REGEN_PER_LEVEL * lv; } },
   { id: 'move-speed', section: 'fitness', name: '负重训练', desc: '移动速度 +{n}%', prices: P(70, 130, 200), ranks: [1, 3, 5], apply: (b, lv) => { b.speed = 1 + 0.03 * lv; } },
   { id: 'fire-rate', section: 'fitness', name: '射击训练', desc: '所有武器射速 +{n}%', prices: P(110, 200, 300), ranks: [2, 4, 6], requires: { id: 'unlock-shotgun', level: 1 }, apply: (b, lv) => { b.fireRate = 1 + 0.04 * lv; } },
   { id: 'four-cards', section: 'supply', name: '卡牌四选一', desc: '黎明时给 4 张卡牌选', prices: P(500), ranks: [7], requires: { id: 'reroll', level: 1 }, apply: (b, lv) => { b.cardChoices = 3 + lv; } },
@@ -222,6 +228,8 @@ export function metaValue(id: string, level: number): number {
       return 3 * level;
     case 'fire-rate':
       return 4 * level;
+    case 'regen':
+      return Math.round(REGEN_PER_LEVEL * level * 10) / 10;
     default:
       return id.startsWith('cap-') ? 5 + level : level;
   }

@@ -114,6 +114,8 @@ export interface ViewModelState {
   /** 前进 / 右移速度（米/秒，带符号；TACZ 枪选走路动画） */
   fwd: number;
   side: number;
+  /** 双持手枪：左手再拿一把，左右交替开火 */
+  dual?: boolean;
 }
 
 export class ViewModel {
@@ -130,6 +132,13 @@ export class ViewModel {
 
   private readonly root = new Group();
   private weapon: WeaponModel | null = null;
+  /** 双持时左手那把（镜像摆在左边，左手握住） */
+  private readonly rootL = new Group();
+  private weaponL: WeaponModel | null = null;
+  private dualKey = '';
+  /** 下一发由哪只手打（双持交替） */
+  private leftNext = false;
+  private kickL = 0;
   private readonly tacz = new Map<WeaponKind, TaczRig>();
   private taczRig: TaczRig | null = null;
   private readonly pre = new Matrix4();
@@ -193,7 +202,7 @@ export class ViewModel {
   constructor() {
     this.scene.add(this.camera);
     this.scene.add(this.hemi, this.sun, this.sun.target);
-    this.scene.add(this.root);
+    this.scene.add(this.root, this.rootL);
     this.scene.add(this.armR.root, this.armL.root);
     this.scene.add(this.flashLight);
 
@@ -310,7 +319,15 @@ export class ViewModel {
     this.armR.root.visible = this.armL.root.visible = true;
     this.armR.root.scale.setScalar(1);
     this.armL.root.scale.setScalar(1);
-    const w = buildWeapon(kind, tier);
+    let w: ReturnType<typeof buildWeapon>;
+    try {
+      w = buildWeapon(kind, tier);
+    } catch (e) {
+      // 建模失败时别把 key 记成已完成：否则之后每帧都当作"已经换好"，只剩一双空手
+      console.warn('枪模建造失败', kind, tier, e);
+      this.key = '';
+      return;
+    }
     w.group.traverse((o) => {
       o.castShadow = false;
       o.receiveShadow = false;
@@ -348,6 +365,13 @@ export class ViewModel {
       this.taczRig.fire(Math.max(0.06, interval), last);
       return;
     }
+    if (this.weaponL && this.rootL.visible) {
+      this.leftNext = !this.leftNext;
+      if (this.leftNext) {
+        this.kickL = 1;
+        return;
+      }
+    }
     this.cycleT = 0;
     this.cycleLen = Math.max(0.06, interval);
     const kick = KICK[kind] * (1 - 0.45 * this.adsK);
@@ -374,8 +398,52 @@ export class ViewModel {
     return out.applyMatrix4(main.matrixWorld);
   }
 
+  /**
+   * 后坐弹簧。按 8 毫秒一步细分积分：以前一帧一步，帧时间超过约 67 毫秒（大战、着色器编译卡一下）时
+   * 显式积分会发散，枪的位置变成无穷大 / NaN，之后再也回不来——画面上就是枪突然没了、只剩手或者什么都没有
+   */
+  private stepKick(dt: number): void {
+    const stiff = 220;
+    const damp = 2 * Math.sqrt(stiff);
+    const n = Math.max(1, Math.ceil(dt / 0.008));
+    const h = dt / n;
+    for (let i = 0; i < n; i++) {
+      this.kickV += (-stiff * this.kickZ - damp * this.kickV) * h;
+      this.kickZ += this.kickV * h;
+      this.kickRotV += (-stiff * this.kickRot - damp * this.kickRotV) * h;
+      this.kickRot += this.kickRotV * h;
+    }
+    // 兜底：任何一个量坏掉就整个归零，不让一帧的异常把枪永远弄丢
+    if (!Number.isFinite(this.kickZ + this.kickV + this.kickRot + this.kickRotV + this.swayX + this.swayY + this.kickSide)) {
+      this.kickZ = this.kickV = this.kickRot = this.kickRotV = this.swayX = this.swayY = this.kickSide = 0;
+    }
+  }
+
+  /** 双持：左手的第二把手枪（只用程序模型） */
+  private setDual(on: boolean, tier: number): void {
+    const key = on ? `pistol:${tier}` : '';
+    if (key === this.dualKey) return;
+    this.dualKey = key;
+    if (this.weaponL) {
+      this.rootL.remove(this.weaponL.group);
+      this.weaponL.group.traverse((o) => (o as { geometry?: { dispose(): void } }).geometry?.dispose());
+      this.weaponL = null;
+    }
+    if (!on) return;
+    const w = buildWeapon('pistol', tier);
+    w.group.traverse((o) => {
+      o.castShadow = false;
+      o.receiveShadow = false;
+    });
+    this.weaponL = w;
+    this.rootL.add(w.group);
+  }
+
   update(dt: number, s: ViewModelState): void {
     this.setWeapon(s.kind, s.tier);
+    const dual = !!s.dual && s.kind === 'pistol' && !this.taczRig;
+    this.setDual(dual, s.tier);
+    this.rootL.visible = dual;
     if (this.taczRig) {
       this.updateTacz(dt, s, this.taczRig);
       return;
@@ -432,12 +500,7 @@ export class ViewModel {
     this.haveLast = true;
 
     // 整枪后坐：临界阻尼弹簧，快速顶回来再归位
-    const stiff = 220;
-    const damp = 2 * Math.sqrt(stiff);
-    this.kickV += (-stiff * this.kickZ - damp * this.kickV) * dt;
-    this.kickZ += this.kickV * dt;
-    this.kickRotV += (-stiff * this.kickRot - damp * this.kickRotV) * dt;
-    this.kickRot += this.kickRotV * dt;
+    this.stepKick(dt);
     this.kickSide *= Math.exp(-14 * dt);
     const kz = this.kickZ * 0.035;
     const kr = this.kickRot * 0.012;
@@ -510,9 +573,26 @@ export class ViewModel {
       }
     }
 
+    // 双持：右手那把往右挪一点，左手那把镜像摆在左边，各自后坐
+    if (this.weaponL && this.rootL.visible) {
+      this.root.position.x += 0.035;
+      this.kickL = Math.max(0, this.kickL - dt * 9);
+      this.rootL.position.set(-this.root.position.x, this.root.position.y, this.root.position.z + 0.03 * this.kickL);
+      this.rootL.rotation.set(this.root.rotation.x + 0.1 * this.kickL, Math.PI - (this.root.rotation.y - Math.PI), -this.root.rotation.z);
+      this.rootL.scale.copy(this.root.scale);
+    }
     // 双手跟着枪的握点（IK）；换弹时左手去拿弹匣 / 塞子弹，泵动时左手跟着护木
     this.root.updateMatrixWorld(true);
     w.group.localToWorld(this.gripR.copy(w.gripR));
+    if (this.weaponL && this.rootL.visible) {
+      // 左手握住自己那把的握把（换弹时一起放低）
+      this.rootL.updateMatrixWorld(true);
+      this.weaponL.group.localToWorld(this.gripL.copy(this.weaponL.gripR));
+      this.armR.solve(this.shoulderR, this.gripR, this.poleR);
+      this.armL.solve(this.shoulderL, this.gripL, this.poleL);
+      this.visible = s.alive;
+      return;
+    }
     this.leftHandTarget(w, s);
     w.group.localToWorld(this.gripL.copy(this.tmp));
     this.armR.solve(this.shoulderR, this.gripR, this.poleR);
@@ -633,7 +713,8 @@ export class ViewModel {
 
     // 泵动：开火后 0.1 秒向后拉、再推回去
     if (P.pump && R.pump) {
-      const k = c > 0.12 && c < 0.85 ? pulse((c - 0.12) / 0.73, 0.45) : 0;
+      // 全自动霰弹枪的护木不动（只有泵动枪开火后才拉）
+      const k = w.action === 'pump' && c > 0.12 && c < 0.85 ? pulse((c - 0.12) / 0.73, 0.45) : 0;
       P.pump.position.copy(R.pump.p);
       P.pump.position.z -= w.slideTravel * k;
     }
@@ -692,7 +773,7 @@ export class ViewModel {
       if (w.parts.pump && w.rest.pump) t.z += w.parts.pump.position.z - w.rest.pump.p.z;
       return;
     }
-    if (w.action === 'pump') {
+    if (w.action === 'pump' && !w.parts.mag) {
       // 霰弹枪：左手在装弹口和腰间之间往返，一发发塞
       const n = 4;
       const k = (r * n) % 1;

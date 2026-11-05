@@ -96,4 +96,6 @@ export interface MapData {
   lamps: Array<{ x: number; z: number }>;
   playerStart: { x: number; z: number };
   houses: House[];
+  /** 地面上画据点那套道路标线和停车位（只有第一章的地图是按那些坐标摆的） */
+  outpostMarks?: boolean;
 }

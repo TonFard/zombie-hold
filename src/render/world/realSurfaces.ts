@@ -148,6 +148,9 @@ const LAYERS: Array<{ g: number; key: string; tile: number; rough: number }> = [
   { g: Ground.Gravel, key: 'gravel', tile: 2.5, rough: 0.95 },
 ];
 
+/** 没有写实贴图的地面借用最接近的一层（水面另外盖一层半透明水面网格） */
+const FALLBACK_GROUND: Record<number, number> = { [Ground.Water]: Ground.Gravel, [Ground.Sand]: Ground.Dirt, [Ground.Mud]: Ground.Dirt };
+
 /** 两张 RGB 权重图（6 个通道 = 6 种地面），模糊一下让交界过渡约 1 米 */
 function weightTextures(grid: Grid): [CanvasTexture, CanvasTexture] {
   const S = 4;
@@ -162,7 +165,7 @@ function weightTextures(grid: Grid): [CanvasTexture, CanvasTexture] {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const g = grid.ground[Math.floor(y / S) * GRID_W + Math.floor(x / S)] as number;
-        const layer = LAYERS.findIndex((l) => l.g === g);
+        const layer = LAYERS.findIndex((l) => l.g === (FALLBACK_GROUND[g] ?? g));
         const i = (y * W + x) * 4;
         // alpha 一律 255，避免预乘吃掉颜色
         img.data[i] = layer === k * 3 ? 255 : 0;
@@ -230,7 +233,7 @@ async function buildGround(map: MapData, m: SurfaceManifest, anisotropy: number)
   const [diffArr, norArr] = await Promise.all([arrayTexture(dirs.map((d) => `${d}diff.jpg`), true, anisotropy), arrayTexture(dirs.map((d) => `${d}nor.jpg`), false, anisotropy)]);
   const [w0, w1] = weightTextures(map.grid);
   // 细节层：标线、裂缝、油渍、血迹、草丛、接触阴影、边缘压暗——透明底，盖在写实贴图上
-  const overlay = makeGroundTexture(map.grid, anisotropy, true);
+  const overlay = makeGroundTexture(map.grid, anisotropy, true, map.coreCells.length ? { cx: ((map.coreCells[0] as number) % 80) + 1, cy: Math.floor((map.coreCells[0] as number) / 80) + 1 } : null, !!map.outpostMarks);
   const mat = new MeshStandardMaterial({ map: overlay, normalMap: overlay, roughness: 1, metalness: 0 });
   const tiles = LAYERS.map((l) => (GRID_W / l.tile).toFixed(3));
   const roughs = LAYERS.map((l) => l.rough.toFixed(3));

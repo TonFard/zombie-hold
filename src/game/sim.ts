@@ -4,10 +4,12 @@ import { Rng } from './core/rng';
 import { STRUCTURES, isTurret, type StructureKind } from './data/structures';
 import { EYE_HEIGHT } from './data/ballistics';
 import { COMBO_WINDOW, ELITE_REWARD, FLASHLIGHT, comboMult } from './data/modifiers';
-import { MAX_TIER, WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from './data/weapons';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, effectiveStats, weightEffects, weightOf, type WeaponKind, type WeaponStats } from './data/weapons';
 
 /** 正式局最多随身带几把枪（滚轮切换） */
-export const CARRY_MAX = 2;
+import { CARRY_MAX } from './data/carry';
+import { HEAL_POOL_MAX } from './data/heal';
+export { CARRY_MAX };
 import type { ZombieKind } from './data/zombies';
 import type { Bullet } from './entities/bullet';
 import type { Projectile } from './entities/projectile';
@@ -23,7 +25,7 @@ import { newRunState, updateRun, type Phase, type RunState } from './systems/run
 import { stepZombies } from './systems/zombie-ai';
 import { resolveCircleVsGrid } from './world/collision';
 import { Grid, GRID_H, GRID_W, HALF_H, HALF_W } from './world/grid';
-import { buildOutpost } from './world/map-outpost';
+import { MAP_BUILDERS, type MapId } from './world/maps';
 import type { MapData, WorldRect } from './world/types';
 
 export const MAX_ZOMBIES = 256;
@@ -118,7 +120,10 @@ export interface PlayerInput {
 }
 
 export interface WeaponSlot {
+  /** 这一局买过（买过就一直留着，等级也留着） */
   owned: boolean;
+  /** 带在身上（正式局最多 CARRY_MAX 把，其余放在工坊里，随时免费换回来） */
+  carried: boolean;
   tier: number;
   mag: number;
 }
@@ -223,6 +228,8 @@ export interface GameEvents {
   /** silent = 读档时恢复已经炸掉的状态，不放特效 */
   propExploded: { index: number; x: number; z: number; silent?: boolean };
   grenadeThrown: { fire: boolean };
+  /** 开始拉环抬手（还没出手） */
+  grenadeWindup: { fire: boolean };
   shove: { hits: number };
   pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
   spit: { x: number; z: number };
@@ -232,6 +239,9 @@ export interface GameEvents {
   challenge: { id: string; done: boolean };
   airdrop: { stage: 'land' | 'taken' | 'gone'; x: number; z: number };
   bossCharge: { id: number; stage: 'windup' | 'go' | 'stun'; x: number; z: number; dx: number; dz: number; len: number };
+  bossSlam: { x: number; z: number; r: number };
+  /** 持续回血结算了一口（嗜血池 / 脱战回血），HUD 用来弹 +N */
+  healed: { amount: number };
 }
 
 export interface ScrapBox {
@@ -258,6 +268,13 @@ export interface GameStats {
   challenges: number;
   /** 最高连杀 */
   bestCombo: number;
+  /** 按种类的击杀数 */
+  killsBy: Record<ZombieKind, number>;
+  /** 本局建过的建筑数 */
+  built: number;
+  /** 受到的总伤害 / 回复的总生命 */
+  damageTaken: number;
+  healed: number;
 }
 
 export class Game {
@@ -349,6 +366,10 @@ export class Game {
     headshotKills: 0,
     challenges: 0,
     bestCombo: 0,
+    killsBy: { walker: 0, runner: 0, bloater: 0, breaker: 0, colossus: 0, spitter: 0, screamer: 0 },
+    built: 0,
+    damageTaken: 0,
+    healed: 0,
   };
   /** 爆炸物、危险区、手雷、推搡、电击脉冲（M12） */
   readonly hz: HazardState = newHazards();
@@ -361,10 +382,20 @@ export class Game {
   comboT = 0;
   /** 距离上次受伤的秒数（自动回血用） */
   hurtT = 99;
+  /** 嗜血攒下、还没回到身上的生命（慢慢回，不是瞬间回满） */
+  healPool = 0;
+  /** 回血节拍计时：每 HEAL_TICK 秒结算一次（回血池 + 脱战回血） */
+  healT = 0;
+  /** 备弹（弹匣外的子弹）：config.ammo 时生效，开局从大厅库存带进来，手枪不用 */
+  ammo: Partial<Record<WeaponKind, number>> = {};
 
-  constructor(seed = 1) {
+  /** 这一局在哪张地图上（战役章节） */
+  readonly mapId: MapId;
+
+  constructor(seed = 1, mapId: MapId = 'outpost') {
     this.rng = new Rng(seed);
-    this.map = buildOutpost();
+    this.mapId = mapId;
+    this.map = MAP_BUILDERS[mapId]();
     this.grid = this.map.grid;
     this.grid.setInflateExempt(this.map.coreCells);
     this.nav = new Navigator(this.grid, this.map.coreCells);
@@ -412,7 +443,7 @@ export class Game {
       kickYaw: 0,
     };
     const lo = {} as Record<WeaponKind, WeaponSlot>;
-    for (const k of WEAPON_ORDER) lo[k] = { owned: k === 'pistol', tier: 0, mag: WEAPONS[k].base.mag };
+    for (const k of WEAPON_ORDER) lo[k] = { owned: k === 'pistol', carried: k === 'pistol', tier: 0, mag: WEAPONS[k].base.mag };
     this.loadout = lo;
     this.scrapBoxes = this.map.scrapBoxes.map((c) => ({ cx: c.cx, cy: c.cy, x: c.cx - HALF_W + 0.5, z: c.cy - HALF_H + 0.5, alive: true }));
     this.input.aimX = this.player.x;
@@ -529,6 +560,7 @@ export class Game {
 
     z.alive = false;
     this.stats.kills++;
+    this.stats.killsBy[z.kind]++;
     if (head) this.stats.headshotKills++;
     // 连杀：3 秒内的连续击杀累计倍率（M12，沙盒里关掉）
     let comboK = 1;
@@ -542,7 +574,8 @@ export class Game {
     const reward = Math.round(z.def.reward * (z.elite ? ELITE_REWARD : 1) * this.mods.scrap * this.run.modScrap * comboK);
     this.scrap += reward;
     this.scrapEarned += reward;
-    if (this.mods.lifesteal > 0 && this.player.alive) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.mods.lifesteal);
+    // 嗜血：不是一下回满，记进回血池，由 updateRun 每 0.25 秒回一点
+    if (this.mods.lifesteal > 0 && this.player.alive) this.healPool = Math.min(HEAL_POOL_MAX, this.healPool + this.mods.lifesteal);
     this.events.emit('zombieDied', { zombie: z, head });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
@@ -596,6 +629,7 @@ export class Game {
     const dealt = amount * this.mods.armor;
     this.hurtT = 0;
     if (!this.invulnerablePlayer) {
+      this.stats.damageTaken += Math.min(this.player.hp, dealt);
       this.player.hp = Math.max(0, this.player.hp - dealt);
       if (this.player.hp <= 0) {
         this.player.alive = false;
@@ -607,9 +641,45 @@ export class Game {
 
   // ---------------- 武器 ----------------
 
-  /** 身上的枪（按武器顺序） */
+  /** 这把枪现在的实际属性：局内等级 + 大厅工作台强化 + 双持（正式局） */
+  statsOf(kind: WeaponKind, tier = this.loadout[kind].tier): WeaponStats {
+    const c = this.config;
+    return effectiveStats(kind, tier, c.weaponMods[kind], c.dual);
+  }
+
+  /** 后坐力倍率（工作台的制退器；双持手枪稍微稳一点） */
+  recoilOf(kind: WeaponKind): number {
+    return this.config.weaponMods[kind].recoil * (this.config.dual && kind === 'pistol' ? 0.8 : 1);
+  }
+
+  /** 身上的重量带来的影响（只在正式局生效；沙盒恒为 1） */
+  weightNow(): { speed: number; stamina: number; handling: number; hand: number; back: number } {
+    const c = this.config;
+    const hand = weightOf(this.player.weapon, c.weaponMods[this.player.weapon], c.dual);
+    const other = this.carried().find((k) => k !== this.player.weapon);
+    const back = other ? weightOf(other, c.weaponMods[other], c.dual) : 0;
+    if (!c.extras) return { speed: 1, stamina: 1, handling: 1, hand, back };
+    return { ...weightEffects(hand, back), hand, back };
+  }
+
+  /** 这把枪还有多少备弹（手枪 / 不限弹药时为 Infinity） */
+  reserveOf(kind: WeaponKind): number {
+    if (!this.config.ammo || kind === 'pistol') return Infinity;
+    return this.ammo[kind] ?? 0;
+  }
+
+  /** 从备弹里取最多 n 发（手枪 / 不限弹药直接给 n） */
+  takeAmmo(kind: WeaponKind, n: number): number {
+    const have = this.reserveOf(kind);
+    if (have === Infinity) return n;
+    const k = Math.max(0, Math.min(n, have));
+    this.ammo[kind] = have - k;
+    return k;
+  }
+
+  /** 身上的枪（按武器顺序）。沙盒不限数量：买过的都在身上 */
   carried(): WeaponKind[] {
-    return WEAPON_ORDER.filter((k) => this.loadout[k].owned);
+    return WEAPON_ORDER.filter((k) => this.loadout[k].owned && (this.loadout[k].carried || !this.config.extras));
   }
 
   /** 工坊里这把枪能不能买：逻辑和界面都用这一个判断，免得两边对不上 */
@@ -621,33 +691,42 @@ export class Game {
   }
 
   /**
-   * 买枪。正式局（extras）最多带两把：已经有两把时，买新枪会换掉手里的那把（手里的就是要扔的），
-   * 被换掉的枪等级清零、不退零件
+   * 把一把买过的枪带上身、拿在手里。身上满了就把手里那把放回工坊（不丢，等级保留）。
+   * 返回被放回去的枪（没有就是 null）
    */
+  takeWeapon(kind: WeaponKind): WeaponKind | null {
+    const slot = this.loadout[kind];
+    if (!slot.owned) return null;
+    let stowed: WeaponKind | null = null;
+    if (!slot.carried && this.config.extras && this.carried().length >= CARRY_MAX) {
+      stowed = this.player.weapon;
+      this.loadout[stowed].carried = false;
+    }
+    slot.carried = true;
+    if (this.player.weapon !== kind) {
+      this.player.weapon = kind;
+      this.player.tier = slot.tier;
+      this.player.reloadTimer = 0;
+      this.player.fireTimer = 0.25;
+      this.player.ramp = 0;
+      this.player.ads = 0;
+      this.events.emit('weaponSwitch', { kind });
+    }
+    return stowed;
+  }
+
+  /** 买枪：买到就拿在手上；身上已经两把时，手里那把放回工坊（以后可以免费换回来） */
   buyWeapon(kind: WeaponKind): boolean {
     const slot = this.loadout[kind];
     const price = WEAPONS[kind].price;
     if (this.buyState(kind) !== 'ok') return false;
     this.scrap -= price;
-    let dropped: WeaponKind | null = null;
-    if (this.config.extras && this.carried().length >= CARRY_MAX) {
-      dropped = this.player.weapon;
-      const old = this.loadout[dropped];
-      old.owned = false;
-      old.tier = 0;
-      old.mag = 0;
-    }
     slot.owned = true;
     slot.tier = 0;
-    slot.mag = statsAt(kind, 0).mag;
-    if (dropped) {
-      // 换下来的那把在手上：直接拿新枪
-      this.player.weapon = kind;
-      this.player.tier = 0;
-      this.player.reloadTimer = 0;
-      this.player.ads = 0;
-      this.events.emit('weaponSwitch', { kind });
-    }
+    slot.mag = this.takeAmmo(kind, this.statsOf(kind, 0).mag);
+    // 正式局身上满了才换到手上；没满就和以前一样，新枪带上身、手里不变
+    if (this.config.extras && this.carried().length >= CARRY_MAX) this.takeWeapon(kind);
+    else slot.carried = true;
     return true;
   }
 
@@ -657,10 +736,10 @@ export class Game {
     if (!slot.owned || slot.tier >= Math.min(MAX_TIER, this.config.tierCap[kind])) return false;
     const up = WEAPONS[kind].upgrades[slot.tier];
     if (!up || this.scrap < up.cost) return false;
-    const before = statsAt(kind, slot.tier);
+    const before = this.statsOf(kind, slot.tier);
     this.scrap -= up.cost;
     slot.tier++;
-    const after = statsAt(kind, slot.tier);
+    const after = this.statsOf(kind, slot.tier);
     slot.mag += Math.max(0, after.mag - before.mag);
     if (this.player.weapon === kind) this.player.tier = slot.tier;
     return true;
@@ -694,6 +773,7 @@ export class Game {
     this.structures.set(s.id, s);
     if (def.blocks) grid.placeBlocking(i, s.id, def.navCost);
     else grid.placeTrap(i, s.id);
+    this.stats.built++;
     this.events.emit('structureAdded', s);
     return s;
   }

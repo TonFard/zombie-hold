@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import { costOf, type StructureKind } from '../game/data/structures';
-import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, statsAt, sustainedDps, type WeaponKind } from '../game/data/weapons';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, statsAt, sustainedDps, weightOf, type WeaponKind } from '../game/data/weapons';
 import { CARRY_MAX, type Game } from '../game/sim';
 import { reasonText } from '../game/systems/building';
 import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifiers';
@@ -9,6 +9,9 @@ import { HALF_H, HALF_W } from '../game/world/grid';
 import type { Phase } from '../game/systems/run';
 import { CARD_BY_ID, type CardRarity } from '../game/data/cards';
 import type { MetaApplied } from '../game/config';
+import { STRUCTURES } from '../game/data/structures';
+import { ZOMBIES, type ZombieKind } from '../game/data/zombies';
+import { HEAL_TICK, POOL_PER_TICK } from '../game/data/heal';
 
 export interface HurtMark {
   /** 相对当前视线的顺时针角度（弧度，0 = 正前方），每次同步时按攻击者的方位重算 */
@@ -23,6 +26,8 @@ export interface WeaponRow {
   key: number;
   name: string;
   owned: boolean;
+  /** 买过但放在工坊里（不在身上） */
+  stowed: boolean;
   equipped: boolean;
   tier: number;
   price: number;
@@ -51,6 +56,9 @@ export interface WeaponRow {
   lockNote: string;
   /** 已经带满两把时，买这把会换掉谁（空串 = 不换） */
   swapOut: string;
+  /** 备弹（-1 = 无限）和重量（千克） */
+  reserve: number;
+  weight: number;
 }
 
 const specialsOf = (kind: WeaponKind, tier: number): string[] => {
@@ -83,6 +91,8 @@ export const hud = reactive({
     fires: 0,
     useFire: false,
     shoveCd: 0,
+    throwCd: 0,
+    throwing: false,
     battery: 1,
     flashOn: false,
     pulseCd: 0,
@@ -111,6 +121,13 @@ export const hud = reactive({
   sliding: false,
   mag: 0,
   magMax: 0,
+  /** 备弹：-1 = 无限（手枪 / 沙盒） */
+  reserve: -1,
+  /** 身上的重量（千克）和它带来的移速倍率 */
+  weight: 0,
+  weightSpeed: 1,
+  /** 双持手枪 */
+  dual: false,
   /** 换弹进度 0–1，-1 = 没在换弹 */
   reload: -1,
   scrap: 0,
@@ -158,7 +175,7 @@ export const hud = reactive({
   /** 零件计数器：显示值朝真实值滚动（花钱时直接跳过去） */
   scrapShown: 0,
   /** 短时间内的零件收入合并成一个"+N"：n 累计，life 1→0，bump 每次有新收入加一（让数字弹一下），box = 其中有零件箱 */
-  scrapGain: { n: 0, life: 0, bump: 0, box: false },
+  scrapGain: { n: 0, life: 0, bump: 0, box: false, drop: false },
   /** 回血 / 返弹的小数字（同样合并）：life 1→0 */
   healPop: { n: 0, life: 0, bump: 0 },
   ammoPop: { n: 0, life: 0, bump: 0 },
@@ -174,6 +191,18 @@ export const hud = reactive({
   boxDist: 99,
   /** 卡牌「战意」当前的伤害加成（0.12 = +12%） */
   comboDmg: 0,
+  /** Tab 面板：按住时显示，只在显示时刷新 */
+  tab: {
+    open: false,
+    /** 属性：名称 + 数值（已经格式化好） */
+    stats: [] as Array<{ k: string; v: string; up?: boolean; down?: boolean }>,
+    /** 按种类的击杀 */
+    kills: [] as Array<{ name: string; n: number }>,
+    /** 战况：时长、爆头率、最高连杀…… */
+    run: [] as Array<{ k: string; v: string }>,
+    /** 建筑：每种的数量和最低血量 */
+    structs: [] as Array<{ name: string; n: number; low: number; avg: number }>,
+  },
 });
 
 export interface BuffRow {
@@ -241,9 +270,14 @@ const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, 
 const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2, hmg: 1, flamer: 1, mortar: 1 };
 
 let pendingBox = false;
+let pendingDrop = false;
 /** 零件箱被捡走：下一次零件收入的"+N"标成零件箱 */
 export function markBoxTaken(): void {
   pendingBox = true;
+}
+/** 空投被捡走：下一次零件收入的"+N"标成空投 */
+export function markDropTaken(): void {
+  pendingDrop = true;
 }
 
 const LIVE: ReadonlySet<Phase> = new Set<Phase>(['day', 'night', 'cards']);
@@ -255,16 +289,17 @@ function syncFeedback(game: Game, dt: number): void {
   // 收入：只在局内、而且上一次也是局内时才算（开局的初始零件、读档不弹"+N"）
   if (lastScrap >= 0 && live && game.scrap > lastScrap) {
     const d = game.scrap - lastScrap;
-    if (g.life > 0.05) {
-      g.n += d;
-      g.box = g.box || pendingBox;
-    } else {
-      g.n = d;
-      g.box = pendingBox;
-    }
+    // 只有同一种来源的小额收入（连杀掉落）才合并成一个 +N。零件箱、空投这种大额单笔收入单独显示：
+    // 以前空投的 +90 还没消失时捡了零件箱，标签变成"+113 零件箱"，但计数只涨了 23，看起来像零件没加上
+    const merge = g.life > 0.05 && !pendingBox && !g.box && !pendingDrop && !g.drop;
+    if (merge) g.n += d;
+    else g.n = d;
+    g.box = pendingBox;
+    g.drop = pendingDrop;
     g.life = 1;
     g.bump++;
     pendingBox = false;
+    pendingDrop = false;
   }
   lastScrap = live ? game.scrap : -1;
   if (!live) hud.scrapShown = game.scrap;
@@ -314,7 +349,63 @@ function syncFeedback(game: Game, dt: number): void {
   hud.comboDmg = game.mods.comboDamage > 0 && game.comboT > 0 ? game.mods.comboDamage * Math.min(10, game.combo) : 0;
 }
 
+const pctUp = (v: number) => `${v >= 1 ? '+' : '−'}${Math.round(Math.abs(v - 1) * 100)}%`;
+const fmtT = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+/** Tab 面板：当前属性、击杀、战况、建筑（只在按住 Tab 时算） */
+function syncTab(game: Game): void {
+  const t = hud.tab;
+  const p = game.player;
+  const m = game.mods;
+  const st = game.statsOf(p.weapon, p.tier);
+  const row = (k: string, v: string, good?: boolean) => ({ k, v, up: good === true, down: good === false });
+  const mult = (k: string, v: number, inverse = false) => row(k, Math.abs(v - 1) < 0.005 ? '—' : pctUp(v), Math.abs(v - 1) < 0.005 ? undefined : (v > 1) !== inverse);
+  t.stats = [
+    row('生命', `${Math.ceil(p.hp)} / ${p.maxHp}`),
+    row('发电机', `${Math.ceil(game.core.hp)} / ${game.core.maxHp}`),
+    mult('武器伤害', m.damage),
+    row('暴击率', `${Math.round(m.crit * 100)}%`, m.crit > 0 ? true : undefined),
+    mult('爆头伤害', m.head),
+    mult('射速', m.fireRate),
+    mult('换弹速度', m.reload),
+    mult('移动速度', m.speed),
+    mult('受到伤害', m.armor, true),
+    mult('体力消耗', m.staminaUse, true),
+    mult('炮塔伤害', m.turret),
+    mult('炮塔射速', m.turretRate),
+    mult('建筑生命', m.structHp),
+    mult('零件收益', m.scrap),
+    row('脱战回血', m.regen > 0 ? `${m.regen.toFixed(1)} / 秒` : '—', m.regen > 0 ? true : undefined),
+    row('击杀回血', m.lifesteal > 0 ? `攒 ${m.lifesteal} 点 / 杀，每秒 ≤ ${(POOL_PER_TICK / HEAL_TICK).toFixed(0)}` : '—', m.lifesteal > 0 ? true : undefined),
+    row('发电机自修', m.coreRegen > 0 ? `${m.coreRegen.toFixed(1)} / 秒` : '—', m.coreRegen > 0 ? true : undefined),
+    row('当前武器', `${WEAPONS[p.weapon].name} ${p.tier + 1} 级 · DPS ${sustainedDps(st).toFixed(0)}`),
+  ];
+  const s = game.stats;
+  t.kills = (Object.keys(s.killsBy) as ZombieKind[]).filter((k) => s.killsBy[k] > 0).map((k) => ({ name: ZOMBIES[k].name, n: s.killsBy[k] })).sort((a, b) => b.n - a.n);
+  t.run = [
+    { k: '时长', v: fmtT(game.run.time) },
+    { k: '击杀', v: String(s.kills) },
+    { k: '爆头击杀', v: s.kills ? `${s.headshotKills}（${Math.round((s.headshotKills / s.kills) * 100)}%）` : '0' },
+    { k: '最高连杀', v: String(s.bestCombo) },
+    { k: '受到伤害', v: String(Math.round(s.damageTaken)) },
+    { k: '回复生命', v: String(Math.round(s.healed)) },
+    { k: '零件累计', v: String(game.scrapEarned) },
+    { k: '建造 / 被拆', v: `${s.built} / ${s.structuresDestroyed}` },
+  ];
+  const by = new Map<string, { name: string; n: number; low: number; sum: number }>();
+  for (const x of game.structures.values()) {
+    const f = x.hp / x.maxHp;
+    const e = by.get(x.kind) ?? { name: STRUCTURES[x.kind].name, n: 0, low: 1, sum: 0 };
+    e.n++;
+    e.low = Math.min(e.low, f);
+    e.sum += f;
+    by.set(x.kind, e);
+  }
+  t.structs = [...by.values()].map((e) => ({ name: e.name, n: e.n, low: e.low, avg: e.sum / e.n }));
+}
+
 export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: number }): void {
+  if (hud.tab.open) syncTab(game);
   const p = game.player;
   // ---- 雷达快照 ----
   radar.px = p.x;
@@ -349,7 +440,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
     while (rel < -Math.PI) rel += Math.PI * 2;
     m.a = -rel;
   }
-  const st = statsAt(p.weapon, p.tier);
+  const st = game.statsOf(p.weapon, p.tier);
   const slot = game.loadout[p.weapon];
   hud.hp = Math.ceil(p.hp);
   hud.maxHp = p.maxHp;
@@ -365,6 +456,12 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.sliding = p.slide > 0;
   hud.mag = slot.mag;
   hud.magMax = st.mag;
+  const res = game.reserveOf(p.weapon);
+  hud.reserve = res === Infinity ? -1 : res;
+  const wt = game.weightNow();
+  hud.weight = wt.hand + wt.back * 0.5;
+  hud.weightSpeed = wt.speed;
+  hud.dual = game.config.dual && p.weapon === 'pistol';
   hud.reload = p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1;
   hud.scrap = game.scrap;
   syncFeedback(game, dt);
@@ -404,12 +501,13 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
       const state = game.buyState(k);
       const locked = state === 'locked';
       const up = slot.tier < cap ? def.upgrades[slot.tier] : undefined;
-      const dps = sustainedDps(statsAt(k, slot.tier));
+      const dps = sustainedDps(game.statsOf(k, slot.tier));
       return {
         kind: k,
         key: i + 1,
         name: def.name,
         owned: slot.owned,
+        stowed: slot.owned && game.config.extras && !slot.carried,
         equipped: p.weapon === k,
         tier: slot.tier,
         price: def.price,
@@ -417,18 +515,20 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         nextName: up?.name ?? '',
         nextDesc: up?.desc ?? '',
         nextCost: up?.cost ?? 0,
-        dpsAfter: slot.owned ? (up ? sustainedDps(statsAt(k, slot.tier + 1)) : dps) : sustainedDps(statsAt(k, 1)),
+        dpsAfter: slot.owned ? (up ? sustainedDps(game.statsOf(k, slot.tier + 1)) : dps) : sustainedDps(game.statsOf(k, 1)),
         canBuy: state === 'ok',
         short: state === 'scrap' ? Math.ceil(def.price - game.scrap) : 0,
-        swapOut: !slot.owned && game.config.extras && game.carried().length >= CARRY_MAX ? WEAPONS[p.weapon].name : '',
+        swapOut: (!slot.owned || !slot.carried) && game.config.extras && game.carried().length >= CARRY_MAX ? WEAPONS[p.weapon].name : '',
         lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁（大厅 · 军械库）',
         canUpgrade: slot.owned && !!up && game.scrap >= up.cost,
         specials: specialsOf(k, slot.owned ? slot.tier : MAX_TIER),
-        range: statsAt(k, slot.tier).range,
+        range: game.statsOf(k, slot.tier).range,
         rangeMin: def.falloff[1],
         headMult: def.headMult,
         cap,
         locked,
+        reserve: game.reserveOf(k) === Infinity ? -1 : game.reserveOf(k),
+        weight: weightOf(k, game.config.weaponMods[k], game.config.dual),
       };
     });
   }
@@ -441,6 +541,8 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
     x.fires = h.fires;
     x.useFire = h.useFire && h.fires > 0;
     x.shoveCd = h.shoveCd;
+    x.throwCd = h.throwCd;
+    x.throwing = h.throwT > 0;
     x.battery = game.battery / FLASHLIGHT.battery;
     x.flashOn = game.flashOn;
     x.pulseCd = h.pulseCd;

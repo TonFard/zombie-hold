@@ -1,4 +1,4 @@
-import { AdditiveBlending, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, Scene, SphereGeometry, SpotLight } from 'three';
+import { AdditiveBlending, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, Scene, SphereGeometry, SpotLight, Sprite, SpriteMaterial } from 'three';
 import { Rng } from '../../game/core/rng';
 import { FLASHLIGHT, nightMod } from '../../game/data/modifiers';
 import type { Game } from '../../game/sim';
@@ -29,6 +29,9 @@ export class ExtrasView {
   private emberT = 0;
   /** 空投：箱子 + 信号烟柱 + 发光的信号灯（不用真实光源：每多一盏灯所有材质都要多算一遍） */
   private readonly drop = new Group();
+  private readonly smoke: Array<{ sp: Sprite; mat: SpriteMaterial; age: number; life: number; vx: number; vz: number; s0: number }> = [];
+  private smokeIdx = 0;
+  private smokeT = 0;
   /** 首领冲锋预警红线、弱点光球（每个首领一份） */
   private readonly warn = new Map<number, Mesh>();
   private readonly cores = new Map<number, Mesh>();
@@ -55,16 +58,18 @@ export class ExtrasView {
     this.chargeRing.visible = false;
     scene.add(this.chargeRing);
 
-    // 空投箱
-    const b = new Builder();
-    b.rbox(0.9, 0.6, 0.9, 0.05, {}, { color: 0x4d5a3a, jitter: 0.12, ao: 0.3, aoH: 0.6 });
-    for (const z of [-0.3, 0.3]) b.box(0.94, 0.08, 0.06, { y: 0.26, z }, { color: 0x2a2e26, jitter: 0.1, ao: 0 });
-    b.box(0.3, 0.2, 0.01, { y: 0.32, z: 0.456 }, { color: 0xe8e0c8, jitter: 0.05, ao: 0 });
-    b.cyl(0.04, 0.04, 0.5, 6, { x: 0.5, y: 0 }, { color: 0x2a2a2a, mat: 'metal', ao: 0 });
-    b.cyl(0.05, 0.05, 0.08, 6, { x: 0.5, y: 0.5 }, { color: 0xff3a1a, mat: 'glow', glow: 3 });
-    this.drop.add(toGroup(b.build()));
+    this.drop.add(toGroup(airdropModel().build()));
     this.drop.visible = false;
     scene.add(this.drop);
+    // 信号烟：柔边的烟团贴图，正常混合（不发光），升起时变大变淡、被风吹偏
+    const tex = smokeTexture();
+    for (let i = 0; i < SMOKE_N; i++) {
+      const mat = new SpriteMaterial({ map: tex, color: 0xd8584a, transparent: true, opacity: 0, depthWrite: false });
+      const sp = new Sprite(mat);
+      sp.visible = false;
+      scene.add(sp);
+      this.smoke.push({ sp, mat, age: 0, life: 1, vx: 0, vz: 0, s0: 0.3 });
+    }
 
     const e = game.events;
     this.off.push(
@@ -90,6 +95,11 @@ export class ExtrasView {
           const m = this.warn.get(c.id);
           if (m) m.visible = false;
         }
+      }),
+      e.on('bossSlam', (b) => {
+        this.ring(b.x, b.z, 0.6, b.r, 0.45, 0xff7a3a);
+        this.fx.chips(b.x, b.z, [0.45, 0.4, 0.34], 24, 1.3);
+        this.rig.addShake(0.45);
       }),
       e.on('propExploded', ({ x, z, silent }) => this.wreck(x, z, !silent)),
       e.on('pulse', (p) => {
@@ -194,10 +204,43 @@ export class ExtrasView {
       (r.mesh.material as MeshBasicMaterial).opacity = 0.8 * (1 - k);
     }
 
-    // 空投：烟柱和闪烁的信号灯
-    if (this.drop.visible) {
-      if (this.rng.next() < 0.5) this.fx.smoke(this.drop.position.x + 0.5, 0.6, this.drop.position.z);
+    // 空投：信号烟从箱子旁的烟罐冒出，一团接一团往上飘
+    this.smokeT -= dt;
+    if (this.drop.visible && this.smokeT <= 0) {
+      this.smokeT = 0.09;
+      const p = this.smoke[this.smokeIdx++ % SMOKE_N]!;
+      p.age = 0;
+      p.life = this.rng.range(3.2, 4.4);
+      p.vx = 0.35 + this.rng.range(-0.12, 0.12);
+      p.vz = 0.12 + this.rng.range(-0.12, 0.12);
+      p.s0 = this.rng.range(0.35, 0.55);
+      p.sp.position.set(this.drop.position.x + 0.78, 0.35, this.drop.position.z + 0.5);
+      p.sp.material.rotation = this.rng.range(0, 6.28);
+      p.sp.visible = true;
     }
+    for (const p of this.smoke) {
+      if (!p.sp.visible) continue;
+      p.age += dt;
+      const k = p.age / p.life;
+      if (k >= 1) {
+        p.sp.visible = false;
+        continue;
+      }
+      // 上升越来越慢、越飘越散
+      const rise = 2.2 * Math.exp(-0.5 * p.age);
+      p.sp.position.x += p.vx * k * dt * 2;
+      p.sp.position.z += p.vz * k * dt * 2;
+      p.sp.position.y += rise * dt;
+      p.sp.scale.setScalar(p.s0 + 2.4 * Math.sqrt(k));
+      p.mat.rotation += dt * 0.25;
+      // 刚冒出来浓、颜色鲜，越往上越淡越灰
+      p.mat.opacity = Math.min(1, k * 8) * (1 - k) * 0.6;
+      p.mat.color.setRGB(0.7 - 0.25 * k, 0.16 + 0.22 * k, 0.12 + 0.24 * k);
+    }
+
+    // 首领死了（或从列表里移除）但预警线 / 核心还挂着：一起藏掉
+    for (const [id, m] of this.warn) if (m.visible && !g.zombies.some((z) => z.id === id && z.alive && z.chargeState === 1)) m.visible = false;
+    for (const [id, m] of this.cores) if (m.visible && !g.zombies.some((z) => z.id === id && z.alive && z.chargeState === 3)) m.visible = false;
 
     // 首领硬直：胸口核心发光（弱点）；冲锋预警线闪烁
     for (const z of g.zombies) {
@@ -241,6 +284,11 @@ export class ExtrasView {
   dispose(): void {
     for (const f of this.off) f();
     this.scene.remove(this.wrecks, this.flash, this.flashTarget, this.chargeRing, this.drop);
+    for (const p of this.smoke) {
+      this.scene.remove(p.sp);
+      p.mat.dispose();
+    }
+    this.smoke[0]?.mat.map?.dispose();
     for (const m of [...this.warn.values(), ...this.cores.values()]) {
       this.scene.remove(m);
       (m.material as MeshBasicMaterial).dispose();
@@ -254,4 +302,78 @@ export class ExtrasView {
     this.grenadeMat.dispose();
     this.spitMat.dispose();
   }
+}
+
+const SMOKE_N = 48;
+
+/** 柔边烟团：几个错开的径向渐变叠在一起，边缘不规则 */
+function smokeTexture(): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const r = new Rng(77);
+  for (let i = 0; i < 7; i++) {
+    const x = 64 + r.range(-18, 18);
+    const y = 64 + r.range(-18, 18);
+    const rad = r.range(30, 46);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, rad);
+    g.addColorStop(0, 'rgba(255,255,255,0.35)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.12)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, 128, 128);
+  }
+  return new CanvasTexture(c);
+}
+
+/**
+ * 空投箱：木托盘 + 军绿色金属箱（边框、加强筋、提手、锁扣、绑带、白色喷字），
+ * 旁边一顶摊在地上的降落伞和插在地上的红色烟罐
+ */
+function airdropModel(): Builder {
+  const b = new Builder();
+  const wood = { color: 0x7a5a3a, jitter: 0.18, ao: 0.4, aoH: 0.3 };
+  const green = { color: 0x4a5634, jitter: 0.08, ao: 0.35, aoH: 0.9, mat: 'metal' as const };
+  const dark = { color: 0x2c3222, jitter: 0.06, ao: 0, mat: 'metal' as const };
+  const steel = { color: 0x8a8e88, jitter: 0.08, ao: 0, mat: 'metal' as const };
+  const strap = { color: 0x1e1f1a, jitter: 0.05, ao: 0 };
+  // 托盘：三根垫木 + 面板
+  for (const z of [-0.5, 0, 0.5]) b.box(1.2, 0.1, 0.12, { y: 0.05, z }, wood);
+  for (let i = 0; i < 7; i++) b.box(0.15, 0.025, 1.2, { x: -0.54 + i * 0.18, y: 0.112 }, wood);
+  // 箱体
+  const y0 = 0.125;
+  const W = 1.08;
+  const H = 0.78;
+  b.rbox(W, H, W * 0.9, 0.03, { y: y0 }, green);
+  // 边框
+  for (const x of [-1, 1]) for (const z of [-1, 1]) b.box(0.05, H + 0.01, 0.05, { x: (x * W) / 2, y: y0, z: (z * W * 0.9) / 2 }, dark);
+  for (const yy of [y0, y0 + H - 0.04]) {
+    for (const z of [-1, 1]) b.box(W + 0.02, 0.05, 0.05, { y: yy, z: (z * W * 0.9) / 2 }, dark);
+    for (const x of [-1, 1]) b.box(0.05, 0.05, W * 0.9, { x: (x * W) / 2, y: yy }, dark);
+  }
+  // 两侧加强筋
+  for (let i = 0; i < 4; i++) for (const z of [-1, 1]) b.box(0.035, H - 0.12, 0.02, { x: -0.36 + i * 0.24, y: y0 + 0.06, z: z * (W * 0.45 + 0.01) }, dark);
+  // 喷字面板 + 十字
+  b.box(0.44, 0.26, 0.012, { y: y0 + 0.34, z: W * 0.45 + 0.025 }, { color: 0xe6dfc8, jitter: 0.06, ao: 0 });
+  b.box(0.06, 0.18, 0.014, { y: y0 + 0.38, z: W * 0.45 + 0.03 }, { color: 0xb02a20, jitter: 0, ao: 0 });
+  b.box(0.18, 0.06, 0.014, { y: y0 + 0.44, z: W * 0.45 + 0.03 }, { color: 0xb02a20, jitter: 0, ao: 0 });
+  // 提手、锁扣
+  for (const x of [-1, 1]) b.box(0.03, 0.06, 0.24, { x: x * (W / 2 + 0.03), y: y0 + 0.5 }, steel);
+  for (const x of [-0.3, 0.3]) b.box(0.08, 0.1, 0.03, { x, y: y0 + H - 0.14, z: W * 0.45 + 0.025 }, steel);
+  // 交叉绑带
+  for (const x of [-0.22, 0.22]) {
+    b.box(0.07, 0.012, W * 0.9 + 0.04, { x, y: y0 + H + 0.002 }, strap);
+    for (const z of [-1, 1]) b.box(0.07, H, 0.012, { x, y: y0, z: z * (W * 0.45 + 0.02) }, strap);
+  }
+  // 降落伞：摊在箱子后面地上的一堆布，几道起伏的布褶 + 伞绳
+  const silk = { color: 0x8a8c6a, jitter: 0.1, ao: 0.3, aoH: 0.3 };
+  const silk2 = { color: 0xcfc8b0, jitter: 0.08, ao: 0.3, aoH: 0.3 };
+  for (let i = 0; i < 6; i++) {
+    b.sphere(0.5, 10, 6, { x: -0.9 + i * 0.22, y: 0.02, z: -1.05 - (i % 2) * 0.18, sx: 0.9, sy: 0.22 + (i % 3) * 0.05, sz: 1.3, ry: i * 0.35 }, i % 2 ? silk : silk2);
+  }
+  for (const x of [-0.4, -0.15, 0.15, 0.4]) b.rod([x, y0 + H, -0.4], [x * 1.6, 0.08, -0.95], 0.006, strap, 3);
+  // 烟罐：插在地上，罐口发红光
+  b.cyl(0.045, 0.05, 0.28, 8, { x: 0.78, z: 0.5 }, { color: 0xa82a1e, jitter: 0.05, ao: 0, mat: 'metal' });
+  b.cyl(0.03, 0.03, 0.04, 8, { x: 0.78, y: 0.28, z: 0.5 }, { color: 0xff5a2a, mat: 'glow', glow: 3.2 });
+  return b;
 }

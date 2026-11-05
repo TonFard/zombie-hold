@@ -5,6 +5,8 @@ import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { FINAL_NIGHT } from '../data/waves';
 import { newCodex, type Codex } from '../meta/achievements';
 import { newMeta, type MetaState } from '../meta/progress';
+import { BENCH_LINES, BENCH_MAX } from '../data/bench';
+import { MAP_ORDER, isMapId } from '../world/maps';
 import { ZOMBIES } from '../data/zombies';
 
 export const SAVE_KEY = 'zombie-hold-save-v2';
@@ -12,7 +14,7 @@ export const SAVE_KEY_V1 = 'zombie-hold-save-v1';
 /** 存档纪元：记在单独的键里。和这里的值不一样时清掉进度重新开始（只保留音量、画质、灵敏度） */
 export const EPOCH_KEY = 'zombie-hold-epoch';
 /** 每次更新游戏都把它加一：玩家打开新版本时进度全部重置 */
-export const SAVE_EPOCH = 6;
+export const SAVE_EPOCH = 7;
 
 /** 跨局存档：统计、设置、局外进度 */
 export interface SaveData {
@@ -99,6 +101,34 @@ function parseMeta(v: unknown): MetaState {
     cleared: DIFFICULTY_ORDER.filter((d) => (v.cleared as unknown[]).includes(d)),
     lastDifficulty: oneOf(v, 'lastDifficulty', DIFFICULTY_ORDER),
     lastSidearm: side as WeaponKind | null,
+    ...parseSupply(v),
+  };
+}
+
+/** 补给 / 库存子弹 / 工作台 / 章节：缺省时按新档处理（旧存档升级上来） */
+function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | 'ammo' | 'bench' | 'chapters' | 'lastChapter'> {
+  const ammo: Partial<Record<WeaponKind, number>> = {};
+  if (isObj(v.ammo)) {
+    for (const k of WEAPON_ORDER) {
+      const n = v.ammo[k];
+      if (typeof n === 'number' && Number.isFinite(n) && n > 0) ammo[k] = Math.min(1e7, Math.floor(n));
+    }
+  }
+  const bench: Record<string, number> = {};
+  if (isObj(v.bench)) {
+    for (const [key, lv] of Object.entries(v.bench)) {
+      const [k, line] = key.split('.');
+      if (!(WEAPON_ORDER as string[]).includes(k ?? '') || !(BENCH_LINES as string[]).includes(line ?? '')) continue;
+      if (typeof lv === 'number' && Number.isInteger(lv) && lv > 0) bench[key] = Math.min(BENCH_MAX, lv);
+    }
+  }
+  const chapters = Array.isArray(v.chapters) ? MAP_ORDER.filter((c) => (v.chapters as unknown[]).includes(c)) : [];
+  return {
+    supplies: typeof v.supplies === 'number' && Number.isFinite(v.supplies) && v.supplies >= 0 ? Math.min(1e8, Math.floor(v.supplies)) : 60,
+    ammo,
+    bench,
+    chapters,
+    lastChapter: isMapId(v.lastChapter) ? v.lastChapter : 'outpost',
   };
 }
 

@@ -30,8 +30,8 @@ export interface ZombieDef {
   headInstakill?: boolean;
   /** 尖叫（尖啸者）：半径、加速比例、持续、冷却 */
   scream?: { radius: number; boost: number; time: number; cd: number };
-  /** 冲锋（巨像，M13）：触发距离、蓄力、冲锋速度和时长、撞击伤害、硬直、冷却、弱点（胸口）的高度 / 半径 / 倍率 */
-  charge?: { range: number; windup: number; speed: number; time: number; damage: number; stun: number; cd: number; core: { y: number; r: number; mult: number } };
+  /** 冲锋（巨像，M13）：触发距离、蓄力、冲锋速度和时长、撞击伤害、硬直、冷却、冲完落地的震地（半径 / 伤害）、弱点（胸口）的高度 / 半径 / 倍率 */
+  charge?: { range: number; windup: number; speed: number; time: number; damage: number; stun: number; cd: number; slam: { r: number; damage: number }; core: { y: number; r: number; mult: number } };
 }
 
 export const ZOMBIES: Record<ZombieKind, ZombieDef> = {
@@ -104,10 +104,10 @@ export const ZOMBIES: Record<ZombieKind, ZombieDef> = {
     kind: 'colossus',
     name: '巨像',
     hp: 2400,
-    speed: 1.0,
+    speed: 1.25,
     radius: 0.95,
-    damage: 45,
-    attackInterval: 1.6,
+    damage: 60,
+    attackInterval: 1.25,
     structMult: 2,
     reward: 150,
     aggro: 12,
@@ -116,7 +116,7 @@ export const ZOMBIES: Record<ZombieKind, ZombieDef> = {
     head: { y: 3.45, r: 0.38, fwd: 0.2 },
     // 首领的头有装甲，爆头收益只有一半多一点
     headVuln: 0.6,
-    charge: { range: 14, windup: 1.2, speed: 7, time: 1.3, damage: 40, stun: 3, cd: 10, core: { y: 2.4, r: 0.42, mult: 3 } },
+    charge: { range: 16, windup: 1.2, speed: 8.5, time: 1.3, damage: 55, stun: 2.2, cd: 6, slam: { r: 3.4, damage: 28 }, core: { y: 2.4, r: 0.42, mult: 3 } },
   },
   spitter: {
     kind: 'spitter',

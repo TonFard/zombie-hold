@@ -1,9 +1,11 @@
 import { CARD_BY_ID, drawCards } from '../data/cards';
-import { WEAPON_ORDER, statsAt } from '../data/weapons';
+import { WEAPON_ORDER } from '../data/weapons';
+import { CHAPTER_BY_ID } from '../data/chapters';
 import { ALIVE_CAP, DAY_FIRST, DAY_LEN, FINAL_NIGHT, START_SCRAP, batchInterval, batchSize, bossFor, hpScale, nightBonus, nightCount, pickKind } from '../data/waves';
 import { CHALLENGES, CHALLENGE_ORDER, CHALLENGE_SCRAP, ELITE_HP, NIGHT_MOD_ORDER, nightMod } from '../data/modifiers';
 import type { ZombieKind } from '../data/zombies';
 import type { Game } from '../sim';
+import { HEAL_TICK, POOL_PER_TICK, REGEN_DELAY } from '../data/heal';
 import { planAirdrop } from './airdrop';
 import { GRENADE, registerExplosives } from './hazards';
 
@@ -63,7 +65,7 @@ export const RANKED_DENSITY = { count: 1.4, batch: 1.5, interval: 0.8 };
 
 /** 开始新的一局：第 1 天 */
 /** 受伤后多久开始自动回血（秒） */
-export const REGEN_DELAY = 4;
+export { REGEN_DELAY } from '../data/heal';
 
 export function startRun(g: Game): void {
   g.run.night = 1;
@@ -144,10 +146,10 @@ function startDay(g: Game, first = false): void {
     b.alive = true;
     g.events.emit('scrapBox', { index: i, taken: false });
   });
-  // 武器装满，人恢复一点
+  // 武器装满（有限弹药时从备弹里补），人恢复一点
   for (const k of WEAPON_ORDER) {
     const slot = g.loadout[k];
-    if (slot.owned) slot.mag = statsAt(k, slot.tier).mag;
+    if (slot.owned) slot.mag += g.takeAmmo(k, g.statsOf(k, slot.tier).mag - slot.mag);
   }
   g.player.reloadTimer = 0;
   if (!first) g.player.hp = Math.min(g.player.maxHp, g.player.hp + 30);
@@ -307,6 +309,16 @@ function updateNight(g: Game, dt: number): void {
 
 /** 带新僵尸的出场表：第 3 夜起吐酸者、第 6 夜起尖啸者；浓雾夜奔袭者更多 */
 function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
+  // 章节的额外构成：按权重先抽一次（第 2 夜以后）
+  const mix = CHAPTER_BY_ID[g.config.chapter]?.mix ?? {};
+  if (n >= 2) {
+    let acc = 0;
+    const q = g.rng.next();
+    for (const [kind, w] of Object.entries(mix) as Array<[ZombieKind, number]>) {
+      acc += w;
+      if (q < acc) return kind;
+    }
+  }
   const r = g.rng.next();
   const spitter = n >= 3 ? Math.min(0.04 + (n - 3) * 0.015, 0.12) : 0;
   const screamer = n >= 6 ? Math.min(0.03 + (n - 6) * 0.01, 0.08) : 0;
@@ -356,7 +368,28 @@ export function updateRun(g: Game, dt: number): void {
   // 玩家脱战回血（局外「急救训练」）：4 秒没受伤后开始
   g.hurtT += dt;
   const p = g.player;
-  if (g.mods.regen > 0 && p.alive && g.hurtT >= REGEN_DELAY && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + g.mods.regen * dt);
+  // 回血按节拍结算：每 HEAL_TICK 秒回一小口（嗜血池 + 脱战回血），不会一下跳满
+  g.healT += dt;
+  while (g.healT >= HEAL_TICK) {
+    g.healT -= HEAL_TICK;
+    if (!p.alive) {
+      g.healPool = 0;
+      break;
+    }
+    let heal = 0;
+    if (g.healPool > 0) {
+      const k = Math.min(g.healPool, POOL_PER_TICK);
+      g.healPool -= k;
+      heal += k;
+    }
+    if (g.mods.regen > 0 && g.hurtT >= REGEN_DELAY) heal += g.mods.regen * HEAL_TICK;
+    if (heal > 0 && p.hp < p.maxHp) {
+      const before = p.hp;
+      p.hp = Math.min(p.maxHp, p.hp + heal);
+      g.stats.healed += p.hp - before;
+      g.events.emit('healed', { amount: p.hp - before });
+    }
+  }
   updatePickups(g);
 
   if (g.input.confirm) {

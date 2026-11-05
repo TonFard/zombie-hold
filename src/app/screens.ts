@@ -23,7 +23,23 @@ export class Screens {
     // E：靠近工坊时打开工坊（输入层收到 true 就不再当成修理）
     input.onInteract = () => this.openBench();
     const onKey = (e: KeyboardEvent): void => this.onKey(e);
+    // Tab：按住看本局面板（属性 / 加成 / 击杀 / 建筑），松开就关。浏览器默认会切焦点，拦掉
+    const onTabDown = (e: KeyboardEvent): void => {
+      if (e.code !== 'Tab') return;
+      e.preventDefault();
+      if (this.isPlaying && this.inRun) hud.tab.open = true;
+    };
+    const onTabUp = (e: KeyboardEvent): void => {
+      if (e.code === 'Tab') hud.tab.open = false;
+    };
+    window.addEventListener('keydown', onTabDown);
+    window.addEventListener('keyup', onTabUp);
+    this.off.push(
+      () => window.removeEventListener('keydown', onTabDown),
+      () => window.removeEventListener('keyup', onTabUp),
+    );
     const onBlur = (): void => {
+      hud.tab.open = false;
       if (this.isPlaying && this.inRun) this.set('pause');
     };
     // 玩家按 Esc 时浏览器会自己退出指针锁定（页面收不到这次按键），这里把它当作"暂停"
@@ -57,6 +73,7 @@ export class Screens {
 
   set(s: Screen): void {
     if (s === 'play' || s === 'training') this.playScreen = s;
+    else hud.tab.open = false;
     ui.screen = s;
     const playing = this.isPlaying;
     this.input.enabled = playing;

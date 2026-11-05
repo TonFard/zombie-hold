@@ -6,7 +6,7 @@ import { defaultSave, type SaveData } from '../game/save/schema';
 
 export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result';
 
-export type LobbyTab = 'deploy' | 'armory' | 'engineering' | 'supply' | 'fitness' | 'records' | 'codex' | 'settings';
+export type LobbyTab = 'deploy' | 'bench' | 'armory' | 'engineering' | 'supply' | 'fitness' | 'records' | 'codex' | 'settings';
 
 export interface Banner {
   text: string;
@@ -26,6 +26,8 @@ export interface ResultInfo {
   newBest: boolean;
   difficulty: Difficulty;
   medals: MedalBreakdown;
+  /** 这一局结算的补给点 */
+  supplies: number;
 }
 
 /** 检查点的摘要：大厅里显示"继续第 n 天" */
@@ -66,7 +68,9 @@ export const ui = reactive({
   /** 游戏通过它把"开始 / 重新开始 / 回主菜单 / 继续"等动作交给应用层 */
   actions: {
     enterLobby: () => {},
-    deploy: (_d: Difficulty, _sidearm: string | null) => {},
+    deploy: (_d: Difficulty, _sidearm: string | null, _chapter: string) => {},
+    buyAmmo: (_k: string, _packs: number) => {},
+    buyBench: (_k: string, _line: string) => {},
     continueRun: () => {},
     training: () => {},
     daily: () => {},

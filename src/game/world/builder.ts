@@ -79,6 +79,28 @@ export class MapBuilder {
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) this.grid.ground[this.grid.idx(x, y)] = g;
   }
 
+  /** 浅水 / 泥地：能走但人和僵尸都减速（和瓦砾一样走 slow 标记，寻路会稍微绕开） */
+  shallow(x0: number, y0: number, x1: number, y1: number, g: number): void {
+    for (let y = y0; y < y1; y++) {
+      for (let x = x0; x < x1; x++) {
+        const i = this.grid.idx(x, y);
+        this.grid.ground[i] = g;
+        this.grid.setRubble(i);
+      }
+    }
+  }
+
+  /** 深水（湖）：不能走，但不挡子弹和视线（障碍高度 0） */
+  lake(cells: Array<[number, number]>, g: number): void {
+    for (const [x, y] of cells) {
+      const i = this.grid.idx(x, y);
+      this.grid.ground[i] = g;
+      this.grid.solid[i] = 1;
+      // 不能写 0：0 会被当成"没写高度"按整面墙算
+      this.grid.height[i] = 0.01;
+    }
+  }
+
   markSolid(x0: number, y0: number, x1: number, y1: number): void {
     for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) this.grid.solid[this.grid.idx(x, y)] = 1;
   }

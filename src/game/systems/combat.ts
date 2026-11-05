@@ -1,7 +1,7 @@
 import { clamp, lerp } from '../core/math';
 import { BARRICADE_HEIGHT, BULLET_GRAVITY, MUZZLE_OFFSET, TURRET_HEIGHT, WALL_HEIGHT, zeroPitch } from '../data/ballistics';
 import { isTurret } from '../data/structures';
-import { WEAPONS, falloffAt, statsAt, type WeaponStats } from '../data/weapons';
+import { WEAPONS, falloffAt, type WeaponStats } from '../data/weapons';
 import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Zombie } from '../entities/zombie';
@@ -88,7 +88,7 @@ function launchGrenade(g: Game, st: WeaponStats, ox: number, oy: number, oz: num
 export function fireWeapon(g: Game): void {
   const p = g.player;
   const kind = p.weapon;
-  const st = statsAt(kind, p.tier);
+  const st = g.statsOf(kind, p.tier);
   const def = WEAPONS[kind];
   const slot = g.loadout[kind];
   slot.mag--;
@@ -97,7 +97,7 @@ export function fireWeapon(g: Game): void {
   // 视线 = 鼠标视角 + 后坐力抬起的量（先算这一发，再累加后坐力，第一发总是打在准星上）
   const pitch = g.input.aimPitch + p.kickPitch;
   const aimYaw = p.yaw + p.kickYaw;
-  const rk = (1 - 0.5 * p.ads) * (1 - 0.25 * p.crouch);
+  const rk = (1 - 0.5 * p.ads) * (1 - 0.25 * p.crouch) * g.recoilOf(kind);
   p.kickPitch = Math.min(0.2, p.kickPitch + def.recoil.v * DEG * rk);
   p.kickYaw += (g.rng.next() * 2 - 1) * def.recoil.h * DEG * rk;
   p.kickYaw = clamp(p.kickYaw, -0.06, 0.06);
@@ -224,7 +224,7 @@ export function updateBullets(g: Game, dt: number): void {
       const refund = b.refund + (killed && c.head ? g.mods.headRefund : 0);
       if (killed && c.head && refund > 0) {
         const slot = g.loadout[b.kind];
-        slot.mag = Math.min(statsAt(b.kind, slot.tier).mag, slot.mag + refund);
+        slot.mag = Math.min(g.statsOf(b.kind, slot.tier).mag, slot.mag + refund);
         g.events.emit('refund', { kind: b.kind, amount: refund });
       }
       g.events.emit('impact', {

@@ -1,6 +1,7 @@
 import type { Difficulty } from './data/difficulty';
 import { STRUCTURE_ORDER, type StructureKind } from './data/structures';
-import { MAX_TIER, WEAPON_ORDER, type WeaponKind } from './data/weapons';
+import { MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind, type WeaponMod } from './data/weapons';
+import type { MapId } from './world/maps';
 
 /**
  * 一局的规则：难度系数和局外成长决定的上限 / 解锁。
@@ -41,6 +42,14 @@ export interface RunConfig {
    * 沙盒 / 训练场 / 每日挑战都是 0 / 1（没有加成）
    */
   meta: MetaApplied;
+  /** 战役章节（决定地图、僵尸构成、勋章倍率） */
+  chapter: MapId;
+  /** 弹药有限：手枪以外的枪要用大厅里买的子弹（沙盒 / 训练场 / 每日挑战无限） */
+  ammo: boolean;
+  /** 大厅工作台给每把枪的强化 */
+  weaponMods: Record<WeaponKind, WeaponMod>;
+  /** 双持手枪 */
+  dual: boolean;
 }
 
 export interface MetaApplied {
@@ -77,5 +86,9 @@ export function sandboxConfig(): RunConfig {
     fixedMod: '',
     daily: '',
     meta: { ...NO_META },
+    chapter: 'outpost',
+    ammo: false,
+    weaponMods: noMods(),
+    dual: false,
   };
 }

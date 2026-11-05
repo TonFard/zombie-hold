@@ -13,7 +13,7 @@ import {
   type PerspectiveCamera,
 } from 'three';
 import { Rng } from '../../game/core/rng';
-import { statsAt, type WeaponKind } from '../../game/data/weapons';
+import type { WeaponKind } from '../../game/data/weapons';
 import type { Projectile } from '../../game/entities/projectile';
 import type { Game } from '../../game/sim';
 import type { CameraRig } from '../core/cameraRig';
@@ -215,7 +215,7 @@ export class Effects {
 
   private onShot(kind: WeaponKind, yaw: number): void {
     // 逻辑层先扣子弹再发事件：这时弹匣为 0 就是打完了最后一发
-    this.viewmodel.fire(kind, 1 / statsAt(kind, this.game.player.tier).rate, this.game.loadout[kind].mag <= 0);
+    this.viewmodel.fire(kind, 1 / this.game.statsOf(kind, this.game.player.tier).rate, this.game.loadout[kind].mag <= 0);
     const m = this.viewmodel.muzzleWorld(this.muzzle, this.rig.camera);
     this.flashT = 0.06;
     this.flashLight.position.copy(m);

@@ -436,6 +436,14 @@ function charge(g: Game, z: Zombie, i: number, dt: number): boolean {
     z.vz = z.chargeDZ * c.speed;
     z.walkPhase += c.speed * dt * 1.6;
     if (z.chargeT <= 0) {
+      // 冲锋结束猛跺一脚：周围一圈震地，扑空了贴身也躲不掉
+      const d = Math.hypot(p.x - z.x, p.z - z.z);
+      if (p.alive && d < c.slam.r) {
+        g.damagePlayer(c.slam.damage * g.config.zombieDamage * (1 - 0.5 * (d / c.slam.r)));
+        p.vx += ((p.x - z.x) / (d || 1)) * 5;
+        p.vz += ((p.z - z.z) / (d || 1)) * 5;
+      }
+      g.events.emit('bossSlam', { x: z.x, z: z.z, r: c.slam.r });
       z.chargeState = 3;
       z.chargeT = c.stun;
       g.events.emit('bossCharge', { id: z.id, stage: 'stun', x: z.x, z: z.z, dx: 0, dz: 0, len: 0 });

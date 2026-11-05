@@ -264,6 +264,7 @@ export function buildOutpost(seed = 20260207): MapData {
     lamps,
     playerStart: { x: 0.5, z: 3.5 },
     houses: b.houses,
+    outpostMarks: true,
   };
 }
 

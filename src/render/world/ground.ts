@@ -51,13 +51,16 @@ const PAL: Record<number, { a: RGB; b: RGB }> = {
   [Ground.Concrete]: { a: hex(0x6a6c6e), b: hex(0x8e9092) },
   [Ground.Floor]: { a: hex(0x4f3b2b), b: hex(0x6b5139) },
   [Ground.Gravel]: { a: hex(0x6b665c), b: hex(0x8d877a) },
+  [Ground.Water]: { a: hex(0x1d3238), b: hex(0x2c4a50) },
+  [Ground.Sand]: { a: hex(0x8a7a5a), b: hex(0xa8966e) },
+  [Ground.Mud]: { a: hex(0x3e3224), b: hex(0x54432f) },
 };
 
 /**
  * overlay = true：不画底色，只画细节层（标线、裂缝、油渍、血迹、草丛、接触阴影、边缘压暗），
  * 透明底，叠在写实贴图上（realSurfaces.ts）。
  */
-export function makeGroundTexture(grid: Grid, anisotropy: number, overlay = false): CanvasTexture {
+export function makeGroundTexture(grid: Grid, anisotropy: number, overlay = false, core: { cx: number; cy: number } | null = null, outpostMarks = true): CanvasTexture {
   const canvas = document.createElement('canvas');
   canvas.width = SIZE;
   canvas.height = SIZE;
@@ -103,6 +106,10 @@ export function makeGroundTexture(grid: Grid, anisotropy: number, overlay = fals
         t = t * 0.6 + noise(gx * 18, gy * 18) * 0.4;
       } else if (g === Ground.Gravel) {
         t = noise(gx * 24, gy * 24) * 0.6 + n1 * 0.4;
+      } else if (g === Ground.Water) {
+        // 浅水：低频起伏 + 细碎波纹，整体偏暗
+        t = noise(gx * 1.2, gy * 1.2) * 0.6 + noise(gx * 9, gy * 2.5) * 0.4;
+        k *= 0.9;
       } else if (g === Ground.Grass) {
         // 草丛：中频噪声做出深浅斑块
         t = t * 0.6 + noise(gx * 3.1, gy * 3.1) * 0.5;
@@ -123,70 +130,69 @@ export function makeGroundTexture(grid: Grid, anisotropy: number, overlay = fals
   // ---------- 2. 路面标线 ----------
   ctx.save();
   ctx.lineCap = 'butt';
-  // 道路中线（黄色虚线）
-  ctx.strokeStyle = 'rgba(214,170,50,0.75)';
-  ctx.lineWidth = 3;
-  ctx.setLineDash([cell(1.4), cell(1.2)]);
-  for (const [x0, y0, x1, y1] of [
-    [40, 2, 40, 25.6],
-    [40, 54.4, 40, 78],
-    [2, 40, 25.6, 40],
-    [54.4, 40, 78, 40],
-  ] as const) {
-    ctx.beginPath();
-    ctx.moveTo(cell(x0), cell(y0));
-    ctx.lineTo(cell(x1), cell(y1));
-    ctx.stroke();
-  }
-  // 道路边线（白色实线，略微磨损）
-  ctx.setLineDash([cell(5), cell(0.3), cell(3), cell(0.2)]);
-  ctx.strokeStyle = 'rgba(215,212,200,0.55)';
-  ctx.lineWidth = 2;
-  for (const [x0, y0, x1, y1] of [
-    [38.15, 2, 38.15, 25.6],
-    [41.85, 2, 41.85, 25.6],
-    [38.15, 54.4, 38.15, 78],
-    [41.85, 54.4, 41.85, 78],
-    [2, 38.15, 25.6, 38.15],
-    [2, 41.85, 25.6, 41.85],
-    [54.4, 38.15, 78, 38.15],
-    [54.4, 41.85, 78, 41.85],
-  ] as const) {
-    ctx.beginPath();
-    ctx.moveTo(cell(x0), cell(y0));
-    ctx.lineTo(cell(x1), cell(y1));
-    ctx.stroke();
-  }
-  // 停车场车位线
-  ctx.setLineDash([cell(2.2), cell(0.25), cell(1.2), cell(0.2)]);
-  ctx.strokeStyle = 'rgba(205,203,190,0.24)';
-  ctx.lineWidth = 2;
-  for (const y of [57.2, 62.2, 67.2, 72.2]) {
-    ctx.beginPath();
-    ctx.moveTo(cell(4.2), cell(y));
-    ctx.lineTo(cell(31.8), cell(y));
-    ctx.stroke();
-  }
-  for (const y of [57.2, 62.2, 67.2]) {
-    for (let x = 6.2; x < 32; x += 3) {
+  // 道路标线和停车位只有第一章（据点）的地图是按这些坐标画的
+  if (outpostMarks) {
+    // 道路中线（黄色虚线）
+    ctx.strokeStyle = 'rgba(214,170,50,0.75)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([cell(1.4), cell(1.2)]);
+    for (const [x0, y0, x1, y1] of [
+      [40, 2, 40, 25.6],
+      [40, 54.4, 40, 78],
+      [2, 40, 25.6, 40],
+      [54.4, 40, 78, 40],
+    ] as const) {
       ctx.beginPath();
-      ctx.moveTo(cell(x), cell(y));
-      ctx.lineTo(cell(x), cell(y + 5));
+      ctx.moveTo(cell(x0), cell(y0));
+      ctx.lineTo(cell(x1), cell(y1));
       ctx.stroke();
     }
+    // 道路边线（白色实线，略微磨损）
+    ctx.setLineDash([cell(5), cell(0.3), cell(3), cell(0.2)]);
+    ctx.strokeStyle = 'rgba(215,212,200,0.55)';
+    ctx.lineWidth = 2;
+    for (const [x0, y0, x1, y1] of [
+      [38.15, 2, 38.15, 25.6],
+      [41.85, 2, 41.85, 25.6],
+      [38.15, 54.4, 38.15, 78],
+      [41.85, 54.4, 41.85, 78],
+      [2, 38.15, 25.6, 38.15],
+      [2, 41.85, 25.6, 41.85],
+      [54.4, 38.15, 78, 38.15],
+      [54.4, 41.85, 78, 41.85],
+    ] as const) {
+      ctx.beginPath();
+      ctx.moveTo(cell(x0), cell(y0));
+      ctx.lineTo(cell(x1), cell(y1));
+      ctx.stroke();
+    }
+    // 停车场车位线
+    ctx.setLineDash([cell(2.2), cell(0.25), cell(1.2), cell(0.2)]);
+    ctx.strokeStyle = 'rgba(205,203,190,0.24)';
+    ctx.lineWidth = 2;
+    for (const y of [57.2, 62.2, 67.2, 72.2]) {
+      ctx.beginPath();
+      ctx.moveTo(cell(4.2), cell(y));
+      ctx.lineTo(cell(31.8), cell(y));
+      ctx.stroke();
+    }
+    for (const y of [57.2, 62.2, 67.2]) {
+      for (let x = 6.2; x < 32; x += 3) {
+        ctx.beginPath();
+        ctx.moveTo(cell(x), cell(y));
+        ctx.lineTo(cell(x), cell(y + 5));
+        ctx.stroke();
+      }
+    }
   }
-  // 内院：发电机基座和安全黄线
-  ctx.strokeStyle = 'rgba(214,170,50,0.7)';
-  ctx.lineWidth = 3;
-  ctx.setLineDash([cell(0.6), cell(0.4)]);
-  ctx.strokeRect(cell(36.6), cell(35.6), cell(6.8), cell(6.8));
-  ctx.setLineDash([]);
-  ctx.strokeStyle = 'rgba(214,170,50,0.55)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(cell(27.6), cell(27.6), cell(24.8), cell(24.8));
-  // 工坊前的工作区
-  ctx.fillStyle = 'rgba(30,30,28,0.35)';
-  ctx.fillRect(cell(44.5), cell(30.5), cell(4), cell(3.2));
+  // 发电机基座的安全黄线（按地图上发电机的位置画）
+  if (core) {
+    ctx.strokeStyle = 'rgba(214,170,50,0.7)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([cell(0.6), cell(0.4)]);
+    ctx.strokeRect(cell(core.cx - 3.4), cell(core.cy - 3.4), cell(6.8), cell(6.8));
+    ctx.setLineDash([]);
+  }
   ctx.restore();
 
   // ---------- 3. 裂缝、油渍、血迹、轮胎印 ----------

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { CHALLENGES, nightMod } from '../../game/data/modifiers';
-import { PULSE, SHOVE } from '../../game/systems/hazards';
+import { GRENADE, PULSE, SHOVE } from '../../game/systems/hazards';
 import { hud } from '../hud';
 import { ui } from '../store';
 
@@ -11,6 +11,7 @@ const ch = computed(() => CHALLENGES[x.value.challenge as keyof typeof CHALLENGE
 const show = computed(() => x.value.on && (ui.screen === 'play' || ui.screen === 'bench') && hud.alive);
 /** 技能格的冷却遮罩比例（1 = 刚用完，0 = 就绪） */
 const shoveFill = computed(() => Math.min(1, x.value.shoveCd / SHOVE.cd));
+const throwFill = computed(() => (x.value.throwing ? 1 : Math.min(1, x.value.throwCd / GRENADE.cd)));
 const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCharge / PULSE.charge : Math.min(1, x.value.pulseCd / PULSE.cd)));
 </script>
 
@@ -44,11 +45,12 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
 
     <!-- 右下（武器上方）：手雷 / 推搡 / 手电 / 脉冲，做成一排技能格 -->
     <div class="tools">
-      <div class="chip" :class="{ dim: x.frags + x.fires === 0, fire: x.useFire }">
+      <div class="chip" :class="{ dim: x.frags + x.fires === 0 || x.throwCd > 0, fire: x.useFire }">
         <kbd>G</kbd>
         <span class="cn">{{ x.useFire ? '燃烧弹' : '手雷' }}</span>
-        <span class="cv">{{ x.useFire ? x.fires : x.frags }}</span>
+        <span class="cv">{{ x.throwing ? '投掷' : x.throwCd > 0 ? x.throwCd.toFixed(1) + 's' : x.useFire ? x.fires : x.frags }}</span>
         <small v-if="x.fires > 0" class="alt"><kbd class="mini">B</kbd>切换</small>
+        <i class="cd" :style="{ height: throwFill * 100 + '%' }"></i>
       </div>
       <div class="chip" :class="{ dim: x.shoveCd > 0 }">
         <kbd>V</kbd>

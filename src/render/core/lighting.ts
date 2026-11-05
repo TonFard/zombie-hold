@@ -1,5 +1,11 @@
 import {
+  AdditiveBlending,
+  CanvasTexture,
   Color,
+  InstancedMesh,
+  Matrix4,
+  MeshBasicMaterial,
+  PlaneGeometry,
   DirectionalLight,
   FogExp2,
   HemisphereLight,
@@ -47,6 +53,21 @@ const NIGHT: Look = {
   lamps: 1.0,
 };
 
+/** 光斑贴图：中心亮、边缘柔和衰减的圆 */
+function poolTexture(): CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const ctx = c.getContext('2d') as CanvasRenderingContext2D;
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.35, 'rgba(255,255,255,0.45)');
+  g.addColorStop(0.7, 'rgba(255,255,255,0.12)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  return new CanvasTexture(c);
+}
+
 const _c1 = new Color();
 const _c2 = new Color();
 
@@ -55,12 +76,12 @@ export class Lighting {
   readonly hemi: HemisphereLight;
   readonly fog: FogExp2;
   private readonly lampLights: PointLight[] = [];
-  /** 每盏灯现在挂在哪根路灯上（lampPos 的下标，-1 = 空闲）和它当前的亮度 0–1 */
-  private readonly lampSlot: number[] = [];
-  private readonly lampFade: number[] = [];
   private readonly lampPos: Array<{ x: number; z: number }>;
   private lampStrength = 1;
-  private lampTimer = 0;
+  /** 每根路灯下面一块常亮的暖色光斑（贴地加色面片），不算光照，全部一次画完 */
+  private readonly lampPools: InstancedMesh;
+  private readonly poolMat: MeshBasicMaterial;
+  private poolK = 1;
   /** 0 = 黄昏，1 = 深夜 */
   night = 0;
   /** 夜晚词缀：雾浓度倍率（浓雾）、路灯熄灭（停电） */
@@ -100,9 +121,16 @@ export class Lighting {
       l.castShadow = false;
       scene.add(l);
       this.lampLights.push(l);
-      this.lampSlot.push(-1);
-      this.lampFade.push(0);
     }
+    this.poolMat = new MeshBasicMaterial({ map: poolTexture(), color: 0xffb860, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
+    const pg = new PlaneGeometry(9, 9);
+    pg.rotateX(-Math.PI / 2);
+    this.lampPools = new InstancedMesh(pg, this.poolMat, Math.max(1, map.lamps.length));
+    this.lampPools.count = map.lamps.length;
+    const mtx = new Matrix4();
+    map.lamps.forEach((p, i) => this.lampPools.setMatrixAt(i, mtx.makeTranslation(p.x + 0.4, 0.04, p.z)));
+    this.lampPools.renderOrder = 1;
+    scene.add(this.lampPools);
     this.setNight(0);
   }
 
@@ -151,45 +179,28 @@ export class Lighting {
     const want = this.baseFog * this.fogMult;
     this.fog.density += (want - this.fog.density) * Math.min(1, dt * 1.5);
 
-    // 路灯比灯光多，只有离玩家最近的几根真正打光。之前每 0.2 秒重新挑一次、直接把灯瞬移过去，
-    // 走动时最近的那几根一换，路面上的光就一闪一闪。现在：挑选时留余量（已经亮着的优先保留），
-    // 换下来的灯先淡出，熄灭了才挂到新的路灯上再淡入
-    this.lampTimer -= dt;
-    if (this.lampTimer <= 0) {
-      this.lampTimer = 0.25;
-      const want = this.lampPos
-        .map((p, i) => ({ i, d: (p.x - x) ** 2 + (p.z - z) ** 2 }))
-        // 已经挂着灯的路灯算近 15%，避免两根距离差不多的路灯来回抢
-        .map((e) => (this.lampSlot.includes(e.i) ? { ...e, d: e.d * 0.72 } : e))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, this.lampLights.length)
-        .map((e) => e.i);
-      const free = this.lampSlot.map((s, k) => (s < 0 || !want.includes(s) ? k : -1)).filter((k) => k >= 0);
-      for (const idx of want) {
-        if (this.lampSlot.includes(idx)) continue;
-        // 只用已经熄灭的灯去接新路灯，正在淡出的等下一轮
-        const k = free.find((f) => (this.lampFade[f] as number) <= 0.01);
-        if (k === undefined) break;
-        free.splice(free.indexOf(k), 1);
-        this.lampSlot[k] = idx;
-        const p = this.lampPos[idx] as { x: number; z: number };
-        (this.lampLights[k] as PointLight).position.set(p.x + 0.4, 4.2, p.z);
+    // 路灯比灯光多，只有离玩家最近的几根真正打光。以前按距离挑灯、换灯时淡入淡出，走动中还是能看到光一跳一跳。
+    // 现在每盏灯的亮度按"它比第 N+1 近的那根近多少"连续衰减：一根路灯被挤出前 N 名的那一刻，它的亮度正好是 0，
+    // 换灯没有任何跳变（这个参考距离随玩家位置连续变化）。远处的路灯靠地上的光斑（lampPools）撑着
+    const n = this.lampLights.length;
+    const order = this.lampPos.map((p, i) => ({ i, d: Math.hypot(p.x - x, p.z - z) })).sort((a, b) => a.d - b.d);
+    const ref = order[n]?.d ?? (order[order.length - 1]?.d ?? 0) + 8;
+    const off = this.lampsOff ? 0 : 1;
+    for (let k = 0; k < n; k++) {
+      const l = this.lampLights[k] as PointLight;
+      const e = order[k];
+      if (!e) {
+        l.intensity = 0;
+        continue;
       }
-      for (let k = 0; k < this.lampSlot.length; k++) if ((this.lampSlot[k] as number) >= 0 && !want.includes(this.lampSlot[k] as number)) this.lampSlot[k] = -2 - (this.lampSlot[k] as number);
+      const p = this.lampPos[e.i] as { x: number; z: number };
+      l.position.set(p.x + 0.4, 4.2, p.z);
+      const w = Math.min(1, Math.max(0, (ref - e.d) / 5));
+      l.intensity = 38 * this.lampStrength * w * w * (3 - 2 * w) * off;
     }
-    // 淡入淡出：挂着路灯的灯亮到 1，被换下来的（slot ≤ -2）暗到 0 后释放
-    const k1 = Math.min(1, dt * 2.5);
-    for (let k = 0; k < this.lampLights.length; k++) {
-      const s = this.lampSlot[k] as number;
-      const target = s >= 0 ? 1 : 0;
-      let f = this.lampFade[k] as number;
-      f += (target - f) * k1;
-      if (target === 0 && f < 0.01) {
-        f = 0;
-        if (s <= -2) this.lampSlot[k] = -1;
-      }
-      this.lampFade[k] = f;
-      (this.lampLights[k] as PointLight).intensity = this.lampsOff ? 0 : 38 * this.lampStrength * f;
-    }
+    // 停电时光斑也渐渐熄掉
+    this.poolK += ((this.lampsOff ? 0 : 1) - this.poolK) * Math.min(1, dt * 3);
+    this.poolMat.opacity = 0.38 * this.lampStrength * this.poolK;
+    this.lampPools.visible = this.poolMat.opacity > 0.01;
   }
 }

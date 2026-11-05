@@ -45,7 +45,7 @@ export const CARDS: CardDef[] = [
   { id: 'weakspot', name: '弱点打击', desc: '爆头伤害加成 +30%', rarity: 'rare', max: 3, apply: (g) => { g.mods.head *= 1.3; } },
   { id: 'gunsmith', name: '弹药专家', desc: '所有武器伤害 +10%', rarity: 'rare', max: 4, apply: (g) => { g.mods.damage *= 1.1; } },
   // ---- 史诗 ----
-  { id: 'lifesteal', name: '嗜血', desc: '每次击杀恢复 2 点生命', rarity: 'epic', max: 3, apply: (g) => { g.mods.lifesteal += 2; } },
+  { id: 'lifesteal', name: '嗜血', desc: '每次击杀积攒 1 点生命，每秒最多回 4 点', rarity: 'epic', max: 3, apply: (g) => { g.mods.lifesteal += 1; } },
   { id: 'regen', name: '自动修复', desc: '发电机每秒自动恢复 1.5 点生命', rarity: 'epic', max: 3, apply: (g) => { g.mods.coreRegen += 1.5; } },
   { id: 'berserk', name: '狂热', desc: '暴击率 +15%，移动速度 +5%', rarity: 'epic', max: 2, apply: (g) => { g.mods.crit += 0.15; g.mods.speed *= 1.05; } },
   // ---- 流派牌：改变打法，能互相搭配；只在正式局（extras）里出现 ----

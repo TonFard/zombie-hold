@@ -1,16 +1,19 @@
 import { createAudio, type AudioSystem } from '../audio';
 import { isDifficulty, type Difficulty } from '../game/data/difficulty';
 import type { Quality } from '../game/data/quality';
-import type { WeaponKind } from '../game/data/weapons';
+import { AMMO_LIMITED, WEAPON_ORDER, type WeaponKind } from '../game/data/weapons';
 import { FINAL_NIGHT } from '../game/data/waves';
 import type { ZombieKind } from '../game/data/zombies';
 import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
 import { applyDaily, applyMeta, applyTraining, sidearmOk, widenMeta } from '../game/meta/loadout';
 import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunOutcome } from '../game/meta/progress';
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
+import { isMapId, type MapId } from '../game/world/maps';
+import { chapterUnlocked } from '../game/data/chapters';
+import { buyAmmo, buyBench, cloneMeta, suppliesFor } from '../game/meta/progress';
+import type { BenchLine } from '../game/data/bench';
 import { SAVE_KEY } from '../game/save/schema';
 import { Game, STEP } from '../game/sim';
-import { switchWeapon } from '../game/systems/player';
 import { chooseCard, continueEndless, nightsSurvived, rerollCards, startRun } from '../game/systems/run';
 import { Training } from '../game/systems/training';
 import { GameView } from '../render/core/view';
@@ -59,6 +62,7 @@ function readParams() {
     deploy: isDifficulty(dep) ? dep : null,
     daily: q.get('daily') === '1',
     sidearm: q.get('sidearm'),
+    chapter: q.get('chapter'),
     /** 无头截图用：没有真实鼠标，假装已锁定指针 */
     nolock: q.get('nolock') === '1',
     quality,
@@ -73,7 +77,9 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   const params = readParams();
   // 每日挑战：同一天固定种子
   const daily = params.daily ? dailyFor(todayKey()) : null;
-  const game = new Game(daily ? daily.seed : Date.now() & 0xffff);
+  // 地图：出征时按 ?chapter=，继续时按检查点里记的章节，其余（菜单 / 大厅背景、训练场、每日挑战）用第一章
+  const mapId: MapId = params.resume ? (peekCheckpoint(storage.get(RUN_KEY))?.chapter ?? 'outpost') : params.deploy && isMapId(params.chapter) ? params.chapter : 'outpost';
+  const game = new Game(daily ? daily.seed : Date.now() & 0xffff, mapId);
   const view = new GameView(canvas, game, fxLayer);
   view.onWorldReady = () => {
     ui.worldReady = true;
@@ -257,9 +263,20 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     if (phase === 'day') checkpoint();
   });
 
+  /** 一局打剩下的子弹放回库存 */
+  const returnAmmo = (m: typeof ui.save.meta, g: Game): typeof ui.save.meta => {
+    const next = cloneMeta(m);
+    for (const k of WEAPON_ORDER) {
+      if (k === 'pistol') continue;
+      const left = (g.ammo[k] ?? 0) + (g.loadout[k].owned ? g.loadout[k].mag : 0);
+      if (left > 0) next.ammo[k] = (next.ammo[k] ?? 0) + left;
+    }
+    return next;
+  };
+
   /** 一局结束或放弃：结算勋章、更新统计、删除检查点 */
   const settle = (won: boolean, reason: string): void => {
-    const outcome: RunOutcome = { difficulty: game.config.difficulty, nights: nightsSurvived(game.run), won: won || game.run.night > FINAL_NIGHT, kills: game.stats.kills, headshotKills: game.stats.headshotKills, challenges: game.stats.challenges };
+    const outcome: RunOutcome = { difficulty: game.config.difficulty, nights: nightsSurvived(game.run), won: won || game.run.night > FINAL_NIGHT, kills: game.stats.kills, headshotKills: game.stats.headshotKills, challenges: game.stats.challenges, chapter: game.config.chapter };
     // 无尽模式结束是同一局的第二次结算：出征次数不再加一，击杀只加通关以后的部分
     const again = game.run.medalsPaid > 0;
     const [stats0, isBest] = recordRun(ui.save, { won, night: game.run.night, kills: again ? 0 : game.stats.kills, headshotKills: again ? 0 : game.stats.headshotKills, time: game.run.time });
@@ -270,6 +287,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     let meta = stats.meta;
     if (ranked) {
       [meta] = settleRun(stats.meta, outcome);
+      // 没打完的子弹（备弹 + 弹匣里的）退回大厅库存；无尽模式第二次结算时已经退过了
+      if (game.config.ammo && !again) meta = returnAmmo(meta, game);
       // settleRun 按全额加了勋章，把已经付过的减回去
       meta = { ...meta, medals: meta.medals - (full.total - owed.total), medalsEarned: meta.medalsEarned - (full.total - owed.total) };
       game.run.medalsPaid = full.total;
@@ -294,7 +313,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     save(next);
     storage.remove(RUN_KEY);
     ui.checkpoint = null;
-    ui.result = { won, reason, night: game.run.night, kills: game.stats.kills, headshotKills: game.stats.headshotKills, scrap: game.scrapEarned, time: game.run.time, newBest: isBest, difficulty: outcome.difficulty, medals };
+    ui.result = { supplies: ranked && !again ? suppliesFor(outcome) : 0, won, reason, night: game.run.night, kills: game.stats.kills, headshotKills: game.stats.headshotKills, scrap: game.scrapEarned, time: game.run.time, newBest: isBest, difficulty: outcome.difficulty, medals };
   };
 
   // ---------------- 界面动作 ----------------
@@ -303,7 +322,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     ui.lobbyTab = 'deploy';
     screens.set('lobby');
   };
-  ui.actions.deploy = (d: Difficulty, sidearm: string | null) => reload(`?deploy=${d}${sidearm ? `&sidearm=${sidearm}` : ''}`);
+  ui.actions.deploy = (d: Difficulty, sidearm: string | null, chapter: string) => reload(`?deploy=${d}&chapter=${chapter}${sidearm ? `&sidearm=${sidearm}` : ''}`);
   ui.actions.continueRun = () => reload('?continue=1');
   ui.actions.training = () => reload('?training=1');
   ui.actions.daily = () => reload('?daily=1');
@@ -314,12 +333,26 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       audio.sfx.uiBuy();
     } else audio.sfx.uiDeny();
   };
+  ui.actions.buyAmmo = (k, packs) => {
+    const next = buyAmmo(ui.save.meta, k as WeaponKind, packs);
+    if (next) {
+      save({ ...ui.save, meta: next });
+      audio.sfx.uiBuy();
+    } else audio.sfx.uiDeny();
+  };
+  ui.actions.buyBench = (k, line) => {
+    const next = buyBench(ui.save.meta, k as WeaponKind, line as BenchLine);
+    if (next) {
+      save({ ...ui.save, meta: next });
+      audio.sfx.uiBuy();
+    } else audio.sfx.uiDeny();
+  };
   ui.actions.resume = () => screens.set(screens.playScreen);
   ui.actions.restart = () => {
     // 正式局：重新开始 = 放弃这一局（结算）再用同样的设置出征
     if (ranked) {
       if (game.run.phase !== 'won' && game.run.phase !== 'lost') settle(false, 'abandon');
-      reload(`?deploy=${game.config.difficulty}${ui.save.meta.lastSidearm ? `&sidearm=${ui.save.meta.lastSidearm}` : ''}`);
+      reload(`?deploy=${game.config.difficulty}&chapter=${game.config.chapter}${ui.save.meta.lastSidearm ? `&sidearm=${ui.save.meta.lastSidearm}` : ''}`);
     } else reload('?autostart=1');
   };
   ui.actions.abandon = () => {
@@ -378,7 +411,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       .then(() => window.location.replace(window.location.pathname));
   };
   ui.actions.equip = (k) => {
-    switchWeapon(game, k as WeaponKind);
+    game.takeWeapon(k as WeaponKind);
+    audio.sfx.uiClick();
     refreshHud();
   };
 
@@ -409,7 +443,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     startRun(game);
     enterPlay('play');
   } else if (params.training) {
-    applyTraining(game, bonuses);
+    applyTraining(game, bonuses, ui.save.meta.bench);
     training = new Training(game);
     training.start();
     ui.inTraining = true;
@@ -437,17 +471,23 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   } else if (params.deploy) {
     const d = difficultyUnlocked(ui.save.meta, params.deploy) ? params.deploy : 'normal';
     const side = sidearmOk(bonuses, params.sidearm) ? params.sidearm : null;
-    save({ ...ui.save, meta: { ...ui.save.meta, lastDifficulty: d, lastSidearm: side } });
+    const chapter: MapId = chapterUnlocked(ui.save.meta.chapters, mapId) ? mapId : 'outpost';
+    save({ ...ui.save, meta: { ...ui.save.meta, lastDifficulty: d, lastSidearm: side, lastChapter: chapter } });
     // 开一局新的会覆盖旧检查点：旧的那一局按已经撑过的夜数结算
     const old = peekCheckpoint(storage.get(RUN_KEY));
     if (old && isDifficulty(old.difficulty)) {
       const nights = old.phase === 'cards' ? old.night : old.night - 1;
-      const [meta] = settleRun(ui.save.meta, { difficulty: old.difficulty, nights, won: false, kills: old.kills, headshotKills: old.headshotKills });
+      const [meta] = settleRun(ui.save.meta, { difficulty: old.difficulty, nights, won: false, kills: old.kills, headshotKills: old.headshotKills, chapter: old.chapter });
+      // 旧检查点里的备弹也退回去
+      for (const [k, n] of Object.entries(old.ammo)) meta.ammo[k as WeaponKind] = (meta.ammo[k as WeaponKind] ?? 0) + (n ?? 0);
       save({ ...ui.save, meta });
       storage.remove(RUN_KEY);
     }
     ranked = true;
-    applyMeta(game, bonuses, { difficulty: d, sidearm: side });
+    // 子弹：库存整份带进这一局（结算时把剩下的退回来）；无限弹药时库存不动
+    const stock = { ...ui.save.meta.ammo };
+    if (AMMO_LIMITED) save({ ...ui.save, meta: { ...cloneMeta(ui.save.meta), ammo: {} } });
+    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, ammo: stock });
     startRun(game);
     enterPlay('play');
   } else if (daily) {

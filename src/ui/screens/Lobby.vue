@@ -11,12 +11,16 @@ import CodexPanel from './CodexPanel.vue';
 import CloudPanel from './CloudPanel.vue';
 import { dailyFor, todayKey } from '../../game/meta/achievements';
 import { nightMod } from '../../game/data/modifiers';
+import { CHAPTERS, chapterUnlocked } from '../../game/data/chapters';
+import type { MapId } from '../../game/world/maps';
+import ArmoryBench from './ArmoryBench.vue';
 
 const meta = computed(() => ui.save.meta);
 const bonuses = computed(() => bonusesOf(meta.value));
 
 const tabs: Array<{ id: LobbyTab; name: string }> = [
   { id: 'deploy', name: '出征' },
+  { id: 'bench', name: '武器台' },
   { id: 'armory', name: SECTION_NAME.armory },
   { id: 'engineering', name: SECTION_NAME.engineering },
   { id: 'supply', name: SECTION_NAME.supply },
@@ -29,6 +33,9 @@ const tabs: Array<{ id: LobbyTab; name: string }> = [
 // ---- 出征 ----
 const difficulty = ref<Difficulty>(meta.value.lastDifficulty);
 const sidearm = ref<WeaponKind | null>(meta.value.lastSidearm);
+const chapter = ref<MapId>(meta.value.lastChapter ?? 'outpost');
+const chapterOn = (id: MapId) => chapterUnlocked(meta.value.chapters, id);
+const curChapter = computed(() => CHAPTERS.find((c) => c.id === chapter.value) ?? CHAPTERS[0]!);
 // 组件比存档先创建：每次进大厅时按存档里上次的选择重新填一遍
 watch(
   () => ui.screen === 'lobby',
@@ -38,6 +45,7 @@ watch(
     difficulty.value = difficultyUnlocked(m, m.lastDifficulty) ? m.lastDifficulty : 'normal';
     // 上次带的枪现在带不了（存档被改过 / 换了档）时退回「不带」，免得一个按钮都没选中
     sidearm.value = sidearmOk(bonuses.value, m.lastSidearm) ? m.lastSidearm : null;
+    chapter.value = chapterOn(m.lastChapter) ? m.lastChapter : 'outpost';
   },
   { immediate: true },
 );
@@ -46,7 +54,7 @@ const diffNote = (d: Difficulty): string => {
   const def = DIFFICULTIES[d];
   if (!difficultyUnlocked(meta.value, d)) return `通关${DIFFICULTIES[def.requires as Difficulty].name}后解锁`;
   if (d === 'normal') return '标准难度';
-  return `僵尸生命 ×${def.hp}、数量 ×${def.count}、伤害 ×${def.damage} · 勋章 ×${def.medals}`;
+  return `僵尸生命 ×${def.hp}、数量 ×${def.count}、伤害 ×${def.damage} · 零件 ×${def.scrap} · 勋章 ×${def.medals}`;
 };
 /** 有检查点时出征要二次确认：会放弃上一局 */
 const confirming = ref(false);
@@ -57,7 +65,7 @@ const deploy = (): void => {
   }
   confirming.value = false;
   const side = sidearm.value && sidearms.value.includes(sidearm.value) ? sidearm.value : null;
-  ui.actions.deploy(difficulty.value, side);
+  ui.actions.deploy(difficulty.value, side, chapterOn(chapter.value) ? chapter.value : 'outpost');
 };
 
 // ---- 商店 ----
@@ -123,6 +131,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         <small>{{ rank.next ? `距${rank.next} ${rank.need}` : '最高军衔' }}</small>
       </div>
       <div class="medal" title="勋章：每局结束时按撑过的夜数、首领、击杀、爆头、通关和难度结算"><i>✦</i>{{ meta.medals }}<small>勋章</small></div>
+      <div class="medal sup" title="补给：每局按撑过的夜数和击杀结算，用来买子弹和武器台强化"><i>▣</i>{{ meta.supplies }}<small>补给</small></div>
     </header>
 
     <!-- 出征 -->
@@ -134,6 +143,21 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
       </div>
 
       <div class="card">
+        <h3>章节</h3>
+        <div class="chapters">
+          <button v-for="c in CHAPTERS" :key="c.id" class="chap" :class="{ on: chapter === c.id, done: meta.chapters.includes(c.id) }" :disabled="!chapterOn(c.id)" @click="chapter = c.id">
+            <b>{{ c.name }}</b>
+            <span>{{ chapterOn(c.id) ? c.place : '通关上一章解锁' }}</span>
+            <em v-if="meta.chapters.includes(c.id)">✓ 已通关</em>
+          </button>
+        </div>
+        <p class="story">{{ curChapter.intro }}</p>
+        <div class="tags chap-tags">
+          <span>僵尸生命 ×{{ curChapter.hp }} · 数量 ×{{ curChapter.count }} · 伤害 ×{{ curChapter.damage }}</span>
+          <span>零件 ×{{ curChapter.scrap }} · 勋章 / 补给 ×{{ curChapter.medals }}</span>
+          <span>推荐：{{ curChapter.weapons.map((k) => WEAPONS[k].name).join('、') }}</span>
+        </div>
+
         <h3>难度</h3>
         <div class="diffs">
           <button v-for="d in DIFFICULTY_ORDER" :key="d" class="diff" :class="{ on: difficulty === d }" :disabled="!difficultyUnlocked(meta, d)" @click="difficulty = d">
@@ -168,6 +192,8 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         </div>
       </div>
     </section>
+
+    <ArmoryBench v-else-if="ui.lobbyTab === 'bench'" />
 
     <!-- 军械库 / 工程部 / 补给站 -->
     <section v-else-if="shopSection" class="shop">
@@ -235,13 +261,15 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
 header {
   display: flex;
   align-items: center;
-  gap: 32px;
+  gap: 20px;
   padding-bottom: 16px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
 }
 .brand {
+  flex: none;
+  white-space: nowrap;
   font-size: 22px;
-  letter-spacing: 8px;
+  letter-spacing: 6px;
   color: #e8553f;
   font-weight: 700;
 }
@@ -251,17 +279,22 @@ header {
 }
 nav {
   display: flex;
-  gap: 4px;
+  gap: 2px;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 nav button {
-  padding: 8px 18px;
+  flex: none;
+  white-space: nowrap;
+  padding: 8px 10px;
   background: transparent;
   border: 1px solid transparent;
   color: #8f9aa6;
   font: inherit;
   font-size: 14px;
-  letter-spacing: 4px;
+  letter-spacing: 2px;
   cursor: pointer;
 }
 nav button:hover {
@@ -273,6 +306,8 @@ nav button.on {
   background: rgba(240, 184, 58, 0.07);
 }
 .medal {
+  flex: none;
+  white-space: nowrap;
   font-size: 22px;
   color: #f0b83a;
 }
@@ -288,6 +323,7 @@ nav button.on {
   letter-spacing: 3px;
 }
 .rank {
+  flex: none;
   display: grid;
   grid-template-columns: auto 90px;
   column-gap: 10px;
@@ -348,6 +384,65 @@ h3 {
 .cont p {
   margin-bottom: 12px;
   color: #c8ced4;
+}
+.chapters {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.chap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 74px;
+  padding: 12px 14px;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #d8dee4;
+  font: inherit;
+  cursor: pointer;
+}
+.chap b {
+  font-size: 14px;
+  letter-spacing: 2px;
+}
+.chap span {
+  font-size: 12px;
+  color: #8f9aa6;
+}
+.chap em {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  font-style: normal;
+  font-size: 11px;
+  color: #7ad04a;
+}
+.chap.on {
+  border-color: #f0b83a;
+  background: rgba(240, 184, 58, 0.08);
+}
+.chap:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.story {
+  margin-bottom: 10px;
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.7;
+  color: #c8bea8;
+  border-left: 2px solid #d9c9a0;
+  background: rgba(217, 201, 160, 0.05);
+}
+.chap-tags {
+  margin-bottom: 20px;
+}
+.medal.sup {
+  color: #6fd0e8;
 }
 .diffs {
   display: grid;
@@ -481,6 +576,8 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* 升级后文字长短会变：卡片高度固定下来，免得整排跟着跳 */
+  min-height: 176px;
   padding: 14px 16px;
   background: rgba(10, 14, 18, 0.8);
   border: 1px solid rgba(255, 255, 255, 0.1);
@@ -521,10 +618,12 @@ h3 {
   color: #aeb8c2;
   line-height: 1.5;
   flex: 1;
+  min-height: 3em;
 }
 .buy {
   align-self: flex-start;
-  margin-top: 4px;
+  margin-top: auto;
+  white-space: nowrap;
   padding: 6px 16px;
   background: transparent;
   border: 1px solid #f0b83a;
@@ -543,6 +642,8 @@ h3 {
   cursor: not-allowed;
 }
 .done {
+  margin-top: auto;
+  line-height: 33px;
   font-size: 12px;
   letter-spacing: 4px;
   color: #6fd0e8;
@@ -578,5 +679,19 @@ h3 {
 }
 footer {
   padding-top: 14px;
+}
+@media (max-width: 1440px) {
+  .brand span {
+    display: none;
+  }
+  .rank {
+    grid-template-columns: auto 60px;
+  }
+  .rank small {
+    display: none;
+  }
+  .medal {
+    font-size: 18px;
+  }
 }
 </style>
