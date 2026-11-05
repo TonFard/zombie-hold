@@ -116,7 +116,7 @@ console.log('\n== 手枪满级 vs 其他武器升 1 级：实测对比 ==');
 console.log('\n== 穿透 ==');
 {
   const g = fresh();
-  setWeapon(g, 'rifle', 5); // 穿透 2，伤害 30
+  setWeapon(g, 'rifle', 3); // 穿透 2，伤害 30
   const zs = [2.5, 3.6, 4.7, 5.8].map((d) => g.spawnZombie('walker', PX + d, PZ, 1) as Zombie);
   g.input.aimX = PX + 10;
   g.input.aimZ = PZ;

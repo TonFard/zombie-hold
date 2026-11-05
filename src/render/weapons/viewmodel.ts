@@ -153,6 +153,8 @@ export class ViewModel {
   private readonly gripR = new Vector3();
   private readonly gripL = new Vector3();
   private readonly tmp = new Vector3();
+  /** TACZ 枪的肩膀位置：每帧按手臂骨骼算（程序枪用上面固定的 shoulderR / shoulderL） */
+  private readonly taczSh = new Vector3();
 
   private t = 0;
   private bobT = 0;
@@ -300,11 +302,14 @@ export class ViewModel {
       this.scene.add(rig.root);
       rig.flashMount.add(this.flash);
       this.flash.position.set(0, 0, 0);
-      this.armR.root.visible = this.armL.root.visible = false;
+      // 双臂用程序模型，跟着 TACZ 动画里的手臂骨骼走（见 updateTacz）
+      this.armR.root.visible = this.armL.root.visible = true;
       if (newKind) rig.draw();
       return;
     }
     this.armR.root.visible = this.armL.root.visible = true;
+    this.armR.root.scale.setScalar(1);
+    this.armL.root.scale.setScalar(1);
     const w = buildWeapon(kind, tier);
     w.group.traverse((o) => {
       o.castShadow = false;
@@ -573,6 +578,28 @@ export class ViewModel {
       pre: this.pre,
     });
     this.cameraAnim.copy(rig.cameraAnim);
+
+    // 程序手臂：手在 TACZ 手臂骨骼的手掌端，肩膀沿手臂方向往后延伸（镜头外）。
+    // TACZ 的整套视角模型缩小了 TACZ_SCALE 倍（1 格 = 0.2），手臂在同一比例下解 IK，再整体缩小
+    rig.root.updateMatrixWorld(true);
+    const k = 1 / TACZ_SCALE;
+    for (const left of [false, true]) {
+      const arm = left ? this.armL : this.armR;
+      const grip = left ? this.gripL : this.gripR;
+      if (!rig.handEnds(left, grip, this.tmp)) {
+        arm.root.visible = false;
+        continue;
+      }
+      arm.root.visible = true;
+      arm.root.scale.setScalar(TACZ_SCALE);
+      grip.multiplyScalar(k);
+      this.tmp.multiplyScalar(k);
+      const sh = this.taczSh;
+      sh.subVectors(this.tmp, grip).normalize().multiplyScalar(0.2).add(this.tmp);
+      sh.x += left ? -0.1 : 0.1;
+      sh.y -= 0.15;
+      arm.solve(sh, grip, left ? this.poleL : this.poleR);
+    }
 
     if (this.flashT > 0) {
       this.flashT -= dt;

@@ -1,5 +1,6 @@
 import {
   ACESFilmicToneMapping,
+  type Group,
   PCFShadowMap,
   PMREMGenerator,
   Scene,
@@ -8,6 +9,7 @@ import {
 } from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import type { Quality } from '../../game/data/quality';
+import { GRID_H, GRID_W } from '../../game/world/grid';
 import type { Game } from '../../game/sim';
 import { MELEE_TIME } from '../../game/systems/player';
 import { Actors } from '../actors/actors';
@@ -22,7 +24,7 @@ import { PostFX } from './postfx';
 import { StructureViews } from '../world/structureViews';
 import { ExtrasView } from '../world/extrasView';
 import { buildRealProps, loadPropsManifest, type RealProps } from '../world/realProps';
-import { buildRealSurfaces, realWallStyles, type RealSurfaces } from '../world/realSurfaces';
+import { buildRealSurfaces, hasStructs, realWallStyles, STRUCT_KINDS, type RealSurfaces } from '../world/realSurfaces';
 
 /** 把游戏状态画出来。逻辑层不依赖这里 */
 export class GameView {
@@ -45,6 +47,9 @@ export class GameView {
   private disposed = false;
   /** 写实资源已经换上（截图脚本用来判断加载完成） */
   realReady = false;
+  /** 当前用的屋顶（每栋房子一个）：玩家在哪栋房子里，那栋的屋面就藏起来 */
+  private roofs: Group[] = [];
+  private insideHouse = -1;
   quality: Quality = 'high';
   private time = 0;
   /** 昼夜过渡：当前值朝目标值缓慢靠近 */
@@ -99,11 +104,18 @@ export class GameView {
       }
       this.realProps = real;
       this.realSurfaces = surf;
-      this.map.rebuild({ skip: real.replaced, trimWalls: realWallStyles(m), cliffs: !real.cliffs });
+      const skip = new Set(real.replaced);
+      if (hasStructs(m)) for (const k of STRUCT_KINDS) skip.add(k);
+      this.map.rebuild({ skip, keep: new Set(real.fallback), trimWalls: realWallStyles(m), cliffs: !real.cliffs });
       this.scene.add(real.group, surf.walls);
       if (surf.ground) {
         this.map.hideGround();
         this.scene.add(surf.ground);
+      }
+      if (surf.roofs.some((r) => r.children.length)) {
+        for (const r of this.map.roofs) r.visible = false;
+        this.roofs = surf.roofs;
+        for (const r of surf.roofs) this.scene.add(r);
       }
       if (real.envMap) this.scene.environment = real.envMap;
       this.realReady = true;
@@ -237,10 +249,34 @@ export class GameView {
     // 瞄准镜完全举起时，镜框遮罩由界面层画，枪模藏起来
     const scoped = fps && adsAt(game.player.weapon, game.player.tier).scope && game.player.ads > 0.85;
     this.post.setOverlayVisible(fps && this.viewmodel.visible && !scoped);
+    this.updateRoofs();
     this.lighting.follow(this.rig.focus.x, this.rig.focus.z, dt);
     this.rig.camera.updateMatrixWorld();
     this.sky.update(this.rig.camera, this.lighting);
     this.post.render(dt);
+  }
+
+  /**
+   * 第一人称：玩家进了哪栋房子，那栋的屋面就不投影（不然屋里一片黑，阳光照不进窗户以外的地方也挺真实，
+   * 但窗户进光靠的就是屋面不挡）——这里简单处理：屋里时屋面不画，天花板留着挡天空。
+   * 俯视镜头（菜单、大厅）：所有屋面都画。
+   */
+  private updateRoofs(): void {
+    const roofs = this.roofs.length ? this.roofs : this.map.roofs;
+    const p = this.game.player;
+    const cx = Math.floor(p.x + GRID_W / 2);
+    const cy = Math.floor(p.z + GRID_H / 2);
+    const fps = this.rig.mode === 'fps';
+    let inside = -1;
+    this.game.map.houses.forEach((h, i) => {
+      if (cx > h.x0 && cx < h.x1 - 1 && cy > h.y0 && cy < h.y1 - 1) inside = i;
+    });
+    if (inside === this.insideHouse && fps) return;
+    this.insideHouse = inside;
+    roofs.forEach((r, i) => {
+      const top = r.getObjectByName('roof:top');
+      if (top) top.visible = !fps || i !== inside;
+    });
   }
 
   dispose(): void {

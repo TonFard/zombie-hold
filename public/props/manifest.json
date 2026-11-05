@@ -16,31 +16,31 @@
     },
     "wooden_crate_01": {
       "file": "wooden_crate_01/wooden_crate_01.gltf",
-      "tris": 6576
+      "tris": 1496
     },
     "plastic_container": {
       "file": "plastic_container/plastic_container.gltf",
-      "tris": 4070
+      "tris": 1500
     },
     "wooden_military_crate": {
       "file": "wooden_military_crate/wooden_military_crate.gltf",
-      "tris": 7996
+      "tris": 2499
     },
     "concrete_road_barrier": {
       "file": "concrete_road_barrier/concrete_road_barrier.gltf",
-      "tris": 6000
+      "tris": 2500
     },
     "worn_metal_rack": {
       "file": "worn_metal_rack/worn_metal_rack.gltf",
-      "tris": 6372
+      "tris": 3036
     },
     "street_lamp_01": {
       "file": "street_lamp_01/street_lamp_01.gltf",
-      "tris": 5148
+      "tris": 3041
     },
     "cardboard_box_01": {
       "file": "cardboard_box_01/cardboard_box_01.gltf",
-      "tris": 2500
+      "tris": 800
     },
     "metal_jerrycan": {
       "file": "metal_jerrycan/metal_jerrycan.gltf",
@@ -60,15 +60,15 @@
     },
     "tree_stump_01": {
       "file": "tree_stump_01/tree_stump_01.gltf",
-      "tris": 4996
+      "tris": 1998
     },
     "rock_face_02": {
       "file": "rock_face_02/rock_face_02.gltf",
-      "tris": 7998
+      "tris": 2997
     },
     "rock_face_01": {
       "file": "rock_face_01/rock_face_01.gltf",
-      "tris": 7998
+      "tris": 3000
     },
     "portable_generator": {
       "file": "portable_generator/portable_generator.gltf",
@@ -92,7 +92,7 @@
     },
     "car_sedan2": {
       "file": "car_sedan2/car_sedan2.gltf",
-      "tris": 10079
+      "tris": 7008
     },
     "car_crashed": {
       "file": "car_crashed/car_crashed.gltf",
@@ -120,11 +120,11 @@
     },
     "tree_dead": {
       "file": "tree_dead/tree_dead.gltf",
-      "tris": 3252
+      "tris": 2500
     },
     "tree_winter": {
       "file": "tree_winter/tree_winter.gltf",
-      "tris": 9998
+      "tris": 4998
     },
     "sandbags": {
       "file": "sandbags/sandbags.gltf",
@@ -136,7 +136,51 @@
     },
     "pallets": {
       "file": "pallets/pallets.gltf",
-      "tris": 7996
+      "tris": 3996
+    },
+    "old_bed_frame": {
+      "file": "old_bed_frame/old_bed_frame.gltf",
+      "tris": 3974
+    },
+    "sofa_02": {
+      "file": "sofa_02/sofa_02.gltf",
+      "tris": 2728
+    },
+    "painted_wooden_table": {
+      "file": "painted_wooden_table/painted_wooden_table.gltf",
+      "tris": 600
+    },
+    "painted_wooden_chair_01": {
+      "file": "painted_wooden_chair_01/painted_wooden_chair_01.gltf",
+      "tris": 724
+    },
+    "modern_wooden_cabinet": {
+      "file": "modern_wooden_cabinet/modern_wooden_cabinet.gltf",
+      "tris": 10988
+    },
+    "drawer_cabinet": {
+      "file": "drawer_cabinet/drawer_cabinet.gltf",
+      "tris": 4544
+    },
+    "television_02": {
+      "file": "television_02/television_02.gltf",
+      "tris": 2310
+    },
+    "metal_office_desk": {
+      "file": "metal_office_desk/metal_office_desk.gltf",
+      "tris": 6898
+    },
+    "painted_wooden_cabinet_02": {
+      "file": "painted_wooden_cabinet_02/painted_wooden_cabinet_02.gltf",
+      "tris": 966
+    },
+    "wooden_bookshelf_worn": {
+      "file": "wooden_bookshelf_worn/wooden_bookshelf_worn.gltf",
+      "tris": 4000
+    },
+    "electric_stove": {
+      "file": "electric_stove/electric_stove.gltf",
+      "tris": 3785
     }
   },
   "textures": {
@@ -151,7 +195,8 @@
     "wall_plaster": "tex/wall_plaster/",
     "wall_metal": "tex/wall_metal/",
     "trim_metal": "tex/trim_metal/",
-    "trim_paint": "tex/trim_paint/"
+    "roof": "tex/roof/",
+    "floor_tile": "tex/floor_tile/"
   },
   "credits": {
     "Barrel_01": {
@@ -435,6 +480,84 @@
       "author": "Poly Haven",
       "license": "CC0",
       "url": "https://polyhaven.com/a/painted_concrete"
+    },
+    "tex:roof": {
+      "name": "bitumen",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bitumen"
+    },
+    "tex:floor_tile": {
+      "name": "worn_tile_floor",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/worn_tile_floor"
+    },
+    "old_bed_frame": {
+      "name": "Old Bed Frame",
+      "author": "Luca B",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_bed_frame"
+    },
+    "sofa_02": {
+      "name": "Sofa 02",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/sofa_02"
+    },
+    "painted_wooden_table": {
+      "name": "Painted Wooden Table",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_table"
+    },
+    "painted_wooden_chair_01": {
+      "name": "Painted Wooden Chair 01",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_chair_01"
+    },
+    "modern_wooden_cabinet": {
+      "name": "Modern Wooden Cabinet",
+      "author": "Patrik Pangerl",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/modern_wooden_cabinet"
+    },
+    "drawer_cabinet": {
+      "name": "Drawer Cabinet",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/drawer_cabinet"
+    },
+    "television_02": {
+      "name": "Television 02",
+      "author": "Benny Weimer",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/television_02"
+    },
+    "metal_office_desk": {
+      "name": "Metal Office Desk",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_office_desk"
+    },
+    "painted_wooden_cabinet_02": {
+      "name": "Painted Wooden Cabinet 02",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_cabinet_02"
+    },
+    "wooden_bookshelf_worn": {
+      "name": "Wooden Bookshelf Worn",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_bookshelf_worn"
+    },
+    "electric_stove": {
+      "name": "Electric Stove",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/electric_stove"
     }
   }
 }

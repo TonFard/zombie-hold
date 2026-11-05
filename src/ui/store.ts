@@ -57,6 +57,8 @@ export const ui = reactive({
   dropHint: true,
   /** 这个黎明还能重抽几次 */
   rerolls: 0,
+  /** 云存档：登录的用户名（空串 = 没登录）、最近一次同步时间、正在请求、最近的错误 */
+  cloud: { name: '', syncedAt: 0, busy: false, error: '' },
   /** 屏幕角落的短提示（自动保存、坏档……）；id 自增让组件重播动画 */
   toast: { text: '', warn: false, id: 0 },
   /** 游戏通过它把"开始 / 重新开始 / 回主菜单 / 继续"等动作交给应用层 */
@@ -82,6 +84,11 @@ export const ui = reactive({
     setVolume: (_v: number) => {},
     setQuality: (_q: Quality) => {},
     setSensitivity: (_s: number) => {},
+    /** 云存档：注册 / 登录（成功后自动同步一次）、上传、下载覆盖本地、退出登录 */
+    cloudSignIn: (_name: string, _password: string, _register: boolean) => {},
+    cloudUpload: () => {},
+    cloudDownload: () => {},
+    cloudSignOut: () => {},
   },
 });
 

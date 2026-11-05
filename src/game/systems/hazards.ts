@@ -188,7 +188,7 @@ export function shove(g: Game): number {
   const h = g.hz;
   const p = g.player;
   if (!p.alive || h.shoveCd > 0) return 0;
-  h.shoveCd = SHOVE.cd;
+  h.shoveCd = SHOVE.cd * g.mods.shoveCd;
   const fx = Math.sin(p.yaw);
   const fz = Math.cos(p.yaw);
   let n = 0;

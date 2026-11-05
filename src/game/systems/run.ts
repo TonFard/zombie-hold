@@ -62,6 +62,9 @@ function setPhase(g: Game, phase: Phase): void {
 export const RANKED_DENSITY = { count: 1.4, batch: 1.5, interval: 0.8 };
 
 /** 开始新的一局：第 1 天 */
+/** 受伤后多久开始自动回血（秒） */
+export const REGEN_DELAY = 4;
+
 export function startRun(g: Game): void {
   g.run.night = 1;
   g.run.time = 0;
@@ -151,7 +154,7 @@ function startDay(g: Game, first = false): void {
   let sub = '搜刮零件、布置防线、升级武器。按 Enter 可提前开始夜晚';
   if (g.config.extras) {
     // 手雷补到 2 颗；预告今晚
-    g.hz.frags = Math.max(g.hz.frags, GRENADE.max);
+    g.hz.frags = Math.max(g.hz.frags, GRENADE.max + g.mods.extraFrags);
     g.hz.fires = Math.max(g.hz.fires, GRENADE.fireMax);
     planNight(g);
     planAirdrop(g);
@@ -338,6 +341,10 @@ export function updateRun(g: Game, dt: number): void {
   r.time += dt;
 
   if (g.mods.coreRegen > 0 && g.core.hp > 0) g.core.hp = Math.min(g.core.maxHp, g.core.hp + g.mods.coreRegen * dt);
+  // 玩家脱战回血（局外「急救训练」）：4 秒没受伤后开始
+  g.hurtT += dt;
+  const p = g.player;
+  if (g.mods.regen > 0 && p.alive && g.hurtT >= REGEN_DELAY && p.hp < p.maxHp) p.hp = Math.min(p.maxHp, p.hp + g.mods.regen * dt);
   updatePickups(g);
 
   if (g.input.confirm) {

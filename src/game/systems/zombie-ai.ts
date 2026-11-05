@@ -57,6 +57,20 @@ function think(g: Game, z: Zombie): void {
 
   const ci = grid.indexAt(z.x, z.z);
 
+  // 玩家躲进了大体型单位挤不进去的地方（屋里，门只有 2 米宽）：别在门口干耗，改去打发电机。
+  // 要放在视线捷径前面——隔着门看得见玩家，直线冲过去就会卡在门框上
+  if (z.goal === 'player' && z.def.large) {
+    if (!g.nav.largeReach('player', ci)) {
+      z.goal = 'core';
+      if (rectDist(z.x, z.z, cr.x0, cr.z0, cr.x1, cr.z1) <= z.radius + REACH) {
+        z.attackTarget = 'core';
+        z.aimX = core.x;
+        z.aimZ = core.z;
+        return;
+      }
+    }
+  }
+
   // 视线捷径：看得见目标就直接走过去，不绕格子
   if (z.noSepTimer <= 0) {
     if (z.goal === 'player') {
@@ -79,12 +93,12 @@ function think(g: Game, z: Zombie): void {
     }
   }
 
-  const goalX = z.goal === 'player' ? player.x : core.x;
-  const goalZ = z.goal === 'player' ? player.z : core.z;
   const field = g.nav.field(z.goal, z.def.large, ci);
   // 大体型单位贴墙站在被膨胀的格子里时，从相邻的可通行格开始走
   const borrowed = g.nav.prefix;
   const startCell = borrowed >= 0 ? borrowed : ci;
+  const goalX = z.goal === 'player' ? player.x : core.x;
+  const goalZ = z.goal === 'player' ? player.z : core.z;
   if ((field.dist[startCell] as number) >= INF) {
     // 站在了到不了目标的格子上（被挤进死角）：直线朝目标走，让碰撞把它带出来
     g.stats.unreachableTicks++;

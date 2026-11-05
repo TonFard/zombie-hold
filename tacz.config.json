@@ -1,6 +1,6 @@
 {
   "$comment": "TACZ 枪械导入配置。改完运行 npm run tacz:import。enabled=false 时游戏照旧用程序模型，URL 加 ?tacz=1 可以单独预览",
-  "enabled": true,
+  "enabled": false,
   "packs": {
     "tacz": ".vendor/tacz/src/main/resources/assets/tacz/custom/tacz_default_gun"
   },

@@ -524,6 +524,27 @@ export class TaczRig {
   }
 
   /** 枪口在视角模型场景里的位置 */
+  /**
+   * 手臂占位方块（lefthand_pos / righthand_pos，4×12×4 像素）两端在视角相机空间的位置：
+   * hand = 手掌那头（方块 y 最小的一端），elbow = 另一头。视角模型用它们驱动程序手臂的 IK，
+   * 方块本身不画（原版是 MC 的方块手臂，和写实场景不搭）。
+   */
+  handEnds(left: boolean, hand: Vector3, elbow: Vector3): boolean {
+    const o = this.obj(left ? 'lefthand_pos' : 'righthand_pos');
+    const mesh = o?.children[0] as import('three').Mesh | undefined;
+    if (!o || !mesh) return false;
+    mesh.updateWorldMatrix(true, false);
+    const g = mesh.geometry;
+    if (!g.boundingBox) g.computeBoundingBox();
+    const b = g.boundingBox as import('three').Box3;
+    const cx = (b.min.x + b.max.x) / 2;
+    const cz = (b.min.z + b.max.z) / 2;
+    // 手掌那头往里收 2 像素：握点在手掌中间，不在方块顶端
+    hand.set(cx, b.min.y + 2 / 16, cz).applyMatrix4(mesh.matrixWorld);
+    elbow.set(cx, b.max.y, cz).applyMatrix4(mesh.matrixWorld);
+    return true;
+  }
+
   muzzleLocal(out: Vector3): Vector3 {
     this.root.updateMatrixWorld(true);
     if (this.muzzle) return this.muzzle.getWorldPosition(out);

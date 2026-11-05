@@ -31,17 +31,39 @@ export function generator(b: Builder, p: Prop): void {
   // 吊环、护栏
   for (const sx of [-1, 1]) b.torus(0.12, 0.02, 6, 10, { x: sx * 0.6, y: 1.36, rx: Math.PI / 2 }, metal(0x8a9094, { ao: 0 }));
   b.pop();
+  generatorCage(b, p);
 }
 
-/** 发电机顶部的能量核心：单独成网格，渲染时可以脉动 */
+/** 发电机顶部的能量核心：单独成网格，渲染时可以脉动。底座在 1.3 米（写实柴油机组的顶面） */
 export function buildGeneratorCore(cx: number, cz: number): Builder {
   const b = new Builder();
-  b.push({ x: cx, z: cz });
-  b.cyl(0.26, 0.26, 0.5, 10, { x: -0.1, y: 1.34 }, glow(0x66e0ff, 2.6));
-  b.cyl(0.32, 0.32, 0.05, 10, { x: -0.1, y: 1.3 }, glow(0x2a90b0, 1.6));
-  b.cyl(0.32, 0.32, 0.05, 10, { x: -0.1, y: 1.84 }, glow(0x2a90b0, 1.6));
+  b.push({ x: cx, z: cz, y: 1.3 });
+  // 发光的电芯（三根竖管）+ 上下两道光环
+  for (const [x, z] of [[-0.14, 0], [0.1, 0.12], [0.1, -0.12]] as const) b.cyl(0.075, 0.075, 0.46, 10, { x, z, y: 0.07 }, glow(0x66e0ff, 2.6));
+  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.08 }, glow(0x2a90b0, 1.4));
+  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.52 }, glow(0x2a90b0, 1.4));
   b.pop();
   return b;
+}
+
+/** 能量核心的外壳（不发光的部分）：底座、护笼立柱、顶盖、线缆，合并进静态网格 */
+export function generatorCage(b: Builder, p: Prop): void {
+  const cx = (p.x0 + p.x1) / 2 - HALF_W;
+  const cz = (p.y0 + p.y1) / 2 - HALF_H;
+  const steel = metal(0x3a4046, { jitter: 0.08, ao: 0.2 });
+  const dark = metal(0x1e2226, { jitter: 0.05, ao: 0 });
+  b.push({ x: cx, z: cz, y: 1.3 });
+  b.cyl(0.34, 0.36, 0.08, 16, {}, steel);
+  b.cyl(0.32, 0.32, 0.06, 16, { y: 0.6 }, steel);
+  b.cyl(0.12, 0.2, 0.08, 12, { y: 0.66 }, dark);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2;
+    b.box(0.035, 0.52, 0.035, { x: Math.cos(a) * 0.3, z: Math.sin(a) * 0.3, y: 0.08 }, steel);
+  }
+  // 线缆从底座垂到机组侧面
+  b.rod([0.3, 0.04, 0.1], [0.55, -0.5, 0.15], 0.025, dark, 6);
+  b.rod([-0.3, 0.04, -0.1], [-0.6, -0.6, -0.2], 0.025, dark, 6);
+  b.pop();
 }
 
 export function workbench(b: Builder, p: Prop): void {

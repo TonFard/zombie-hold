@@ -1,5 +1,6 @@
 // 用本机 Edge 无头截图并收集浏览器控制台日志。
 // 用法：node scripts/tools/shots.mjs --url http://127.0.0.1:5173 --out .logs/shots/a.png [--wait 2500] [--eval "window.__dbg?.foo()"] [--w 1280] [--h 720]
+// --gpu：用本机显卡（ANGLE D3D11）而不是软件渲染，测帧率用
 // 多步骤：--steps 文件.json，格式 [{"wait":500},{"eval":"..."},{"key":"KeyW","hold":600},{"click":[x,y]},{"shot":"name"}]
 import fs from 'node:fs';
 import path from 'node:path';
@@ -32,8 +33,7 @@ const browser = await puppeteer.launch({
   headless: true,
   args: [
     `--window-size=${w},${h}`,
-    '--use-angle=swiftshader',
-    '--enable-unsafe-swiftshader',
+    ...(args.gpu ? ['--use-angle=d3d11', '--enable-gpu', '--disable-frame-rate-limit', '--disable-gpu-vsync'] : ['--use-angle=swiftshader', '--enable-unsafe-swiftshader']),
     '--ignore-gpu-blocklist',
     '--enable-webgl',
     '--no-sandbox',

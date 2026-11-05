@@ -115,7 +115,7 @@ function readAccessor(gltf, bin, i) {
 }
 
 /** 按比例减面，新索引追加到 bin 末尾 */
-function simplify(gltf, bin, target) {
+function simplify(gltf, bin, target, maxErr = 0.02) {
   const prims = gltf.meshes.flatMap((m) => m.primitives).filter((p) => p.indices != null && (p.mode ?? 4) === 4);
   const total = prims.reduce((a, p) => a + gltf.accessors[p.indices].count / 3, 0);
   if (total <= target) return { bin, before: total };
@@ -126,7 +126,7 @@ function simplify(gltf, bin, target) {
     const idx = readAccessor(gltf, bin, p.indices);
     const pos = readAccessor(gltf, bin, p.attributes.POSITION);
     const want = Math.max(36, Math.floor((idx.length * ratio) / 3) * 3);
-    const [out] = MeshoptSimplifier.simplify(new Uint32Array(idx), pos, 3, want, 0.02, ['LockBorder']);
+    const [out] = MeshoptSimplifier.simplify(new Uint32Array(idx), pos, 3, want, maxErr, maxErr > 0.02 ? [] : ['LockBorder']);
     if (out.length < 3) continue;
     const pad = (4 - (len % 4)) % 4;
     if (pad) chunks.push(new Uint8Array(pad));
@@ -263,7 +263,7 @@ function writeModel(id, gltf, bin, srcDir, opt) {
   fs.rmSync(tmp, { recursive: true, force: true });
 
   let before = triCount(gltf);
-  if (opt.tris) ({ bin, before } = simplify(gltf, bin, opt.tris));
+  if (opt.tris) ({ bin, before } = simplify(gltf, bin, opt.tris, opt.error));
   bin = compact(gltf, bin);
   gltf.buffers[0].uri = `${id}.bin`;
   fs.writeFileSync(path.join(dst, `${id}.gltf`), JSON.stringify(gltf));

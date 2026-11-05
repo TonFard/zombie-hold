@@ -61,7 +61,7 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
       </div>
 
       <div class="foot">
-        <span>最多随身带两把枪，滚轮或 1 / 2 切换；买第三把会换掉手里那把（等级清零）。</span>
+        <span>最多随身带两把枪，滚轮或枪前面的编号键切换；买第三把会换掉手里那把（等级清零）。</span>
         <button class="close" @click="ui.actions.closeBench()">关闭（E / Esc）</button>
       </div>
     </div>

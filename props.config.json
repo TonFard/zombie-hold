@@ -8,20 +8,33 @@
     "Barrel_01": {},
     "Barrel_02": {},
     "barrel_03": {},
-    "wooden_crate_01": {},
-    "plastic_container": {},
+    "wooden_crate_01": {
+      "tris": 1500,
+      "error": 0.05
+    },
+    "plastic_container": {
+      "tris": 1500,
+      "error": 0.05
+    },
     "wooden_military_crate": {
-      "tris": 8000
+      "tris": 2500,
+      "error": 0.05
     },
     "concrete_road_barrier": {
-      "tris": 6000
+      "tris": 2500,
+      "error": 0.05
     },
-    "worn_metal_rack": {},
+    "worn_metal_rack": {
+      "tris": 2500,
+      "error": 0.05
+    },
     "street_lamp_01": {
-      "tris": 5000
+      "tris": 3000,
+      "error": 0.05
     },
     "cardboard_box_01": {
-      "tris": 2500
+      "tris": 800,
+      "error": 0.05
     },
     "metal_jerrycan": {
       "tris": 3000
@@ -32,13 +45,16 @@
       "tris": 8000
     },
     "tree_stump_01": {
-      "tris": 5000
+      "tris": 2000,
+      "error": 0.05
     },
     "rock_face_02": {
-      "tris": 8000
+      "tris": 3000,
+      "error": 0.08
     },
     "rock_face_01": {
-      "tris": 8000
+      "tris": 3000,
+      "error": 0.08
     },
     "portable_generator": {
       "tris": 6000
@@ -58,7 +74,8 @@
     "car_sedan2": {
       "source": "sketchfab",
       "uid": "db2df46c49f9441286c84c66208ef7ac",
-      "tris": 10000
+      "tris": 7000,
+      "error": 0.05
     },
     "car_crashed": {
       "source": "sketchfab",
@@ -92,12 +109,15 @@
     },
     "tree_dead": {
       "source": "sketchfab",
-      "uid": "33ccce6111604656a4b5709483670ec3"
+      "uid": "33ccce6111604656a4b5709483670ec3",
+      "tris": 2500,
+      "error": 0.05
     },
     "tree_winter": {
       "source": "sketchfab",
       "uid": "ec2a099dbb4e496e9fb85ee4ee68eff0",
-      "tris": 10000
+      "tris": 5000,
+      "error": 0.05
     },
     "sandbags": {
       "source": "sketchfab",
@@ -111,8 +131,34 @@
     "pallets": {
       "source": "sketchfab",
       "uid": "2a4411c6956f4adeb7877f03436bb742",
-      "tris": 8000
-    }
+      "tris": 4000,
+      "error": 0.05
+    },
+    "old_bed_frame": {
+      "tris": 4000,
+      "error": 0.05
+    },
+    "sofa_02": {},
+    "painted_wooden_table": {},
+    "painted_wooden_chair_01": {},
+    "modern_wooden_cabinet": {
+      "tris": 4000,
+      "error": 0.1
+    },
+    "drawer_cabinet": {
+      "tris": 4000,
+      "error": 0.05
+    },
+    "wooden_bookshelf_worn": {
+      "tris": 4000
+    },
+    "television_02": {},
+    "electric_stove": {
+      "tris": 3000,
+      "error": 0.05
+    },
+    "metal_office_desk": {},
+    "painted_wooden_cabinet_02": {}
   },
   "textures": {
     "asphalt": "asphalt_02",
@@ -126,6 +172,7 @@
     "wall_plaster": "painted_plaster_wall",
     "wall_metal": "corrugated_iron_02",
     "trim_metal": "rusty_metal_sheet",
-    "trim_paint": "painted_concrete"
+    "roof": "bitumen",
+    "floor_tile": "worn_tile_floor"
   }
 }

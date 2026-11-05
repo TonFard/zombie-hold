@@ -125,6 +125,7 @@ export function shotgun(k: GunKit): GunInfo {
     sight: new Vector3(0, SIGHT_Y, 0.03), // 瞄准点在机匣后部，眼睛在枪托上方，整条肋和准星珠都露出来
     eyeRelief: 0.2,
     slideTravel: 0.08,
-    action: 'pump',
+    // 全自动（AA-12 式）：没有泵动，开火只有枪机后坐
+    action: 'auto',
   };
 }

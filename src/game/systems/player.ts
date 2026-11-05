@@ -75,8 +75,9 @@ export function updatePlayer(g: Game, dt: number): void {
 
   // ---- 切枪 ----
   if (inp.select > 0) {
-    // 正式局：数字键是第几个随身枪位（1 / 2）；沙盒照旧是第几把武器
-    const k = g.config.extras ? g.carried()[inp.select - 1] : WEAPON_ORDER[inp.select - 1];
+    // 数字键就是工坊里每把枪前面的编号（手枪 1、冲锋枪 2、霰弹枪 3……），没带在身上的按了没反应。
+    // 之前正式局里数字键是「第几个枪位」，和工坊显示的编号对不上：带着冲锋枪 + 霰弹枪时按 3 切不到霰弹枪
+    const k = WEAPON_ORDER[inp.select - 1];
     if (k) switchWeapon(g, k);
     inp.select = 0;
   }
@@ -202,7 +203,7 @@ export function updatePlayer(g: Game, dt: number): void {
       startReload(g);
     } else if (inp.fire && canShoot && p.fireTimer <= 0 && slot.mag > 0) {
       fireWeapon(g);
-      const rate = st.rate * (1 + st.ramp * p.ramp);
+      const rate = st.rate * (1 + st.ramp * p.ramp) * g.mods.fireRate;
       p.fireTimer += 1 / rate;
     }
     inp.reload = false;

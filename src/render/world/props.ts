@@ -1,20 +1,21 @@
 import { Rng } from '../../game/core/rng';
 import type { Prop, WallStyle } from '../../game/world/types';
 import type { Builder } from '../kit';
-import { buildGeneratorCore, generator, workbench } from './props/base';
+import { buildGeneratorCore, generator, generatorCage, workbench } from './props/base';
 import { barrier, canopy, chunk, crate, pillar, pump, rack, rubble } from './props/clutter';
 import { barrel, fence, lamp, sandbag } from './props/street';
 import { container } from './props/containers';
 import { tree } from './props/nature';
 import { car } from './props/vehicles';
 import { doorframe, wall } from './props/walls';
+import { furniture, windowSill } from './props/interior';
 
 /**
  * 地图道具的几何体入口。每类道具在 props/ 下各自的文件里建模：局部坐标系长边沿 X，厚度沿 Z，
  * 原点在底面中心，外层统一用 push() 摆到世界位置。
  */
 
-export { buildGeneratorCore };
+export { buildGeneratorCore, generatorCage };
 
 /** trimWalls：这些风格的墙体由写实贴图负责，程序这边只建窗、钢柱、铁丝网等细节 */
 export function buildProp(b: Builder, p: Prop, trimWalls: ReadonlySet<WallStyle> = new Set()): void {
@@ -23,7 +24,7 @@ export function buildProp(b: Builder, p: Prop, trimWalls: ReadonlySet<WallStyle>
     case 'wall':
       return wall(b, p, rng, trimWalls.has(p.style ?? 'compound'));
     case 'doorframe':
-      return doorframe(b, p);
+      return doorframe(b, p, trimWalls.has(p.style ?? 'compound'));
     case 'container':
       return container(b, p, rng);
     case 'car':
@@ -62,6 +63,10 @@ export function buildProp(b: Builder, p: Prop, trimWalls: ReadonlySet<WallStyle>
       return crate(b, { ...p, h: Math.min(p.h ?? 0.9, 0.9) }, rng);
     case 'dumpster':
       return container(b, { ...p, h: p.h ?? 1.3 }, rng);
+    case 'window':
+      return windowSill(b, p, trimWalls.has(p.style ?? 'compound'));
+    case 'furniture':
+      return furniture(b, p, rng);
     case 'scrapbox':
       return;
   }

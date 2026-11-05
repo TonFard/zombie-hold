@@ -12,7 +12,7 @@ export const SAVE_KEY_V1 = 'zombie-hold-save-v1';
 /** 存档纪元：记在单独的键里。和这里的值不一样时清掉进度重新开始（只保留音量、画质、灵敏度） */
 export const EPOCH_KEY = 'zombie-hold-epoch';
 /** 每次更新游戏都把它加一：玩家打开新版本时进度全部重置 */
-export const SAVE_EPOCH = 5;
+export const SAVE_EPOCH = 6;
 
 /** 跨局存档：统计、设置、局外进度 */
 export interface SaveData {

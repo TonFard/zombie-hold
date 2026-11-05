@@ -86,6 +86,23 @@ export class Navigator {
    */
   prefix = -1;
 
+  /** 大体型单位从 cell（或它旁边的一格）能不能在大体型地图里走到目标 */
+  largeReach(goal: GoalKind, cell: number): boolean {
+    const big = goal === 'core' ? this.coreLarge : this.playerLarge;
+    if ((big.dist[cell] as number) < INF) return true;
+    const cx = cell % GRID_W;
+    const cy = (cell / GRID_W) | 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = cx + dx;
+        const ny = cy + dy;
+        if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+        if ((big.dist[ny * GRID_W + nx] as number) < INF) return true;
+      }
+    }
+    return false;
+  }
+
   /** 取距离场；大体型单位在大体型地图里完全到不了时才退回普通场 */
   field(goal: GoalKind, large: boolean, cell: number): FlowField {
     this.prefix = -1;

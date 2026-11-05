@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "weapons": {
     "pistol": {
       "dir": "glock_17",

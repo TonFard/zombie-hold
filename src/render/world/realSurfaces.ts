@@ -7,6 +7,7 @@ import {
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   NoColorSpace,
   PlaneGeometry,
@@ -79,17 +80,28 @@ function buildWalls(map: MapData, kits: Record<string, Kit>): Group {
   const group = new Group();
   const by = new Map<WallStyle, BufferGeometry[]>();
   for (const p of map.props) {
-    if (p.kind !== 'wall' && p.kind !== 'doorframe') continue;
+    if (p.kind !== 'wall' && p.kind !== 'doorframe' && p.kind !== 'window') continue;
     const style = p.style ?? 'compound';
     if (!kits[WALL_KEY[style]]) continue;
     const r = rectOf(p);
     const h = p.h ?? 2.4;
     const tile = WALL_TILE[style];
     const list = by.get(style) ?? [];
+    // 单格的门 / 窗方向看 side / rot，长段的墙看长宽
+    const horiz = p.kind === 'window' ? (p.rot ?? 0) % 2 === 0 : p.side ? p.side === 'N' || p.side === 'S' : r.horiz;
     if (p.kind === 'wall') {
       list.push(placeBox(worldBox(r.L, h, 0.92, tile), r.horiz, r.cx, 0, r.cz));
       // 勒脚：盖住墙和地面的交线
       list.push(placeBox(worldBox(r.L + 0.04, 0.3, 1.0, tile), r.horiz, r.cx, 0, r.cz));
+    } else if (p.kind === 'window') {
+      // 窗台：挡人的那截矮墙
+      list.push(placeBox(worldBox(1, p.h ?? 0.95, 0.92, tile), horiz, r.cx, 0, r.cz));
+    } else if (p.variant === 9) {
+      // 窗楣：窗洞（到 2.2 米）以上的墙
+      list.push(placeBox(worldBox(r.L, h - 2.2, 0.92, tile), horiz, r.cx, 2.2, r.cz));
+    } else if (p.house !== undefined) {
+      const top = Math.min(2.25, h - 0.3);
+      list.push(placeBox(worldBox(r.L, h - top, 0.92, tile), horiz, r.cx, top, r.cz));
     } else {
       // 门洞上方的过梁
       list.push(placeBox(worldBox(r.L, 0.5, 0.92, tile), r.horiz, r.cx, h - 0.5, r.cz));
@@ -278,9 +290,147 @@ diffuseColor.rgb *= mix(gAlb, ov.rgb, ov.a);`,
   };
 }
 
+// ---------------------------------------------------------------- 加油棚、立柱、门框
+
+/** 这些种类改由写实材质的简单几何体负责（程序模型不再建） */
+export const STRUCT_KINDS = ['canopy', 'pillar', 'doorframe'] as const;
+
+function pbr(kit: Kit, o: { color?: number; metal?: boolean; tint?: number } = {}): MeshStandardMaterial {
+  return new MeshStandardMaterial({
+    map: kit.diff,
+    normalMap: kit.nor,
+    roughnessMap: kit.arm,
+    metalnessMap: o.metal ? kit.arm : null,
+    roughness: 1,
+    metalness: o.metal ? 0.85 : 0,
+    color: o.color ?? 0xffffff,
+  });
+}
+
+/**
+ * 加油棚：厚檐口（红白涂装）+ 顶板 + 吊顶灯；立柱：方形混凝土柱 + 防撞黄黑漆；门框：金属包边。
+ * 都是简单盒子，靠贴图出质感。灯管用自发光材质，接 Bloom。
+ */
+function buildStructs(map: MapData, kits: Record<string, Kit>): Group {
+  const group = new Group();
+  const metalKit = kits.trim_metal;
+  // 涂装部分用白色抹灰贴图再染色（绿色的 painted_concrete 一染红就发脏）
+  const paintKit = kits.wall_plaster;
+  const concKit = kits.wall_concrete;
+  if (!metalKit || !paintKit || !concKit) return group;
+  const red: BufferGeometry[] = [];
+  const white: BufferGeometry[] = [];
+  const steel: BufferGeometry[] = [];
+  const conc: BufferGeometry[] = [];
+  const hazard: BufferGeometry[] = [];
+  const lights: BufferGeometry[] = [];
+  for (const p of map.props) {
+    const r = rectOf(p);
+    if (p.kind === 'canopy') {
+      const h = p.h ?? 3.6;
+      const w = p.x1 - p.x0;
+      const d = p.y1 - p.y0;
+      // 檐口：外圈 0.7 米高的盒子，上半红、下半白
+      const fascia = (len: number, x: number, z: number, along: boolean) => {
+        const a = worldBox(len, 0.38, 0.22, 2);
+        const b2 = worldBox(len, 0.3, 0.22, 2);
+        if (!along) a.rotateY(Math.PI / 2), b2.rotateY(Math.PI / 2);
+        a.translate(x, h + 0.3, z);
+        b2.translate(x, h, z);
+        red.push(a);
+        white.push(b2);
+      };
+      fascia(w + 0.22, r.cx, r.cz - d / 2, true);
+      fascia(w + 0.22, r.cx, r.cz + d / 2, true);
+      fascia(d, r.cx - w / 2, r.cz, false);
+      fascia(d, r.cx + w / 2, r.cz, false);
+      // 顶板（下表面看得见：白色涂装）+ 屋面
+      white.push(worldBox(w, 0.06, d, 3).translate(r.cx, h + 0.1, r.cz));
+      steel.push(worldBox(w + 0.1, 0.05, d + 0.1, 2).translate(r.cx, h + 0.66, r.cz));
+      // 吊顶灯带
+      for (const z of [-d / 4, d / 4]) {
+        for (let x = -w / 2 + 2; x < w / 2 - 0.5; x += 3.5) lights.push(new BoxGeometry(0.9, 0.05, 0.22).translate(r.cx + x, h + 0.07, r.cz + z));
+      }
+    } else if (p.kind === 'pillar') {
+      const h = p.h ?? 3.6;
+      conc.push(worldBox(0.44, h, 0.44, 1.5).translate(r.cx, 0, r.cz));
+      conc.push(worldBox(0.7, 0.18, 0.7, 1.5).translate(r.cx, 0, r.cz));
+      // 防撞漆：黄黑相间的三段
+      for (let i = 0; i < 4; i++) (i % 2 ? steel : hazard).push(worldBox(0.46, 0.18, 0.46, 1).translate(r.cx, 0.25 + i * 0.18, r.cz));
+    } else if (p.kind === 'doorframe' && p.house === undefined) {
+      const h = p.h ?? 2.4;
+      for (const s of [-1, 1]) {
+        const g = worldBox(0.16, h, 1.02, 1.2);
+        g.translate(s * (r.L / 2 - 0.08), 0, 0);
+        if (!r.horiz) g.rotateY(Math.PI / 2);
+        steel.push(g.translate(r.cx, 0, r.cz));
+      }
+      const top = worldBox(r.L, 0.14, 1.02, 1.2);
+      if (!r.horiz) top.rotateY(Math.PI / 2);
+      steel.push(top.translate(r.cx, h - 0.64, r.cz));
+    }
+  }
+  const add = (geos: BufferGeometry[], mat: MeshStandardMaterial | MeshBasicMaterial, name: string, shadow = true) => {
+    const g = geos.length ? mergeGeometries(geos, false) : null;
+    for (const x of geos) x.dispose();
+    if (!g) return;
+    const m = new Mesh(g, mat);
+    m.castShadow = shadow;
+    m.receiveShadow = shadow;
+    m.name = name;
+    group.add(m);
+  };
+  add(red, pbr(paintKit, { color: 0xc23a2c }), 'canopy:red');
+  add(white, pbr(paintKit, { color: 0xe8e4dc }), 'canopy:white');
+  add(steel, pbr(metalKit, { metal: true, color: 0x9aa0a4 }), 'trim:steel');
+  add(conc, pbr(concKit, { color: 0xd8d4cc }), 'pillar');
+  add(hazard, pbr(paintKit, { color: 0xe0b020 }), 'pillar:hazard');
+  add(lights, new MeshBasicMaterial({ color: 0xeaf2ff, toneMapped: false }), 'canopy:lights', false);
+  return group;
+}
+
+// ---------------------------------------------------------------- 屋顶
+
+/**
+ * 平顶房：一块屋面（外面看到的沥青油毡）+ 一块天花板（屋里抬头看到的抹灰），每栋房子一个 Group，
+ * 玩家走进屋里时由视图把这栋的屋面藏起来，不挡视线（天花板仍在，屋里看起来是封闭的）。
+ */
+function buildRoofs(map: MapData, kits: Record<string, Kit>): Group[] {
+  const roofKit = kits.roof;
+  const ceilKit = kits.wall_plaster;
+  const out: Group[] = [];
+  if (!roofKit || !ceilKit) return out;
+  const roofMat = pbr(roofKit, { color: 0x9a948a });
+  const ceilMat = pbr(ceilKit, { color: 0xd8d2c6 });
+  for (const h of map.houses) {
+    const g = new Group();
+    g.name = 'roof';
+    if (h.roof === 'flat') {
+      const w = h.x1 - h.x0;
+      const d = h.y1 - h.y0;
+      const cx = (h.x0 + h.x1) / 2 - GRID_W / 2;
+      const cz = (h.y0 + h.y1) / 2 - GRID_H / 2;
+      // 屋面略出檐，压在墙顶上
+      const top = new Mesh(worldBox(w + 0.3, 0.18, d + 0.3, 3).translate(cx, h.h, cz), roofMat);
+      top.castShadow = true;
+      top.receiveShadow = true;
+      top.name = 'roof:top';
+      // 天花板：墙内侧，从下面看
+      const ceil = new Mesh(worldBox(w - 1.6, 0.04, d - 1.6, 2.5).translate(cx, h.h - 0.05, cz), ceilMat);
+      ceil.receiveShadow = true;
+      ceil.name = 'roof:ceiling';
+      g.add(top, ceil);
+    }
+    out.push(g);
+  }
+  return out;
+}
+
 export interface RealSurfaces {
   walls: Group;
   ground: Mesh | null;
+  /** 每栋房子的屋顶（和 MapData.houses 一一对应；没有屋顶的是空 Group） */
+  roofs: Group[];
   dispose(): void;
 }
 
@@ -288,7 +438,7 @@ export async function buildRealSurfaces(map: MapData, m: SurfaceManifest, anisot
   const loader = new TextureLoader();
   const kits: Record<string, Kit> = {};
   await Promise.all(
-    Object.values(WALL_KEY).map(async (key) => {
+    [...Object.values(WALL_KEY), 'trim_metal', 'roof'].map(async (key) => {
       const dir = m.textures[key];
       if (!dir) return;
       try {
@@ -299,6 +449,9 @@ export async function buildRealSurfaces(map: MapData, m: SurfaceManifest, anisot
     }),
   );
   const walls = buildWalls(map, kits);
+  const structs = buildStructs(map, kits);
+  for (const c of [...structs.children]) walls.add(c);
+  const roofs = buildRoofs(map, kits);
   let ground: Awaited<ReturnType<typeof buildGround>> = null;
   try {
     ground = await buildGround(map, m, anisotropy);
@@ -308,16 +461,23 @@ export async function buildRealSurfaces(map: MapData, m: SurfaceManifest, anisot
   return {
     walls,
     ground: ground?.mesh ?? null,
+    roofs,
     dispose() {
+      for (const r of roofs) for (const c of r.children) (c as Mesh).geometry.dispose();
       ground?.dispose();
       for (const c of walls.children) {
         const mesh = c as Mesh;
         mesh.geometry.dispose();
-        (mesh.material as MeshStandardMaterial).dispose();
+        (mesh.material as MeshStandardMaterial | MeshBasicMaterial).dispose();
       }
       for (const k of Object.values(kits)) for (const t of [k.diff, k.nor, k.arm]) t.dispose();
     },
   };
+}
+
+/** 加油棚、立柱、门框是否已经换成写实版 */
+export function hasStructs(m: SurfaceManifest): boolean {
+  return !!(m.textures.trim_metal && m.textures.wall_plaster && m.textures.wall_concrete);
 }
 
 /** 有写实墙面贴图的风格：这些墙的程序模型只建细节 */

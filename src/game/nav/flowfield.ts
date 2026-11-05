@@ -84,6 +84,22 @@ export class FlowField {
     this.heapN = 0;
     for (let i = 0; i < seeds.length; i++) {
       const s = seeds[i] as number;
+      // 大体型地图：目标格本身在膨胀区里（玩家躲在屋里、贴着墙）时，只有从相邻的可通行格才算"到得了"。
+      // 否则从这个种子往外扩散，会把整个挤不进去的房间都算成可达，巨像就会对着门框硬挤
+      if (this.large && mask[s] && !this.toCore) {
+        const sx = s % GRID_W;
+        const sy = (s / GRID_W) | 0;
+        for (let k = 0; k < 8; k++) {
+          const nx = sx + (DX[k] as number);
+          const ny = sy + (DY[k] as number);
+          if (nx < 0 || ny < 0 || nx >= GRID_W || ny >= GRID_H) continue;
+          const n = ny * GRID_W + nx;
+          if (mask[n] || dist[n] === 0) continue;
+          dist[n] = 0;
+          this.push(0, n);
+        }
+        continue;
+      }
       dist[s] = 0;
       this.push(0, s);
     }

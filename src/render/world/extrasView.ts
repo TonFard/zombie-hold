@@ -100,6 +100,7 @@ export class ExtrasView {
         }
       }),
       e.on('scream', (s) => this.ring(s.x, s.z, 0.3, s.radius, 0.7, 0xff5af0)),
+      e.on('chainBlast', (c) => this.ring(c.x, c.z, 0.3, 2.2, 0.35, 0xffa040)),
       e.on('shove', ({ hits }) => {
         if (hits > 0) this.rig.addShake(0.12);
       }),

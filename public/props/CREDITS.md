@@ -49,3 +49,16 @@
 | hdri | sunset_jhbcentral | Poly Haven | CC0 | https://polyhaven.com/a/sunset_jhbcentral |
 | tex:trim_metal | rusty_metal_sheet | Poly Haven | CC0 | https://polyhaven.com/a/rusty_metal_sheet |
 | tex:trim_paint | painted_concrete | Poly Haven | CC0 | https://polyhaven.com/a/painted_concrete |
+| tex:roof | bitumen | Poly Haven | CC0 | https://polyhaven.com/a/bitumen |
+| tex:floor_tile | worn_tile_floor | Poly Haven | CC0 | https://polyhaven.com/a/worn_tile_floor |
+| old_bed_frame | Old Bed Frame | Luca B | CC0 | https://polyhaven.com/a/old_bed_frame |
+| sofa_02 | Sofa 02 | Kirill Sannikov | CC0 | https://polyhaven.com/a/sofa_02 |
+| painted_wooden_table | Painted Wooden Table | Kirill Sannikov | CC0 | https://polyhaven.com/a/painted_wooden_table |
+| painted_wooden_chair_01 | Painted Wooden Chair 01 | Kuutti Siitonen | CC0 | https://polyhaven.com/a/painted_wooden_chair_01 |
+| modern_wooden_cabinet | Modern Wooden Cabinet | Patrik Pangerl | CC0 | https://polyhaven.com/a/modern_wooden_cabinet |
+| drawer_cabinet | Drawer Cabinet | Ulan Cabanilla | CC0 | https://polyhaven.com/a/drawer_cabinet |
+| television_02 | Television 02 | Benny Weimer | CC0 | https://polyhaven.com/a/television_02 |
+| metal_office_desk | Metal Office Desk | Ulan Cabanilla | CC0 | https://polyhaven.com/a/metal_office_desk |
+| painted_wooden_cabinet_02 | Painted Wooden Cabinet 02 | Kirill Sannikov | CC0 | https://polyhaven.com/a/painted_wooden_cabinet_02 |
+| wooden_bookshelf_worn | Wooden Bookshelf Worn | Ulan Cabanilla | CC0 | https://polyhaven.com/a/wooden_bookshelf_worn |
+| electric_stove | Electric Stove | Kuutti Siitonen | CC0 | https://polyhaven.com/a/electric_stove |

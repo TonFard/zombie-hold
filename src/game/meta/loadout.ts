@@ -1,4 +1,4 @@
-import type { RunConfig } from '../config';
+import { NO_META, type RunConfig } from '../config';
 import { DIFFICULTIES, type Difficulty } from '../data/difficulty';
 import { baseBonuses, type MetaBonuses } from '../data/meta-catalog';
 import type { Daily } from './achievements';
@@ -32,6 +32,7 @@ export function configFor(b: MetaBonuses, d: Difficulty): RunConfig {
     endless: true,
     fixedMod: '',
     daily: '',
+    meta: { ...NO_META },
   };
 }
 
@@ -44,12 +45,17 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
   g.mods.turret *= b.turretDamage;
   g.mods.structHp *= b.structHp;
   g.mods.scrap *= b.scrapGain;
+  g.mods.armor *= b.armor;
+  g.mods.regen += b.regen;
+  g.mods.speed *= b.speed;
+  g.mods.fireRate *= b.fireRate;
   g.player.maxHp += b.maxHp;
   g.player.hp = g.player.maxHp;
   g.core.maxHp += b.coreHp;
   g.core.hp = g.core.maxHp;
   g.scrap += b.startScrap;
   g.scrapEarned += b.startScrap;
+  g.config.meta = { maxHp: b.maxHp, coreHp: b.coreHp, structHp: b.structHp, turretDamage: b.turretDamage, scrapGain: b.scrapGain, armor: b.armor, regen: b.regen, speed: b.speed, fireRate: b.fireRate };
   const side = dep.sidearm;
   if (sidearmOk(b, side)) {
     const slot = g.loadout[side];
@@ -63,9 +69,10 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
 }
 
 /**
- * 读档继续时补上存档之后在大厅新买的解锁 / 上限：检查点里的规则是开局时冻结的，
- * 不补的话大厅里刚解锁的武器在工坊里仍然显示「未解锁」、刚买的等级上限也不生效。
- * 只放宽（取并集 / 取大），不重复叠加生命、零件这类开局一次性的加成
+ * 读档继续时补上存档之后在大厅新买的东西：检查点里的规则和数值是开局时冻结的，
+ * 不补的话大厅里刚解锁的武器在工坊里仍然显示「未解锁」、刚买的生命 / 建筑生命 / 炮塔伤害也不生效。
+ * 解锁和上限只放宽（取并集 / 取大）；数值加成按 config.meta 里记的"已经吃到多少"补差额，不会重复叠加。
+ * 开局零件是一次性的，不补
  */
 export function widenMeta(g: Game, b: MetaBonuses): void {
   const c = g.config;
@@ -76,6 +83,53 @@ export function widenMeta(g: Game, b: MetaBonuses): void {
   c.turretCap = Math.max(c.turretCap, b.turretCap);
   c.rerolls = Math.max(c.rerolls, b.rerolls);
   c.cardChoices = Math.max(c.cardChoices, b.cardChoices);
+  const m = c.meta;
+  const dHp = b.maxHp - m.maxHp;
+  if (dHp > 0) {
+    g.player.maxHp += dHp;
+    g.player.hp += dHp;
+    m.maxHp = b.maxHp;
+  }
+  const dCore = b.coreHp - m.coreHp;
+  if (dCore > 0) {
+    g.core.maxHp += dCore;
+    g.core.hp += dCore;
+    m.coreHp = b.coreHp;
+  }
+  if (b.structHp > m.structHp) {
+    const k = b.structHp / m.structHp;
+    g.mods.structHp *= k;
+    // 已经建好的建筑按比例加生命
+    for (const s of g.structures.values()) {
+      s.maxHp = Math.round(s.maxHp * k);
+      s.hp = Math.round(s.hp * k);
+    }
+    m.structHp = b.structHp;
+  }
+  if (b.turretDamage > m.turretDamage) {
+    g.mods.turret *= b.turretDamage / m.turretDamage;
+    m.turretDamage = b.turretDamage;
+  }
+  if (b.scrapGain > m.scrapGain) {
+    g.mods.scrap *= b.scrapGain / m.scrapGain;
+    m.scrapGain = b.scrapGain;
+  }
+  if (b.armor < m.armor) {
+    g.mods.armor *= b.armor / m.armor;
+    m.armor = b.armor;
+  }
+  if (b.regen > m.regen) {
+    g.mods.regen += b.regen - m.regen;
+    m.regen = b.regen;
+  }
+  if (b.speed > m.speed) {
+    g.mods.speed *= b.speed / m.speed;
+    m.speed = b.speed;
+  }
+  if (b.fireRate > m.fireRate) {
+    g.mods.fireRate *= b.fireRate / m.fireRate;
+    m.fireRate = b.fireRate;
+  }
 }
 
 /** 这把武器能不能当随身武器带：买了「随身武器」、已解锁、不是手枪（手枪本来就有） */

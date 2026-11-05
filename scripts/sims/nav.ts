@@ -354,6 +354,71 @@ console.log('\n== 场景 D：72 只奔袭者追一个以 3.0 格/秒在停车场
   check(maxStuck < 2, `没有因地形卡住超过 2 秒（最长 ${maxStuck.toFixed(2)}s）`);
 }
 
+console.log('\n== 场景 F：玩家躲进每栋房子，各种僵尸都要能从门进去追到 ==');
+{
+  // 每栋房子单独测：玩家站在屋里最深处（离门最远的室内格），从最近的刷怪点放 4 种僵尸
+  const kinds = ['walker', 'runner', 'bloater', 'colossus'] as const;
+  let fails = 0;
+  let worst = 0;
+  const lines: string[] = [];
+  const g0 = new Game(SEED);
+  for (let hi = 0; hi < g0.map.houses.length; hi++) {
+    const h = g0.map.houses[hi]!;
+    // 屋里的空地：室内地板、不是障碍、离墙至少 1 格（玩家半径 0.35，站得下）
+    let best: { x: number; z: number; d: number } | null = null;
+    for (let cy = h.y0 + 1; cy < h.y1 - 1; cy++) {
+      for (let cx = h.x0 + 1; cx < h.x1 - 1; cx++) {
+        if (g0.grid.isBlocked(cx, cy)) continue;
+        const x = g0.grid.centerX(cx);
+        const z = g0.grid.centerZ(cy);
+        // 离房子中心越近越"深"
+        const d = -Math.hypot(cx - (h.x0 + h.x1) / 2, cy - (h.y0 + h.y1) / 2);
+        if (!best || d > best.d) best = { x, z, d };
+      }
+    }
+    if (!best) continue;
+    for (const kind of kinds) {
+      const g = new Game(SEED + hi);
+      g.invulnerablePlayer = true;
+      g.invulnerableCore = true;
+      g.aggroScale = 20;
+      g.player.x = best.x;
+      g.player.z = best.z;
+      // 最近的刷怪点
+      let si = 0;
+      let sd = Infinity;
+      g.map.spawns.forEach((s, i) => {
+        const d = Math.hypot(s.x - best!.x, s.z - best!.z);
+        if (d < sd) {
+          sd = d;
+          si = i;
+        }
+      });
+      const z = g.spawnAtGate(kind, si);
+      if (!z) continue;
+      let hit = false;
+      let core = false;
+      g.events.on('zombieAttack', ({ zombie, target }) => {
+        if (zombie.id !== z.id) return;
+        if (target === 'player') hit = true;
+        if (target === 'core') core = true;
+      });
+      const giveUpOk = z.def.large;
+      let t = 0;
+      for (; t < 90 / STEP && !hit && !(giveUpOk && core); t++) g.update(STEP);
+      worst = Math.max(worst, z.maxStuck);
+      if (!hit && !(giveUpOk && core)) {
+        fails++;
+        lines.push(`    ✗ ${h.style} 房子 #${hi} (${h.x0},${h.y0})：${kind} 90 秒没追到，停在 (${z.x.toFixed(1)}, ${z.z.toFixed(1)})`);
+      }
+    }
+  }
+  console.log(`  ${g0.map.houses.length} 栋房子 × ${kinds.length} 种僵尸，失败 ${fails}，最长卡住 ${worst.toFixed(2)}s`);
+  for (const l of lines) console.log(l);
+  check(fails === 0, '每栋房子里的玩家都能被追到（大体型单位进不去门时改打发电机，不在门口干耗）');
+  check(worst < 2, `进屋追人时没有卡住超过 2 秒（最长 ${worst.toFixed(2)}s）`);
+}
+
 console.log('\n== 场景 E：单个大体型单位（没有人群）从发电机四周出发，必须自己走到位 ==');
 {
   // 隔离测试：没有别的僵尸，卡住只可能是地形 / 寻路的问题

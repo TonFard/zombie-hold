@@ -22,9 +22,14 @@ export type PropKind =
   | 'workbench' // 武器工坊
   | 'pallet' // 托盘 / 木板堆
   | 'dumpster' // 垃圾箱
+  | 'window' // 窗台（矮墙：挡人，子弹从上面过）
+  | 'furniture' // 室内家具（variant 对应 FurnitureKind）
   | 'scrapbox'; // 零件箱（可拾取）
 
 export type Side = 'N' | 'S' | 'W' | 'E';
+
+/** 室内家具的种类（Prop.variant 是它在 FURN_IDS 里的下标） */
+export type FurnitureKind = 'bed' | 'sofa' | 'table' | 'chair' | 'kitchen' | 'fridge' | 'wardrobe' | 'shelf' | 'tv' | 'stove' | 'desk';
 
 /** 墙体风格：决定渲染时的材质和细节 */
 export type WallStyle = 'compound' | 'brick' | 'plaster' | 'metal';
@@ -46,6 +51,21 @@ export interface Prop {
   side?: Side;
   /** 墙体风格（wall / doorframe 使用） */
   style?: WallStyle;
+  /** 朝向 0–3（×90°，0 = 正面朝北）：家具、窗 */
+  rot?: number;
+  /** 属于第几栋房子（MapData.houses 的下标） */
+  house?: number;
+}
+
+/** 一栋可进入的房子：外轮廓（格）、墙高、屋顶 */
+export interface House {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  h: number;
+  style: WallStyle;
+  roof: 'flat' | 'none';
 }
 
 export interface SpawnPoint {
@@ -75,4 +95,5 @@ export interface MapData {
   scrapBoxes: Array<{ cx: number; cy: number }>;
   lamps: Array<{ x: number; z: number }>;
   playerStart: { x: number; z: number };
+  houses: House[];
 }

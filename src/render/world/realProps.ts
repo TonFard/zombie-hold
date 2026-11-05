@@ -18,7 +18,8 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { Rng } from '../../game/core/rng';
 import { HALF_H, HALF_W } from '../../game/world/grid';
-import type { MapData, Prop, PropKind } from '../../game/world/types';
+import { FURN_IDS } from '../../game/world/modules';
+import type { FurnitureKind, MapData, Prop, PropKind } from '../../game/world/types';
 import { rectOf } from './props/kit';
 
 /**
@@ -119,7 +120,7 @@ function fit(p: Prop, id: string, size: Size, put: Put, o: { h?: number; keep?: 
 }
 
 /** 按地图道具算出每个模型的摆放 */
-function layout(map: MapData, has: (id: string) => boolean, size: Size): { places: Map<string, Place[]>; replaced: Set<PropKind> } {
+function layout(map: MapData, has: (id: string) => boolean, size: Size): { places: Map<string, Place[]>; replaced: Set<PropKind>; fallback: Prop[] } {
   const places = new Map<string, Place[]>();
   const put: Put = (id, p) => {
     if (!has(id)) return;
@@ -147,8 +148,11 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
     pallet: ['pallets'],
     dumpster: ['dumpster'],
     generator: ['generator_diesel'],
+    furniture: ['painted_wooden_table'],
   };
   const replaced = new Set<PropKind>();
+  /** 写实模型缺的家具：程序模型补上（只建这些，不是整类） */
+  const fallback: Prop[] = [];
   for (const [k, ids] of Object.entries(need) as Array<[PropKind, string[]]>) if (ids.every(has)) replaced.add(k);
 
   for (const p of map.props) {
@@ -247,6 +251,30 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
       case 'dumpster':
         fit(p, 'dumpster', size, put, { keep: 1.25, inset: 0.12, flip: rng.chance(0.5) });
         break;
+      case 'furniture': {
+        const f = FURN_IDS[p.variant] as FurnitureKind;
+        const id = FURN_MODEL[f];
+        if (!id || !has(id)) {
+          // 没有写实模型的家具（冰箱、厨柜……）：交给程序模型
+          fallback.push(p);
+          break;
+        }
+        // 正面朝向：rot 0 北 … 3 西；扫描模型正面默认朝 +z（南）
+        const rot = p.rot ?? 2;
+        const s0 = size(id) as Vector3;
+        const w = p.x1 - p.x0;
+        const d = p.y1 - p.y0;
+        const along = rot % 2 === 0;
+        const L = (along ? w : d) - 0.08;
+        const D = (along ? d : w) - 0.08;
+        // 模型的长边被归一化到 X；家具摆放时 X = 宽（沿墙），Z = 深
+        const sx = L / s0.x;
+        const sz = D / s0.z;
+        const sy = (p.h ?? s0.y) / s0.y;
+        const k = Math.min(sx, sy, sz);
+        put(id, { x: r.cx, y: 0, z: r.cz, ry: (-(rot - 2) * Math.PI) / 2 + FURN_TURN[f], sx: Math.min(sx, k * 1.3), sy: Math.min(sy, k * 1.3), sz: Math.min(sz, k * 1.3) });
+        break;
+      }
       case 'generator':
         // 能量核心（发光圆柱）仍由程序模型画在 1.3 米以上，机身压到这个高度以下
         fit(p, 'generator_diesel', size, put, { h: 1.3, keep: 1.3, inset: 0.15 });
@@ -255,8 +283,40 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
         break;
     }
   }
-  return { places, replaced };
+  return { places, replaced, fallback };
 }
+
+/** 家具 → 写实模型。没列的（冰箱、厨柜、椅子之外的小件）用程序模型 */
+const FURN_MODEL: Partial<Record<FurnitureKind, string>> = {
+  bed: 'old_bed_frame',
+  sofa: 'sofa_02',
+  table: 'painted_wooden_table',
+  chair: 'painted_wooden_chair_01',
+  wardrobe: 'painted_wooden_cabinet_02',
+  shelf: 'wooden_bookshelf_worn',
+  tv: 'television_02',
+  stove: 'electric_stove',
+  desk: 'metal_office_desk',
+  kitchen: 'drawer_cabinet',
+};
+
+/**
+ * 模型归一化后长边沿 X，但"正面"朝哪边各不相同：这里补一个额外的旋转，让正面朝 +Z。
+ * 床的长边是床长（应该沿深度），所以转 90°
+ */
+const FURN_TURN: Record<FurnitureKind, number> = {
+  bed: Math.PI / 2,
+  sofa: 0,
+  table: 0,
+  chair: 0,
+  kitchen: 0,
+  fridge: 0,
+  wardrobe: 0,
+  shelf: 0,
+  tv: 0,
+  stove: 0,
+  desk: 0,
+};
 
 /** 木箱：每格堆一摞，摞到设定高度 */
 function crates(p: Prop, rng: Rng, put: Put, size: Size, has: (id: string) => boolean): void {
@@ -289,18 +349,19 @@ function cliffs(put: Put, size: Size): void {
   const ids = ['rock_face_02', 'rock_face_01'].filter((id) => size(id));
   if (!ids.length) return;
   const rng = new Rng(9001);
-  const edge = (x: number, z: number, out: number) => {
+  const uni = (x: number, y: number, z: number, ry: number, s: number): Place => ({ x, y, z, ry, sx: s, sy: s, sz: s });
+  // 每条边单独一组（键名带 #边），这样背后的那几条边能被视锥剔除
+  const edge = (side: string, x: number, z: number, out: number) => {
     const id = rng.pick(ids);
     const s0 = size(id) as Vector3;
-    const s = rng.range(0.9, 1.4) * (4.2 / s0.y);
-    put(id, uni(x, -0.4, z, out + rng.range(-0.5, 0.5), s));
+    const s = rng.range(1.0, 1.4) * (4.2 / s0.y);
+    put(`${id}#${side}`, uni(x, -0.4, z, out + rng.range(-0.5, 0.5), s));
   };
-  const uni = (x: number, y: number, z: number, ry: number, s: number): Place => ({ x, y, z, ry, sx: s, sy: s, sz: s });
-  for (let t = -HALF_W - 2; t <= HALF_W + 2; t += 3.2) {
-    edge(t, -HALF_H - 1.6, 0);
-    edge(t, HALF_H + 1.6, Math.PI);
-    edge(-HALF_W - 1.6, t, Math.PI / 2);
-    edge(HALF_W + 1.6, t, -Math.PI / 2);
+  for (let t = -HALF_W - 2; t <= HALF_W + 2; t += 4.6) {
+    edge('n', t, -HALF_H - 1.8, 0);
+    edge('s', t, HALF_H + 1.8, Math.PI);
+    edge('w', -HALF_W - 1.8, t, Math.PI / 2);
+    edge('e', HALF_W + 1.8, t, -Math.PI / 2);
   }
 }
 
@@ -311,6 +372,8 @@ export interface RealProps {
   replaced: Set<PropKind>;
   /** 岩壁也换了：程序的尖锥岩石不再建 */
   cliffs: boolean;
+  /** replaced 里的种类中，没有写实模型、仍要程序模型补上的个别道具 */
+  fallback: Prop[];
   dispose(): void;
 }
 
@@ -338,11 +401,11 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
   await Promise.all([worker(), worker(), worker(), worker()]);
   const has = (id: string) => models.has(id);
   const size: Size = (id) => models.get(id)?.size ?? null;
-  const { places, replaced } = layout(map, has, size);
-  const put: Put = (id, p) => {
-    if (!has(id)) return;
-    let a = places.get(id);
-    if (!a) places.set(id, (a = []));
+  const { places, replaced, fallback } = layout(map, has, size);
+  const put: Put = (key, p) => {
+    if (!has(key.split('#')[0] as string)) return;
+    let a = places.get(key);
+    if (!a) places.set(key, (a = []));
     a.push(p);
   };
   cliffs(put, size);
@@ -351,8 +414,11 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
   const group = new Group();
   group.name = 'realProps';
   const disposables: Array<{ dispose(): void }> = [];
-  for (const [id, list] of places) {
+  for (const [key, list] of places) {
+    const id = key.split('#')[0] as string;
     const model = models.get(id) as Model;
+    // 外圈岩壁：离玩家远、数量多，不投影（阴影相机只覆盖玩家周围 26 米）
+    const far = key.includes('#');
     for (const part of model.parts) {
       const im = new InstancedMesh(part.geo, part.mat, list.length);
       list.forEach((pl, i) => {
@@ -362,9 +428,9 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
       });
       im.instanceMatrix.needsUpdate = true;
       im.computeBoundingSphere();
-      im.castShadow = true;
+      im.castShadow = !far;
       im.receiveShadow = true;
-      im.name = id;
+      im.name = key;
       group.add(im);
     }
   }
@@ -395,6 +461,7 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
     envMap,
     replaced,
     cliffs: hasCliffs,
+    fallback,
     dispose() {
       for (const d of disposables) d.dispose();
     },

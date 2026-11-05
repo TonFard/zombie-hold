@@ -54,6 +54,8 @@ export class TaczModel {
   readonly material: MeshStandardMaterial;
   private readonly glowMaterial: MeshBasicMaterial;
   private readonly armMaterial: MeshStandardMaterial;
+  /** 隐藏方块手臂：不画但保留几何（定位要用包围盒） */
+  private readonly hiddenArm = new MeshBasicMaterial({ visible: false });
 
   constructor(
     readonly json: GunJson,
@@ -261,6 +263,8 @@ export class TaczModel {
     const mat = arm ? this.armMaterial : b.name.endsWith('_illuminated') ? this.glowMaterial : this.material;
     const mesh = new Mesh(g, mat);
     mesh.frustumCulled = false;
+    // 方块手臂只用来定位，由视角模型换成程序手臂（见 TaczRig.handEnds）
+    if (arm) mesh.material = this.hiddenArm;
     return mesh;
   }
 
@@ -272,6 +276,7 @@ export class TaczModel {
     this.material.dispose();
     this.glowMaterial.dispose();
     this.armMaterial.dispose();
+    this.hiddenArm.dispose();
   }
 }
 

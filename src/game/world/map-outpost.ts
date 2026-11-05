@@ -1,151 +1,9 @@
 import { Rng } from '../core/rng';
-import { GRID_H, GRID_W, Grid, Ground, HALF_H, HALF_W } from './grid';
-import type { MapData, Prop, PropKind, Side, SpawnPoint, WallStyle } from './types';
-
-interface Door {
-  side: Side;
-  /** N/S 门为起始 x，W/E 门为起始 y */
-  at: number;
-  w: number;
-  /** 是否画门框，默认 true */
-  frame?: boolean;
-}
-
-interface PropOpts {
-  solid?: boolean;
-  h?: number;
-  variant?: number;
-  side?: Side;
-  style?: WallStyle;
-}
-
-/** 没写 h 时各类障碍的高度（米），和 render/props.ts 里的模型对齐 */
-const PROP_HEIGHT: Partial<Record<PropKind, number>> = {
-  container: 2.4,
-  car: 1.35,
-  crate: 0.9,
-  barrier: 0.9,
-  pump: 1.6,
-  rack: 2.0,
-  chunk: 1.3,
-  barrel: 0.95,
-  sandbag: 0.85,
-  lamp: 4.2,
-  generator: 2.0,
-  workbench: 1.1,
-  fence: 2.1,
-  pallet: 0.9,
-  dumpster: 1.3,
-};
-
-/** 细障碍：按圆柱碰撞（半径，米） */
-const POST_RADIUS: Partial<Record<PropKind, number>> = {
-  tree: 0.3,
-  lamp: 0.11,
-  pillar: 0.2,
-  barrel: 0.34,
-};
-
-/** [a,b) 去掉门洞之后剩下的段 */
-function segments(a: number, b: number, gaps: Array<[number, number]>): Array<[number, number]> {
-  const sorted = gaps.slice().sort((p, q) => p[0] - q[0]);
-  const out: Array<[number, number]> = [];
-  let cur = a;
-  for (const [s, e] of sorted) {
-    if (s > cur) out.push([cur, s]);
-    cur = Math.max(cur, e);
-  }
-  if (cur < b) out.push([cur, b]);
-  return out;
-}
-
-class MapBuilder {
-  readonly grid = new Grid();
-  readonly props: Prop[] = [];
-
-  constructor(readonly rng: Rng) {}
-
-  ground(x0: number, y0: number, x1: number, y1: number, g: number): void {
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) this.grid.ground[this.grid.idx(x, y)] = g;
-  }
-
-  markSolid(x0: number, y0: number, x1: number, y1: number): void {
-    for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) this.grid.solid[this.grid.idx(x, y)] = 1;
-  }
-
-  prop(kind: PropKind, x0: number, y0: number, x1: number, y1: number, o: PropOpts = {}): Prop {
-    const p: Prop = {
-      kind,
-      x0,
-      y0,
-      x1,
-      y1,
-      solid: o.solid ?? true,
-      variant: o.variant ?? this.rng.int(0, 3),
-    };
-    if (o.h !== undefined) p.h = o.h;
-    if (o.side !== undefined) p.side = o.side;
-    if (o.style !== undefined) p.style = o.style;
-    this.props.push(p);
-    if (p.solid) {
-      this.markSolid(x0, y0, x1, y1);
-      // 子弹 / 视线用的障碍高度，和渲染出来的模型高度一致
-      const h = p.h ?? PROP_HEIGHT[kind] ?? 2.4;
-      const post = POST_RADIUS[kind] ?? 0;
-      for (let y = y0; y < y1; y++) {
-        for (let x = x0; x < x1; x++) {
-          const i = this.grid.idx(x, y);
-          this.grid.height[i] = Math.max(this.grid.height[i] as number, h);
-          this.grid.post[i] = post;
-        }
-      }
-    }
-    return p;
-  }
-
-  /** 一圈墙，按门洞留缺口 */
-  walls(x0: number, y0: number, x1: number, y1: number, doors: Door[], h: number, style: WallStyle): void {
-    const gapsOf = (side: Side): Array<[number, number]> =>
-      doors.filter((d) => d.side === side).map((d) => [d.at, d.at + d.w]);
-    const o = { h, style };
-    for (const [s, e] of segments(x0, x1, gapsOf('N'))) this.prop('wall', s, y0, e, y0 + 1, o);
-    for (const [s, e] of segments(x0, x1, gapsOf('S'))) this.prop('wall', s, y1 - 1, e, y1, o);
-    for (const [s, e] of segments(y0 + 1, y1 - 1, gapsOf('W'))) this.prop('wall', x0, s, x0 + 1, e, o);
-    for (const [s, e] of segments(y0 + 1, y1 - 1, gapsOf('E'))) this.prop('wall', x1 - 1, s, x1, e, o);
-    for (const d of doors) {
-      if (d.frame === false) continue;
-      const f = { solid: false, h, style };
-      if (d.side === 'N') this.prop('doorframe', d.at, y0, d.at + d.w, y0 + 1, { ...f, side: 'N' });
-      if (d.side === 'S') this.prop('doorframe', d.at, y1 - 1, d.at + d.w, y1, { ...f, side: 'S' });
-      if (d.side === 'W') this.prop('doorframe', x0, d.at, x0 + 1, d.at + d.w, { ...f, side: 'W' });
-      if (d.side === 'E') this.prop('doorframe', x1 - 1, d.at, x1, d.at + d.w, { ...f, side: 'E' });
-    }
-  }
-
-  /** 整个矩形都在界内且没有静态障碍 */
-  isFree(x0: number, y0: number, x1: number, y1: number): boolean {
-    for (let y = y0; y < y1; y++) {
-      for (let x = x0; x < x1; x++) {
-        if (x < 2 || y < 2 || x >= GRID_W - 2 || y >= GRID_H - 2) return false;
-        if (this.grid.solid[this.grid.idx(x, y)]) return false;
-      }
-    }
-    return true;
-  }
-
-  /** 找离 (cx,cy) 最近、周围 3×3 都空闲的格 */
-  nearestOpen(cx: number, cy: number): { cx: number; cy: number } {
-    for (let r = 0; r < 12; r++) {
-      for (let dy = -r; dy <= r; dy++) {
-        for (let dx = -r; dx <= r; dx++) {
-          if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-          if (this.isFree(cx + dx - 1, cy + dy - 1, cx + dx + 2, cy + dy + 2)) return { cx: cx + dx, cy: cy + dy };
-        }
-      }
-    }
-    return { cx, cy };
-  }
-}
+import { BLUEPRINTS, type BlueprintId } from './blueprints';
+import { MapBuilder } from './builder';
+import { GRID_H, GRID_W, type Grid, Ground, HALF_H, HALF_W } from './grid';
+import { placeModule, type Placed } from './modules';
+import type { MapData, SpawnPoint } from './types';
 
 export function buildOutpost(seed = 20260207): MapData {
   const rng = new Rng(seed);
@@ -226,66 +84,23 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('barrel', 29, 48, 30, 49);
   b.prop('barrel', 30, 48, 31, 49);
 
-  // ---------- 西北：废弃居民区（两栋砖楼 + 后巷）----------
-  // 北楼：两间屋，东门通后巷，南门对着院子
-  b.ground(6, 6, 19, 12, G.Floor);
-  b.walls(
-    5,
-    5,
-    20,
-    13,
-    [
-      { side: 'S', at: 9, w: 2 },
-      { side: 'E', at: 8, w: 2 },
-    ],
-    2.8,
-    'brick',
-  );
-  b.prop('wall', 12, 6, 13, 10, { h: 2.8, style: 'brick' });
-  b.prop('rack', 14, 6, 18, 7, { h: 2.0 });
-  b.prop('crate', 6, 11, 8, 12, { h: 0.9, variant: 0 });
-  b.prop('pallet', 16, 11, 18, 12, { h: 0.7 });
-  // 南楼
-  b.ground(6, 16, 12, 24, G.Floor);
-  b.walls(
-    5,
-    15,
-    13,
-    25,
-    [
-      { side: 'N', at: 8, w: 2 },
-      { side: 'E', at: 19, w: 2 },
-    ],
-    2.8,
-    'brick',
-  );
-  b.prop('wall', 6, 20, 9, 21, { h: 2.8, style: 'brick' });
-  b.prop('crate', 10, 22, 12, 24, { h: 1.8, variant: 0 });
-  // 后巷：垃圾箱、托盘、烧毁的车，铁丝网隔开公路
-  b.ground(13, 13, 24, 15, G.Concrete);
-  b.prop('dumpster', 14, 13, 16, 14, { h: 1.3 });
-  b.prop('pallet', 17, 13, 18, 14, { h: 0.9 });
-  b.prop('fence', 15, 17, 23, 18, { h: 2.1 });
-  b.prop('barrier', 21, 20, 22, 23, { h: 0.9 });
-  b.prop('car', 21, 7, 25, 9, { variant: 2 });
-  b.prop('barrel', 22, 11, 23, 12, { variant: 1 });
+  // ---------- 西北：居民区（模块化房屋，都能进去）----------
+  // 房子按蓝图摆（src/game/world/blueprints.ts）：墙、门、窗、家具都是碰撞体
+  const put = (id: BlueprintId, x: number, y: number, rot = 0): Placed => {
+    const r = placeModule(b, BLUEPRINTS[id], x, y, rot);
+    if (!r) throw new Error(`建筑 ${id} 摆不下：(${x}, ${y}) rot ${rot}`);
+    return r;
+  };
+  const homeA = put('house_small', 5, 5);
+  const homeB = put('house_long', 4, 17);
+  put('ruin', 23, 8);
+  // 后院：垃圾箱、托盘
+  b.prop('dumpster', 21, 15, 23, 16, { h: 1.3 });
+  b.prop('pallet', 24, 15, 25, 16, { h: 0.9 });
+  b.prop('barrel', 3, 15, 4, 16, { variant: 1 });
 
   // ---------- 东北：加油站（便利店 + 加油棚）----------
-  b.ground(59, 7, 69, 12, G.Floor);
-  b.walls(
-    58,
-    6,
-    70,
-    13,
-    [
-      { side: 'W', at: 8, w: 2 },
-      { side: 'S', at: 63, w: 2 },
-    ],
-    2.8,
-    'plaster',
-  );
-  b.prop('rack', 64, 7, 68, 8, { h: 1.8 });
-  b.prop('rack', 66, 10, 69, 11, { h: 1.8 });
+  const shop = put('shop', 59, 4);
   b.ground(56, 14, 72, 25, G.Concrete);
   b.prop('canopy', 57, 16, 71, 23, { solid: false, h: 3.6 });
   for (const [x, y] of [
@@ -300,34 +115,14 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('pump', 66, 18, 67, 20, { h: 1.7 });
   // 停在油泵边上没开走的车
   b.prop('car', 64, 17, 66, 21, { variant: 0 });
-  b.prop('car', 73, 9, 77, 11, { variant: 1 });
-  // 店后：垃圾箱、托盘、油桶
-  b.prop('dumpster', 71, 6, 73, 7, { h: 1.3 });
-  b.prop('pallet', 71, 11, 73, 12, { h: 0.9 });
-  b.prop('barrel', 71, 14, 72, 15);
+  b.prop('dumpster', 76, 9, 78, 10, { h: 1.3 });
   b.prop('barrel', 72, 14, 73, 15);
+  b.prop('barrel', 73, 14, 74, 15);
 
   // ---------- 东南：仓库和集装箱堆场 ----------
-  b.ground(58, 58, 74, 69, G.Floor);
-  b.walls(
-    57,
-    57,
-    75,
-    70,
-    [
-      { side: 'N', at: 64, w: 3 },
-      { side: 'W', at: 62, w: 2 },
-      { side: 'E', at: 63, w: 2 },
-    ],
-    3.2,
-    'metal',
-  );
-  b.prop('rack', 60, 60, 64, 61, { h: 2.0 });
-  b.prop('rack', 67, 60, 72, 61, { h: 2.0 });
-  b.prop('rack', 60, 66, 64, 67, { h: 2.0 });
-  b.prop('rack', 67, 66, 72, 67, { h: 2.0 });
-  b.prop('crate', 65, 63, 67, 65, { h: 1.84 });
-  b.prop('pallet', 69, 63, 71, 64, { h: 0.9 });
+  const depot = put('warehouse', 58, 59);
+  // 东路北侧的值班平房
+  const guard = put('house_small', 63, 26, 1);
   // 集装箱：南边两排叠了两层，挡住南面的视线
   b.prop('container', 56, 72, 62, 74, { variant: 0, h: 5.0 });
   b.prop('container', 66, 72, 72, 74, { variant: 1, h: 5.0 });
@@ -364,17 +159,21 @@ export function buildOutpost(seed = 20260207): MapData {
   }
   // 公路上抛锚的车
   if (b.isFree(6, 36, 10, 38)) b.prop('car', 6, 36, 10, 38, { variant: 3 });
-  if (b.isFree(70, 42, 74, 44)) b.prop('car', 70, 42, 74, 44, { variant: 2 });
+  if (b.isFree(56, 47, 60, 49)) b.prop('car', 56, 47, 60, 49, { variant: 2 });
 
   // ---------- 刷怪点 ----------
   const spawnDefs: Array<[string, number, number]> = [
     ['北左', 25, 4],
-    ['北右', 60, 4],
+    ['北右', 54, 4],
     ['东', 75, 40],
     ['南右', 62, 75],
     ['南左', 18, 75],
     ['西', 4, 40],
   ];
+  for (const [name, cx, cy] of spawnDefs) {
+    const h = b.houses.find((q) => cx >= q.x0 - 2 && cx < q.x1 + 2 && cy >= q.y0 - 2 && cy < q.y1 + 2);
+    if (h) throw new Error(`刷怪点 ${name} (${cx}, ${cy}) 离建筑太近`);
+  }
   const spawns: SpawnPoint[] = spawnDefs.map(([name, cx, cy]) => ({
     name,
     cx,
@@ -394,23 +193,28 @@ export function buildOutpost(seed = 20260207): MapData {
     if (gnd !== G.Grass && gnd !== G.Dirt) continue;
     if (spawns.some((s) => Math.hypot(s.cx - cx, s.cy - cy) < 8)) continue;
     if (!b.isFree(cx - 2, cy - 2, cx + 3, cy + 3)) continue;
+    if (b.houses.some((h) => cx >= h.x0 - 2 && cx < h.x1 + 2 && cy >= h.y0 - 2 && cy < h.y1 + 2)) continue;
     if (b.props.some((p) => p.kind === 'tree' && Math.hypot((p.x0 + p.x1) / 2 - cx, (p.y0 + p.y1) / 2 - cy) < 4)) continue;
     b.prop('tree', cx, cy, cx + 1, cy + 1, { h: 2.6 + rng.range(0, 1.4) });
     trees++;
   }
 
   // ---------- 零件箱（白天搜刮）----------
-  const scrapWish: Array<[number, number]> = [
-    [8, 8],
-    [8, 22],
-    [62, 9],
-    [70, 65],
-    [10, 61],
-    [55, 67],
-    [30, 9],
-    [66, 33],
+  // 一半放在屋里（要进屋搜刮），一半在外面
+  const inside = (r: Placed, k: number) => {
+    const c = r.floor[Math.floor(r.floor.length * k)] as [number, number];
+    return { cx: c[0], cy: c[1] };
+  };
+  const scrapBoxes = [
+    inside(homeA, 0.7),
+    inside(homeB, 0.45),
+    inside(shop, 0.3),
+    inside(depot, 0.5),
+    inside(guard, 0.6),
+    b.nearestOpen(10, 61),
+    b.nearestOpen(52, 66),
+    b.nearestOpen(30, 9),
   ];
-  const scrapBoxes = scrapWish.map(([x, y]) => b.nearestOpen(x, y));
 
   // ---------- 路灯（装饰，部分发光）----------
   const lampCells: Array<[number, number]> = [
@@ -458,6 +262,7 @@ export function buildOutpost(seed = 20260207): MapData {
     scrapBoxes,
     lamps,
     playerStart: { x: 0.5, z: 3.5 },
+    houses: b.houses,
   };
 }
 

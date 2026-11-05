@@ -20,6 +20,7 @@ import { wireEvents } from './events-wiring';
 import { InputController } from './input';
 import { Loop } from './loop';
 import { loadSave, recordRun, resetOnUpdate, storage, writeSave, type SaveData } from './save';
+import { clearAuth, download, loadAuth, signIn, upload, type CloudAuth } from './cloud';
 import { Screens } from './screens';
 
 export interface App {
@@ -94,10 +95,59 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
   view.viewmodel.onTaczReady = (kind, urls) => audio.useSamples(kind, urls);
   input.onInspect = () => view.viewmodel.inspect();
 
+  // ---------------- 云存档 ----------------
+  let auth: CloudAuth | null = loadAuth();
+  ui.cloud.name = auth?.name ?? '';
+  let pushTimer = 0;
+  /** 本地存档变了：登录了就过 3 秒自动上传（连续改动合并成一次） */
+  const schedulePush = (): void => {
+    if (!auth) return;
+    window.clearTimeout(pushTimer);
+    pushTimer = window.setTimeout(() => void cloudPush(true), 3000);
+  };
+  const cloudPush = async (quiet = false): Promise<void> => {
+    if (!auth) return;
+    ui.cloud.busy = true;
+    try {
+      ui.cloud.syncedAt = await upload(auth, ui.save);
+      ui.cloud.error = '';
+      if (!quiet) toast('已上传到云存档');
+    } catch (e) {
+      ui.cloud.error = (e as Error).message;
+      if (!quiet) toast(`上传失败：${ui.cloud.error}`, true);
+    } finally {
+      ui.cloud.busy = false;
+    }
+  };
+  /** 拉云端存档覆盖本地（设置保留本机的：画质、灵敏度跟着电脑走） */
+  const cloudPull = async (): Promise<boolean> => {
+    if (!auth) return false;
+    ui.cloud.busy = true;
+    try {
+      const r = await download(auth);
+      ui.cloud.error = '';
+      if (!r) return false;
+      const local = ui.save;
+      ui.save = { ...r.save, volume: local.volume, quality: local.quality, sensitivity: local.sensitivity };
+      writeSave(storage, ui.save);
+      ui.cloud.syncedAt = r.updatedAt;
+      return true;
+    } catch (e) {
+      ui.cloud.error = (e as Error).message;
+      toast(`下载失败：${ui.cloud.error}`, true);
+      return false;
+    } finally {
+      ui.cloud.busy = false;
+    }
+  };
+
   const save = (next: SaveData): void => {
     ui.save = next;
     writeSave(storage, next);
+    schedulePush();
   };
+  // 游戏更新重置了本地进度：云端也一起换成新的（下次拉取时旧纪元的存档会被忽略）
+  if (wiped) schedulePush();
   /** 这一局是正式的（按局外进度出征 / 读档继续）：会存检查点、结算勋章。沙盒（?autostart）和训练场都不是 */
   let ranked = false;
   /** 本局每种僵尸的击杀（图鉴） */
@@ -330,6 +380,38 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
     const volume = Math.min(1, Math.max(0, v));
     audio.setVolume(volume);
     save({ ...ui.save, volume });
+  };
+  ui.actions.cloudSignIn = (name, password, register) => {
+    ui.cloud.busy = true;
+    ui.cloud.error = '';
+    signIn(name.trim(), password, register)
+      .then(async (a) => {
+        auth = a;
+        ui.cloud.name = a.name;
+        // 新注册：把本地进度传上去；登录：云端有存档就拉下来，没有就上传本地的
+        if (register || !(await cloudPull())) await cloudPush(true);
+        toast(register ? `注册成功，欢迎 ${a.name}` : `已登录 ${a.name}，存档已同步`);
+      })
+      .catch((e: Error) => {
+        ui.cloud.error = e.message;
+      })
+      .finally(() => {
+        ui.cloud.busy = false;
+      });
+  };
+  ui.actions.cloudUpload = () => void cloudPush();
+  ui.actions.cloudDownload = () => {
+    void cloudPull().then((ok) => {
+      if (ok) toast('已用云存档覆盖本地进度');
+      else if (!ui.cloud.error) toast('云端还没有存档', true);
+    });
+  };
+  ui.actions.cloudSignOut = () => {
+    auth = null;
+    clearAuth();
+    ui.cloud.name = '';
+    ui.cloud.syncedAt = 0;
+    toast('已退出云存档账号（本地进度保留）');
   };
   ui.actions.equip = (k) => {
     switchWeapon(game, k as WeaponKind);

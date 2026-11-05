@@ -8,6 +8,7 @@ import { sidearmOk } from '../../game/meta/loadout';
 import { fmtTime, ui, type LobbyTab } from '../store';
 import Settings from './Settings.vue';
 import CodexPanel from './CodexPanel.vue';
+import CloudPanel from './CloudPanel.vue';
 import { dailyFor, todayKey } from '../../game/meta/achievements';
 import { nightMod } from '../../game/data/modifiers';
 
@@ -210,6 +211,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
     <!-- 设置 -->
     <section v-else class="card settings">
       <Settings />
+      <CloudPanel />
     </section>
 
     <footer>

@@ -9,7 +9,7 @@ const { pathToFileURL } = require('node:url');
 const DEV = process.argv.includes('--dev');
 const DEV_URL = 'http://127.0.0.1:5173/';
 const DIST = path.join(__dirname, '..', 'dist');
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' blob: data:; worker-src 'self' blob:; font-src 'self' data:";
+const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' blob: data: http://47.94.82.70:8092; worker-src 'self' blob:; font-src 'self' data:";
 
 // ---- 性能：用独立显卡、不限制后台、跳过显卡黑名单 ----
 app.commandLine.appendSwitch('force_high_performance_gpu');

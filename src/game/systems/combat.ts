@@ -210,6 +210,9 @@ export function updateBullets(g: Game, dt: number): void {
       if (c.head && c.z.def.headInstakill) dmg = Math.max(dmg, c.z.hp + 1);
       const crit = g.mods.crit > 0 && g.rng.next() < g.mods.crit;
       if (crit) dmg *= 2;
+      // 卡牌「战意」：连杀越高伤害越高；「近身狂暴」：3 米内伤害更高
+      if (g.mods.comboDamage > 0 && g.combo > 0 && g.comboT > 0) dmg *= 1 + g.mods.comboDamage * Math.min(10, g.combo);
+      if (g.mods.closeDamage !== 1 && Math.hypot(c.z.x - g.player.x, c.z.z - g.player.z) < 3 + c.z.radius) dmg *= g.mods.closeDamage;
       const kb = knockback(dmg, c.z);
       const killed = g.damageZombie(c.z, dmg, { crit, head: c.head, kx: ux * kb, kz: uz * kb, burn: b.burn });
       if (b.slowHit > 0 && !killed) {
@@ -217,10 +220,12 @@ export function updateBullets(g: Game, dt: number): void {
         c.z.slowK = b.slowHit;
       }
       // 狙击招牌：爆头击杀返还子弹
-      if (killed && c.head && b.refund > 0) {
+      // 卡牌「弹匣回收」：所有武器爆头击杀都返还子弹
+      const refund = b.refund + (killed && c.head ? g.mods.headRefund : 0);
+      if (killed && c.head && refund > 0) {
         const slot = g.loadout[b.kind];
-        slot.mag = Math.min(statsAt(b.kind, slot.tier).mag, slot.mag + b.refund);
-        g.events.emit('refund', { kind: b.kind, amount: b.refund });
+        slot.mag = Math.min(statsAt(b.kind, slot.tier).mag, slot.mag + refund);
+        g.events.emit('refund', { kind: b.kind, amount: refund });
       }
       g.events.emit('impact', {
         x: b.x + dx * c.t,

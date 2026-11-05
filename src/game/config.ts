@@ -36,7 +36,26 @@ export interface RunConfig {
   /** 每日挑战：每夜固定的词缀（空串 = 随机）；不结算勋章以外的局外加成 */
   fixedMod: string;
   daily: string;
+  /**
+   * 这一局已经吃到的局外数值加成（开局时记下来，读档继续时和大厅里新买的比较，只补差额）。
+   * 沙盒 / 训练场 / 每日挑战都是 0 / 1（没有加成）
+   */
+  meta: MetaApplied;
 }
+
+export interface MetaApplied {
+  maxHp: number;
+  coreHp: number;
+  structHp: number;
+  turretDamage: number;
+  scrapGain: number;
+  armor: number;
+  regen: number;
+  speed: number;
+  fireRate: number;
+}
+
+export const NO_META: MetaApplied = { maxHp: 0, coreHp: 0, structHp: 1, turretDamage: 1, scrapGain: 1, armor: 1, regen: 0, speed: 1, fireRate: 1 };
 
 export function sandboxConfig(): RunConfig {
   const tierCap = {} as Record<WeaponKind, number>;
@@ -57,5 +76,6 @@ export function sandboxConfig(): RunConfig {
     endless: false,
     fixedMod: '',
     daily: '',
+    meta: { ...NO_META },
   };
 }

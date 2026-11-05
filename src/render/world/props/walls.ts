@@ -108,13 +108,36 @@ export function wall(b: Builder, p: Prop, rng: Rng, trim = false): void {
   b.pop();
 }
 
-export function doorframe(b: Builder, p: Prop): void {
+export function doorframe(b: Builder, p: Prop, trim = false): void {
   const r = rectOf(p);
   const L = r.L;
   const h = p.h ?? 2.4;
   const style = p.style ?? 'compound';
+  // 窗楣：窗洞上方到墙顶的那一截墙（窗台 0.95 + 窗洞 1.25）
+  if (p.variant === 9) {
+    if (trim) return;
+    const top = 2.2;
+    const pal = { compound: Pal.concrete, brick: Pal.brick, plaster: Pal.plaster, metal: Pal.sheet }[style];
+    b.push({ x: r.cx, z: r.cz, ry: p.side === 'W' || p.side === 'E' ? Math.PI / 2 : 0 });
+    b.box(L, h - top, 0.92, { y: top }, matte(pal, { jitter: 0.12, ao: 0 }));
+    b.pop();
+    return;
+  }
   const col = style === 'brick' || style === 'plaster' ? 0x4d3a2a : Pal.steel;
-  b.push({ x: r.cx, z: r.cz, ry: r.horiz ? 0 : Math.PI / 2 });
+  // 单格门洞（模块化房屋）的方向由 side 决定，不能靠长宽判断
+  const horiz = p.side ? p.side === 'N' || p.side === 'S' : r.horiz;
+  b.push({ x: r.cx, z: r.cz, ry: horiz ? 0 : Math.PI / 2 });
+  if (p.house !== undefined) {
+    // 房屋的门洞是一格一格放的（2 格宽的门 = 两个），只画门洞上方那截墙，两侧就是墙本身
+    const top = Math.min(2.25, h - 0.3);
+    if (!trim) {
+      const pal = { compound: Pal.concrete, brick: Pal.brick, plaster: Pal.plaster, metal: Pal.sheet }[style];
+      b.box(L, h - top, 0.92, { y: top }, matte(pal, { jitter: 0.12, ao: 0 }));
+    }
+    b.box(L, 0.08, 1.0, { y: top - 0.08 }, matte(0x3a2e24, { jitter: 0.08, ao: 0 }));
+    b.pop();
+    return;
+  }
   b.box(0.22, h, 1.04, { x: -L / 2 + 0.11 }, matte(col, { jitter: 0.08 }));
   b.box(0.22, h, 1.04, { x: L / 2 - 0.11 }, matte(col, { jitter: 0.08 }));
   b.box(L, 0.34, 1.04, { y: h - 0.34 }, matte(col, { jitter: 0.08, ao: 0 }));

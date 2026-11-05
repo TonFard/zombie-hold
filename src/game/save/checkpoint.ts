@@ -53,6 +53,7 @@ export interface RunCheckpoint {
   hz: HazardState;
   combo: number;
   comboT: number;
+  hurtT: number;
   battery: number;
   flashOn: boolean;
   airdrop: { stage: number; t: number; x: number; z: number };
@@ -100,6 +101,7 @@ export function serialize(g: Game, savedAt = 0): RunCheckpoint {
     hz: g.hz,
     combo: g.combo,
     comboT: g.comboT,
+    hurtT: g.hurtT,
     battery: g.battery,
     flashOn: g.flashOn,
     airdrop: g.airdrop,
@@ -202,6 +204,7 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     hz: parseHazards(g, v.hz),
     combo: num(v, 'combo', 0, 1e6, true),
     comboT: num(v, 'comboT', 0, 60),
+    hurtT: num(v, 'hurtT', 0, 1e9),
     battery: num(v, 'battery', 0, 60),
     flashOn: v.flashOn === true,
     airdrop: shaped({ stage: 0, t: 0, x: 0, z: 0 }, v.airdrop, 'airdrop'),
@@ -335,6 +338,7 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
   Object.assign(g.hz, cp.hz);
   g.combo = cp.combo;
   g.comboT = cp.comboT;
+  g.hurtT = cp.hurtT;
   g.battery = cp.battery;
   Object.assign(g.airdrop, cp.airdrop);
   if (g.airdrop.stage === 2) g.events.emit('airdrop', { stage: 'land', x: g.airdrop.x, z: g.airdrop.z });

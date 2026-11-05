@@ -238,9 +238,12 @@ console.log('\n== 开局应用加成 ==');
   gr.input.cycle = 1;
   gr.update(STEP);
   check(gr.player.weapon === 'pistol', '滚轮切到另一把');
+  gr.input.select = 4;
+  gr.update(STEP);
+  check(gr.player.weapon === 'rifle', '数字键就是工坊里的编号：4 = 突击步枪');
   gr.input.select = 2;
   gr.update(STEP);
-  check(gr.player.weapon === 'rifle', '数字键 2 = 第二个枪位');
+  check(gr.player.weapon === 'rifle', '没带的枪（2 = 冲锋枪）按了没反应');
   check(gr.config.structures.includes('hmg') && gr.player.maxHp === 100, '新解锁的炮塔也能用；生命这类开局加成不重复叠加');
 
   // 哪些枪能当随身武器带

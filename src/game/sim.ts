@@ -147,6 +147,22 @@ export interface Mods {
   head: number;
   /** 瞄准时散布的额外倍率（卡牌，越小越准） */
   adsSpread: number;
+  /** 射速倍率（局外「射击训练」） */
+  fireRate: number;
+  /** 脱战后每秒回复的玩家生命（局外「急救训练」） */
+  regen: number;
+  /** 卡牌「连锁反应」：击杀时在尸体处小爆炸的伤害（0 = 没有） */
+  chainBlast: number;
+  /** 卡牌「战意」：连杀每 +1，武器伤害额外 +这么多（最多 10 连） */
+  comboDamage: number;
+  /** 卡牌「弹匣回收」：爆头击杀返还几发子弹（所有武器） */
+  headRefund: number;
+  /** 卡牌「近身狂暴」：3 米内的僵尸受到的武器伤害倍率 */
+  closeDamage: number;
+  /** 卡牌「推搡专家」：推搡冷却倍率 */
+  shoveCd: number;
+  /** 卡牌「爆破专家」：手雷每天多补几颗 */
+  extraFrags: number;
 }
 
 export interface CoreState {
@@ -167,6 +183,8 @@ export interface DamageOpts {
   silent?: boolean;
   /** 打中的是头 */
   head?: boolean;
+  /** 连锁爆炸造成的伤害（击杀不会再触发连锁） */
+  chain?: boolean;
 }
 
 export interface GameEvents {
@@ -209,6 +227,7 @@ export interface GameEvents {
   pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
   spit: { x: number; z: number };
   scream: { x: number; z: number; radius: number };
+  chainBlast: { x: number; z: number };
   combo: { count: number; mult: number };
   challenge: { id: string; done: boolean };
   airdrop: { stage: 'land' | 'taken' | 'gone'; x: number; z: number };
@@ -278,7 +297,7 @@ export class Game {
     flashlight: false,
   };
   readonly loadout: Record<WeaponKind, WeaponSlot>;
-  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1 };
+  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1, fireRate: 1, regen: 0, chainBlast: 0, comboDamage: 0, headRefund: 0, closeDamage: 1, shoveCd: 1, extraFrags: 0 };
   readonly run: RunState = newRunState();
   /** 这一局的规则（难度、局外成长带来的解锁和上限）；默认是什么都不限制的沙盒 */
   config: RunConfig = sandboxConfig();
@@ -337,7 +356,11 @@ export class Game {
   readonly airdrop: AirdropState = newAirdrop();
   /** 连杀：数量和距离上一次击杀的时间 */
   combo = 0;
+  /** 这一帧要结算的「连锁反应」爆炸（击杀时登记，下一帧统一炸，避免在伤害结算里递归） */
+  chainBlasts: Array<{ x: number; z: number }> = [];
   comboT = 0;
+  /** 距离上次受伤的秒数（自动回血用） */
+  hurtT = 99;
 
   constructor(seed = 1) {
     this.rng = new Rng(seed);
@@ -401,6 +424,18 @@ export class Game {
     this.time += dt;
     this.tick++;
     if (this.comboT > 0) this.comboT = Math.max(0, this.comboT - dt);
+    // 上一帧登记的连锁爆炸：半径 2.2 米，只伤僵尸
+    if (this.chainBlasts.length) {
+      const list = this.chainBlasts.splice(0);
+      for (const c of list) {
+        this.events.emit('chainBlast', { x: c.x, z: c.z });
+        for (const z of this.zombies) {
+          if (!z.alive) continue;
+          const d = Math.hypot(z.x - c.x, z.z - c.z);
+          if (d < 2.2 + z.radius) this.damageZombie(z, this.mods.chainBlast * (1 - 0.5 * Math.min(1, d / 2.2)), { chain: true });
+        }
+      }
+    }
     // 手电筒：开着耗电，耗尽自动关；关着时充电
     const wantLight = this.input.flashlight && this.config.extras && this.player.alive;
     if (wantLight && this.battery > 0) {
@@ -511,6 +546,8 @@ export class Game {
     this.events.emit('zombieDied', { zombie: z, head });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
+    // 卡牌「连锁反应」：武器击杀（不是爆炸本身造成的）在尸体处炸一下，可以连锁
+    if (this.mods.chainBlast > 0 && !o.chain) this.chainBlasts.push({ x: z.x, z: z.z });
     return true;
   }
 
@@ -557,6 +594,7 @@ export class Game {
   damagePlayer(amount: number): void {
     if (!this.player.alive) return;
     const dealt = amount * this.mods.armor;
+    this.hurtT = 0;
     if (!this.invulnerablePlayer) {
       this.player.hp = Math.max(0, this.player.hp - dealt);
       if (this.player.hp <= 0) {

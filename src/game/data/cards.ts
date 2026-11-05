@@ -9,6 +9,8 @@ export interface CardDef {
   rarity: CardRarity;
   /** 最多叠几张 */
   max: number;
+  /** 只在正式局（config.extras）里出现：依赖连杀 / 推搡 / 手雷这些 M12 玩法 */
+  extra?: boolean;
   apply(g: Game): void;
 }
 
@@ -46,6 +48,13 @@ export const CARDS: CardDef[] = [
   { id: 'lifesteal', name: '嗜血', desc: '每次击杀恢复 2 点生命', rarity: 'epic', max: 3, apply: (g) => { g.mods.lifesteal += 2; } },
   { id: 'regen', name: '自动修复', desc: '发电机每秒自动恢复 1.5 点生命', rarity: 'epic', max: 3, apply: (g) => { g.mods.coreRegen += 1.5; } },
   { id: 'berserk', name: '狂热', desc: '暴击率 +15%，移动速度 +5%', rarity: 'epic', max: 2, apply: (g) => { g.mods.crit += 0.15; g.mods.speed *= 1.05; } },
+  // ---- 流派牌：改变打法，能互相搭配；只在正式局（extras）里出现 ----
+  { id: 'chain', name: '连锁反应', desc: '武器击杀时尸体爆炸，2.2 米内造成 40 伤害（不会无限连锁）', rarity: 'epic', max: 2, extra: true, apply: (g) => { g.mods.chainBlast += 40; } },
+  { id: 'momentum', name: '战意', desc: '连杀每 +1，武器伤害 +3%（最多 +30%，断连清零）', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.comboDamage += 0.03; } },
+  { id: 'scavmag', name: '弹匣回收', desc: '任意武器爆头击杀返还 2 发子弹', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.headRefund += 2; } },
+  { id: 'brawler', name: '近身狂暴', desc: '3 米内的僵尸受到的武器伤害 +35%', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.closeDamage *= 1.35; } },
+  { id: 'shover', name: '推搡专家', desc: '推搡冷却 −40%', rarity: 'common', max: 2, extra: true, apply: (g) => { g.mods.shoveCd *= 0.6; } },
+  { id: 'demo', name: '爆破专家', desc: '每天多补 1 颗手雷，并立刻得到 1 颗', rarity: 'common', max: 2, extra: true, apply: (g) => { g.mods.extraFrags += 1; g.hz.frags += 1; } },
   // ---- 诅咒：风险换收益，只在 M13 规则下混进三选一（每个黎明最多一张） ----
   { id: 'c-glass', name: '玻璃大炮', desc: '所有武器伤害 +30%，受到的伤害 +25%', rarity: 'curse', max: 2, apply: (g) => { g.mods.damage *= 1.3; g.mods.armor *= 1.25; } },
   { id: 'c-overdrive', name: '过载炮塔', desc: '炮塔伤害 +40%，路障和炮塔生命 −30%', rarity: 'curse', max: 2, apply: (g) => { g.mods.turret *= 1.4; g.mods.structHp *= 0.7; scaleStructures(g, 0.7); } },
@@ -60,7 +69,7 @@ export const CARD_BY_ID: Record<string, CardDef> = Object.fromEntries(CARDS.map(
 
 /** 抽三张不重复、没叠满的牌，按稀有度加权 */
 export function drawCards(g: Game, n = 3): CardDef[] {
-  const pool = CARDS.filter((c) => c.rarity !== 'curse' && (g.cardCounts[c.id] ?? 0) < c.max);
+  const pool = CARDS.filter((c) => c.rarity !== 'curse' && (!c.extra || g.config.extras) && (g.cardCounts[c.id] ?? 0) < c.max);
   const out: CardDef[] = [];
   while (out.length < n && pool.length) {
     const total = pool.reduce((a, c) => a + RARITY_WEIGHT[c.rarity], 0);

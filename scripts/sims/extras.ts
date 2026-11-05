@@ -2,6 +2,7 @@
 // 爆炸物、手雷、推搡、电击脉冲、手电筒、夜晚词缀、新僵尸、连杀、夜间挑战、无尽模式
 import { CHALLENGES, COMBO_WINDOW, ELITE_HP, FLASHLIGHT, NIGHT_MODS, comboMult } from '../../src/game/data/modifiers';
 import { ZOMBIES } from '../../src/game/data/zombies';
+import { CARD_BY_ID, drawCards } from '../../src/game/data/cards';
 import { FINAL_NIGHT, bossFor } from '../../src/game/data/waves';
 import { baseBonuses } from '../../src/game/data/meta-catalog';
 import { applyMeta } from '../../src/game/meta/loadout';
@@ -169,6 +170,36 @@ console.log('\n== 推搡（V） ==');
   g.input.melee = true;
   run(g, 0.2);
   check(z2.alive && z2.stunT > 0.5, '冷却好了以后又能推');
+}
+
+console.log('\n== 流派牌 ==');
+{
+  const g = ranked(8);
+  startRun(g);
+  g.player.x = 0.5;
+  g.player.z = 4;
+  CARD_BY_ID.chain?.apply(g);
+  const a = g.spawnZombie('walker', 6, 6)!;
+  const b = g.spawnZombie('walker', 7, 6)!;
+  a.dummy = b.dummy = true;
+  g.damageZombie(a, 1e6);
+  run(g, 0.05);
+  check(b.hp < b.maxHp && b.alive, `连锁反应：击杀时旁边的僵尸受到爆炸伤害（${Math.round(b.maxHp - b.hp)}）`);
+  const c = g.spawnZombie('walker', 7.5, 6)!;
+  c.dummy = true;
+  g.damageZombie(b, 1e6, { chain: true });
+  run(g, 0.05);
+  check(c.hp === c.maxHp, '连锁爆炸炸死的不会再连锁');
+  CARD_BY_ID.shover?.apply(g);
+  g.input.melee = true;
+  run(g, 0.2);
+  check(Math.abs(g.hz.shoveCd - SHOVE.cd * 0.6) < 0.25, `推搡专家：冷却 ${g.hz.shoveCd.toFixed(1)} 秒`);
+  // 沙盒（旧 sim 的规则）里抽不到流派牌
+  const sb = new Game(8);
+  startRun(sb);
+  const seen = new Set<string>();
+  for (let i = 0; i < 300; i++) for (const card of drawCards(sb, 3)) seen.add(card.id);
+  check(!['chain', 'momentum', 'scavmag', 'brawler', 'shover', 'demo'].some((id) => seen.has(id)), '沙盒里不会抽到流派牌');
 }
 
 console.log('\n== 发电机电击脉冲（Q） ==');
