@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { startApp, type App } from './app/boot';
+import { AuthError, CloudStore, clearAuth, loadAuth, pull, signIn, type CloudAuth } from './app/cloud';
+import AuthGate from './ui/screens/AuthGate.vue';
 import Banner from './ui/hud/Banner.vue';
 import Bench from './ui/screens/Bench.vue';
 import BuildBar from './ui/hud/BuildBar.vue';
@@ -17,10 +19,46 @@ import { ui } from './ui/store';
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const fxRef = ref<HTMLDivElement | null>(null);
+const appRef = ref<App | null>(null);
 let app: App | null = null;
 
+// ---- 线上存档：先登录、把进度从服务器拉下来，再启动游戏 ----
+const needLogin = ref(false);
+const authBusy = ref(false);
+const authError = ref('');
+
+const boot = async (auth: CloudAuth): Promise<void> => {
+  authBusy.value = true;
+  authError.value = '';
+  try {
+    const store = new CloudStore(auth);
+    store.hydrate(await pull(auth));
+    needLogin.value = false;
+    if (canvasRef.value && fxRef.value) app = appRef.value = startApp(canvasRef.value, fxRef.value, auth, store);
+  } catch (e) {
+    if (e instanceof AuthError) clearAuth();
+    needLogin.value = true;
+    authError.value = e instanceof AuthError ? '登录已过期' : (e as Error).message;
+  } finally {
+    authBusy.value = false;
+  }
+};
+
+const submit = (name: string, password: string, register: boolean): void => {
+  authBusy.value = true;
+  authError.value = '';
+  signIn(name, password, register)
+    .then((a) => boot(a))
+    .catch((e: Error) => {
+      authError.value = e.message;
+      authBusy.value = false;
+    });
+};
+
 onMounted(() => {
-  if (canvasRef.value && fxRef.value) app = startApp(canvasRef.value, fxRef.value);
+  const a = loadAuth();
+  if (a) void boot(a);
+  else needLogin.value = true;
 });
 
 onBeforeUnmount(() => {
@@ -44,8 +82,9 @@ onBeforeUnmount(() => {
   <Cards />
   <Result />
   <Toast />
+  <AuthGate v-if="needLogin" :busy="authBusy" :error="authError" :submit="submit" />
   <Transition name="fade">
-    <div v-if="!ui.worldReady" class="loading" role="status" aria-live="polite">
+    <div v-if="!needLogin && (!appRef || !ui.worldReady)" class="loading" role="status" aria-live="polite">
       <div class="title">黎 明</div>
       <div class="bar"><i></i></div>
       <div class="note">正在加载地图…</div>

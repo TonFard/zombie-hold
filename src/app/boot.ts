@@ -8,6 +8,7 @@ import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
 import { applyDaily, applyMeta, applyTraining, sidearmOk, widenMeta } from '../game/meta/loadout';
 import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunOutcome } from '../game/meta/progress';
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
+import { SAVE_KEY } from '../game/save/schema';
 import { Game, STEP } from '../game/sim';
 import { switchWeapon } from '../game/systems/player';
 import { chooseCard, continueEndless, nightsSurvived, rerollCards, startRun } from '../game/systems/run';
@@ -19,8 +20,8 @@ import { toast, ui } from '../ui/store';
 import { wireEvents } from './events-wiring';
 import { InputController } from './input';
 import { Loop } from './loop';
-import { loadSave, recordRun, resetOnUpdate, storage, writeSave, type SaveData } from './save';
-import { clearAuth, download, loadAuth, signIn, upload, type CloudAuth } from './cloud';
+import { loadSave, recordRun, writeSave, type SaveData } from './save';
+import { AuthError, CloudStore, clearAuth, signOut, type CloudAuth } from './cloud';
 import { Screens } from './screens';
 
 export interface App {
@@ -64,7 +65,11 @@ function readParams() {
   };
 }
 
-export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
+/**
+ * 线上存档：auth 是已经登录的账号，storage 是装着服务器上全部进度的 CloudStore（写入会马上上传）。
+ * 登录界面在 App.vue；登录 / 拉取完成后才调用这里
+ */
+export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: CloudAuth, storage: CloudStore): App {
   const params = readParams();
   // 每日挑战：同一天固定种子
   const daily = params.daily ? dailyFor(todayKey()) : null;
@@ -83,12 +88,10 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
   input.assumeLocked = params.nolock || typeof canvas.requestPointerLock !== 'function';
   view.look = input.look;
   view.setNight(params.night !== null ? Number(params.night) : 0.15, true);
-  // 新版本：进度全部重置（设置保留），检查点也一起删掉
-  const wiped = resetOnUpdate(storage, RUN_KEY);
+  // 进度在服务器上：拉下来的就是全部（游戏更新后服务器上旧版本的存档不再下发，等于重置）
   const loaded = loadSave(storage);
   ui.save = loaded.save;
-  if (wiped) toast('游戏已更新：进度已重置，重新开始（设置保留）');
-  else if (loaded.warning) {
+  if (loaded.warning) {
     console.warn(loaded.warning);
     toast(loaded.warning, true);
   } else if (loaded.migrated) toast('旧存档已升级：统计和设置都保留了');
@@ -103,59 +106,31 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
   view.viewmodel.onTaczReady = (kind, urls) => audio.useSamples(kind, urls);
   input.onInspect = () => view.viewmodel.inspect();
 
-  // ---------------- 云存档 ----------------
-  let auth: CloudAuth | null = loadAuth();
-  ui.cloud.name = auth?.name ?? '';
-  let pushTimer = 0;
-  /** 本地存档变了：登录了就过 3 秒自动上传（连续改动合并成一次） */
-  const schedulePush = (): void => {
-    if (!auth) return;
-    window.clearTimeout(pushTimer);
-    pushTimer = window.setTimeout(() => void cloudPush(true), 3000);
-  };
-  const cloudPush = async (quiet = false): Promise<void> => {
-    if (!auth) return;
-    ui.cloud.busy = true;
-    try {
-      ui.cloud.syncedAt = await upload(auth, ui.save);
-      ui.cloud.error = '';
-      if (!quiet) toast('已上传到云存档');
-    } catch (e) {
-      ui.cloud.error = (e as Error).message;
-      if (!quiet) toast(`上传失败：${ui.cloud.error}`, true);
-    } finally {
-      ui.cloud.busy = false;
+  // ---------------- 线上存档 ----------------
+  ui.cloud.name = auth.name;
+  let warned = false;
+  storage.onError = (e) => {
+    ui.cloud.error = e.message;
+    // 登录过期：回到登录界面重新登录（进度都在服务器上，不会丢）
+    if (e instanceof AuthError) {
+      clearAuth();
+      window.location.reload();
+      return;
     }
+    if (!warned) toast(`进度没保存上：${e.message}，会自动重试`, true);
+    warned = true;
   };
-  /** 拉云端存档覆盖本地（设置保留本机的：画质、灵敏度跟着电脑走） */
-  const cloudPull = async (): Promise<boolean> => {
-    if (!auth) return false;
-    ui.cloud.busy = true;
-    try {
-      const r = await download(auth);
-      ui.cloud.error = '';
-      if (!r) return false;
-      const local = ui.save;
-      ui.save = { ...r.save, volume: local.volume, quality: local.quality, sensitivity: local.sensitivity };
-      writeSave(storage, ui.save);
-      ui.cloud.syncedAt = r.updatedAt;
-      return true;
-    } catch (e) {
-      ui.cloud.error = (e as Error).message;
-      toast(`下载失败：${ui.cloud.error}`, true);
-      return false;
-    } finally {
-      ui.cloud.busy = false;
-    }
-  };
+  // 断网时每 10 秒重试一次没传上去的进度
+  const retry = window.setInterval(() => {
+    if (storage.busy) void storage.flush();
+  }, 10000);
 
   const save = (next: SaveData): void => {
     ui.save = next;
     writeSave(storage, next);
-    schedulePush();
   };
-  // 游戏更新重置了本地进度：云端也一起换成新的（下次拉取时旧纪元的存档会被忽略）
-  if (wiped) schedulePush();
+  // 新号 / 游戏更新后服务器上还没有这一版的存档：把新存档写上去
+  if (!storage.get(SAVE_KEY)) save(ui.save);
   /** 这一局是正式的（按局外进度出征 / 读档继续）：会存检查点、结算勋章。沙盒（?autostart）和训练场都不是 */
   let ranked = false;
   /** 本局每种僵尸的击杀（图鉴） */
@@ -241,6 +216,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
     },
     dev: { buildWeapon },
     dispose() {
+      window.clearInterval(retry);
       loop.stop();
       for (const t of timers) clearTimeout(t);
       for (const f of disposers) f();
@@ -262,9 +238,14 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
   };
 
   /** 换一个 URL 重新加载：每一局都从干净的 Game 开始，不用担心上一局残留的状态 */
+  /** 换页前先把没传完的进度传上去（最多等 4 秒），不然刚结算的勋章会丢 */
   const reload = (q: string): void => {
-    window.location.href = `${window.location.pathname}${q}`;
+    ui.cloud.busy = true;
+    void Promise.race([storage.flush(true), new Promise((r) => setTimeout(r, 4000))]).then(() => {
+      window.location.href = `${window.location.pathname}${q}`;
+    });
   };
+  window.addEventListener('beforeunload', () => void storage.flush(true));
 
   /** 白天开始时自动存检查点 */
   const checkpoint = (): void => {
@@ -389,37 +370,12 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
     audio.setVolume(volume);
     save({ ...ui.save, volume });
   };
-  ui.actions.cloudSignIn = (name, password, register) => {
-    ui.cloud.busy = true;
-    ui.cloud.error = '';
-    signIn(name.trim(), password, register)
-      .then(async (a) => {
-        auth = a;
-        ui.cloud.name = a.name;
-        // 新注册：把本地进度传上去；登录：云端有存档就拉下来，没有就上传本地的
-        if (register || !(await cloudPull())) await cloudPush(true);
-        toast(register ? `注册成功，欢迎 ${a.name}` : `已登录 ${a.name}，存档已同步`);
-      })
-      .catch((e: Error) => {
-        ui.cloud.error = e.message;
-      })
-      .finally(() => {
-        ui.cloud.busy = false;
-      });
-  };
-  ui.actions.cloudUpload = () => void cloudPush();
-  ui.actions.cloudDownload = () => {
-    void cloudPull().then((ok) => {
-      if (ok) toast('已用云存档覆盖本地进度');
-      else if (!ui.cloud.error) toast('云端还没有存档', true);
-    });
-  };
   ui.actions.cloudSignOut = () => {
-    auth = null;
-    clearAuth();
-    ui.cloud.name = '';
-    ui.cloud.syncedAt = 0;
-    toast('已退出云存档账号（本地进度保留）');
+    ui.cloud.busy = true;
+    void storage
+      .flush()
+      .then(() => signOut(auth))
+      .then(() => window.location.replace(window.location.pathname));
   };
   ui.actions.equip = (k) => {
     switchWeapon(game, k as WeaponKind);

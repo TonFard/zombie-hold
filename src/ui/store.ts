@@ -86,10 +86,7 @@ export const ui = reactive({
     setVolume: (_v: number) => {},
     setQuality: (_q: Quality) => {},
     setSensitivity: (_s: number) => {},
-    /** 云存档：注册 / 登录（成功后自动同步一次）、上传、下载覆盖本地、退出登录 */
-    cloudSignIn: (_name: string, _password: string, _register: boolean) => {},
-    cloudUpload: () => {},
-    cloudDownload: () => {},
+    /** 退出登录（回到登录界面） */
     cloudSignOut: () => {},
   },
 });

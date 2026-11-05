@@ -2,9 +2,14 @@
 // 接口（都返回 JSON）：
 //   POST /api/register  { name, password }        → { token }
 //   POST /api/login     { name, password }        → { token }
-//   GET  /api/save      Authorization: Bearer t   → { save, updatedAt } | { save: null }
-//   PUT  /api/save      Authorization: Bearer t   { save, epoch } → { updatedAt }
+//   GET  /api/save      Authorization: Bearer t   → { save, epoch, rev, updatedAt } | { save: null, rev: 0 }
+//   PUT  /api/save      Authorization: Bearer t   { save, epoch, rev } → { rev, updatedAt }
+//        rev 是客户端上次拿到的版本号；对不上（另一台电脑已经写过）返回 409，客户端要先重新拉取
+//   GET  /api/run       Authorization: Bearer t   → { run } | { run: null }      打到一半的检查点
+//   PUT  /api/run       Authorization: Bearer t   { run }  （run 为 null = 删除）
+//   POST /api/logout    Authorization: Bearer t   → { ok }   作废这个 token
 //   GET  /api/health                              → { ok: true }
+// 游戏只在线上存档：没登录不能玩，所有进度都在这里
 // 密码用 scrypt 加盐散列存储；token 是随机串，只存它的 sha256。
 import http from 'node:http';
 import fs from 'node:fs';
@@ -13,7 +18,7 @@ import crypto from 'node:crypto';
 
 const PORT = Number(process.env.PORT ?? 8092);
 const DATA = process.env.DATA_DIR ?? './data';
-const MAX_BODY = 512 * 1024; // 一份存档几 KB，给足余量
+const MAX_BODY = 1024 * 1024; // 存档几 KB，检查点二三十 KB，给足余量
 const USERS = path.join(DATA, 'users.json');
 const SAVES = path.join(DATA, 'saves');
 fs.mkdirSync(SAVES, { recursive: true });
@@ -87,6 +92,12 @@ const issueToken = (name) => {
 };
 
 const saveFile = (name) => path.join(SAVES, `${sha(name).slice(0, 32)}.json`);
+const runFile = (name) => path.join(SAVES, `${sha(name).slice(0, 32)}.run.json`);
+const writeAtomic = (f, data) => {
+  fs.writeFileSync(f + '.tmp', JSON.stringify(data));
+  fs.renameSync(f + '.tmp', f);
+};
+const readJson = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, 'utf8')) : null);
 
 const server = http.createServer(async (req, res) => {
   const ip = req.socket.remoteAddress ?? '';
@@ -112,22 +123,49 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { token: issueToken(name), name });
     }
 
+    const name = url.pathname.startsWith('/api/') ? userOf(req) : null;
+    if (url.pathname === '/api/logout' && req.method === 'POST') {
+      if (name) {
+        const t = sha(/^Bearer (\w+)$/.exec(req.headers.authorization ?? '')?.[1] ?? '');
+        users[name].tokens = users[name].tokens.filter((x) => x !== t);
+        persistUsers();
+      }
+      return send(res, 200, { ok: true });
+    }
+
     if (url.pathname === '/api/save') {
-      const name = userOf(req);
-      if (!name) return send(res, 401, { error: '请先登录' });
+      if (!name) return send(res, 401, { error: '登录已过期，请重新登录' });
       const f = saveFile(name);
       if (req.method === 'GET') {
-        if (!fs.existsSync(f)) return send(res, 200, { save: null });
-        return send(res, 200, JSON.parse(fs.readFileSync(f, 'utf8')));
+        const rec = readJson(f);
+        return send(res, 200, rec ? { rev: 1, ...rec } : { save: null, rev: 0 });
       }
       if (req.method === 'PUT') {
-        const { save, epoch } = await readBody(req);
+        const { save, epoch, rev } = await readBody(req);
         if (typeof save !== 'object' || save === null || save.version !== 2) return send(res, 400, { error: '存档格式不对' });
-        // epoch：客户端的存档纪元，游戏更新后旧纪元的云存档不再下发
-        const rec = { save, epoch: Number.isInteger(epoch) ? epoch : 0, updatedAt: Date.now() };
-        fs.writeFileSync(f + '.tmp', JSON.stringify(rec));
-        fs.renameSync(f + '.tmp', f);
-        return send(res, 200, { updatedAt: rec.updatedAt });
+        const cur = readJson(f);
+        const curRev = cur ? (cur.rev ?? 1) : 0;
+        // 乐观锁：另一台电脑在你上次拉取之后写过，就不能直接覆盖
+        if (Number.isInteger(rev) && rev !== curRev) return send(res, 409, { error: '存档在别处被更新了', rev: curRev });
+        const rec = { save, epoch: Number.isInteger(epoch) ? epoch : 0, rev: curRev + 1, updatedAt: Date.now() };
+        writeAtomic(f, rec);
+        return send(res, 200, { rev: rec.rev, updatedAt: rec.updatedAt });
+      }
+    }
+
+    if (url.pathname === '/api/run') {
+      if (!name) return send(res, 401, { error: '登录已过期，请重新登录' });
+      const f = runFile(name);
+      if (req.method === 'GET') return send(res, 200, { run: readJson(f)?.run ?? null });
+      if (req.method === 'PUT') {
+        const { run } = await readBody(req);
+        if (run === null) {
+          if (fs.existsSync(f)) fs.unlinkSync(f);
+          return send(res, 200, { ok: true });
+        }
+        if (typeof run !== 'string' || run.length > MAX_BODY) return send(res, 400, { error: '检查点格式不对' });
+        writeAtomic(f, { run, updatedAt: Date.now() });
+        return send(res, 200, { ok: true });
       }
     }
     return send(res, 404, { error: 'not found' });
