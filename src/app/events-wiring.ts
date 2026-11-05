@@ -1,6 +1,6 @@
 import type { AudioSystem } from '../audio';
 import type { Game } from '../game/sim';
-import { hud } from '../ui/hud';
+import { bumpPop, hud, markBoxTaken, procCard } from '../ui/hud';
 import { ui } from '../ui/store';
 
 /**
@@ -15,9 +15,34 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
       hud.hit = 1;
       hud.hitCrit = e.crit;
       hud.hitHead = e.head;
+      if (e.crit) {
+        procCard(game, 'crit');
+        procCard(game, 'berserk');
+      }
+      if (e.head) procCard(game, 'weakspot');
     }),
     game.events.on('zombieDied', () => {
       hud.kill = 1;
+      // 嗜血：逻辑层已经加过血了；上一帧快照里没满血才算真的回了血
+      const ls = game.mods.lifesteal;
+      if (ls > 0 && game.player.alive && hud.hp < hud.maxHp) {
+        bumpPop(hud.healPop, Math.min(ls, hud.maxHp - hud.hp));
+        procCard(game, 'lifesteal');
+      }
+    }),
+    // 卡牌触发反馈：闪一下 HUD 上对应的卡牌格
+    game.events.on('refund', ({ amount }) => {
+      bumpPop(hud.ammoPop, amount);
+      if (game.mods.headRefund > 0) procCard(game, 'scavmag');
+    }),
+    game.events.on('chainBlast', () => procCard(game, 'chain')),
+    game.events.on('combo', () => procCard(game, 'momentum')),
+    game.events.on('scrap', () => {
+      procCard(game, 'scavenger');
+      procCard(game, 'c-greed');
+    }),
+    game.events.on('scrapBox', ({ taken }) => {
+      if (taken) markBoxTaken();
     }),
     game.events.on('zombieAttack', ({ zombie, target }) => {
       if (target !== 'player') return;

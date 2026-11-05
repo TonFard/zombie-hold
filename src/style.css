@@ -65,3 +65,13 @@ canvas.game-canvas {
   text-shadow: 0 0 6px rgba(0, 0, 0, 0.95), 0 2px 4px #000;
   will-change: transform, opacity;
 }
+/* 世界里的零件收入：金色、黑色描边，白天亮背景下也看得清 */
+.fx-text.fx-scrap {
+  color: #ffd257;
+  font-family: var(--hud-num);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  -webkit-text-stroke: 1px rgba(40, 22, 0, 0.9);
+  paint-order: stroke fill;
+  text-shadow: 0 0 10px rgba(255, 170, 30, 0.55), 0 2px 3px #000;
+}

@@ -6,7 +6,7 @@ import { defaultSave, type SaveData } from '../game/save/schema';
 
 export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result';
 
-export type LobbyTab = 'deploy' | 'armory' | 'engineering' | 'supply' | 'records' | 'codex' | 'settings';
+export type LobbyTab = 'deploy' | 'armory' | 'engineering' | 'supply' | 'fitness' | 'records' | 'codex' | 'settings';
 
 export interface Banner {
   text: string;
@@ -57,6 +57,8 @@ export const ui = reactive({
   dropHint: true,
   /** 这个黎明还能重抽几次 */
   rerolls: 0,
+  /** 写实地图资源加载好了没有：加载期间盖一层加载画面，不让玩家先看到旧的程序地图再"跳"成新的 */
+  worldReady: false,
   /** 云存档：登录的用户名（空串 = 没登录）、最近一次同步时间、正在请求、最近的错误 */
   cloud: { name: '', syncedAt: 0, busy: false, error: '' },
   /** 屏幕角落的短提示（自动保存、坏档……）；id 自增让组件重播动画 */

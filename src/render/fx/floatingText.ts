@@ -63,7 +63,7 @@ export class FloatingText {
 
   scrap(x: number, y: number, z: number, amount: number): void {
     const it = this.take();
-    Object.assign(it, { active: true, x, y, z, vy: 1.4, age: 0, life: 1.1, owner: -1, value: amount, crit: false, kind: 'scrap' as const, ox: 18 });
+    Object.assign(it, { active: true, x, y, z, vy: 1.6, age: 0, life: 1.5, owner: -1, value: amount, crit: false, kind: 'scrap' as const, ox: 22 });
     it.el.style.display = 'block';
     this.paint(it);
   }
@@ -71,11 +71,14 @@ export class FloatingText {
   private paint(it: Item): void {
     const v = Math.round(it.value);
     if (it.kind === 'scrap') {
-      it.el.textContent = `+${v}`;
-      it.el.style.color = '#ffcf4a';
-      it.el.style.fontSize = '15px';
+      // 金色描边大字 + 零件图标；零件箱这种大额收入更大
+      it.el.textContent = `◆ +${v}`;
+      it.el.className = 'fx-text fx-scrap';
+      it.el.style.color = '';
+      it.el.style.fontSize = `${Math.min(30, 19 + Math.sqrt(v) * 0.9).toFixed(0)}px`;
       return;
     }
+    it.el.className = 'fx-text';
     it.el.textContent = String(v);
     const big = Math.min(34, 15 + v * 0.12);
     it.el.style.fontSize = `${it.crit ? big + 8 : big}px`;

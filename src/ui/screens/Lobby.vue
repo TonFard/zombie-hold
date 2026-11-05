@@ -20,6 +20,7 @@ const tabs: Array<{ id: LobbyTab; name: string }> = [
   { id: 'armory', name: SECTION_NAME.armory },
   { id: 'engineering', name: SECTION_NAME.engineering },
   { id: 'supply', name: SECTION_NAME.supply },
+  { id: 'fitness', name: SECTION_NAME.fitness },
   { id: 'records', name: '战绩' },
   { id: 'codex', name: '图鉴' },
   { id: 'settings', name: '设置' },
@@ -71,7 +72,7 @@ const items = (sec: MetaSection) =>
     const needPre = r ? `${META_BY_ID[r.id]?.name ?? r.id}${(META_BY_ID[r.id]?.prices.length ?? 1) > 1 ? ` ${r.level} 级` : ''}` : '';
     return { id: m.id, name: m.name, lv, max: m.prices.length, price, state, needRank, needPre, now: lv > 0 ? metaDesc(m, lv) : '', next: price !== null ? metaDesc(m, lv + 1) : '' };
   });
-const shopSection = computed(() => (ui.lobbyTab === 'armory' || ui.lobbyTab === 'engineering' || ui.lobbyTab === 'supply' ? ui.lobbyTab : null));
+const shopSection = computed(() => (ui.lobbyTab === 'armory' || ui.lobbyTab === 'engineering' || ui.lobbyTab === 'supply' || ui.lobbyTab === 'fitness' ? ui.lobbyTab : null));
 const spent = computed(() => META_ITEMS.reduce((a, m) => a + m.prices.slice(0, levelOf(meta.value, m.id)).reduce((x, y) => x + y, 0), 0));
 const total = totalMetaCost();
 const blocked: Record<string, string> = { requires: '需要先买前置项目', medals: '勋章不够', maxed: '已满级', rank: '军衔不够：累计获得的勋章够了自动晋升' };
@@ -130,7 +131,6 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         <h3>继续上一局</h3>
         <p>第 {{ ui.checkpoint.night }} 天 · {{ DIFFICULTIES[ui.checkpoint.difficulty].name }} · 零件 {{ ui.checkpoint.scrap }} · 生命 {{ ui.checkpoint.hp }} / {{ ui.checkpoint.maxHp }}<template v-if="savedAt"> · 保存于 {{ savedAt }}</template></p>
         <button class="go" @click="ui.actions.continueRun()">继 续</button>
-        <p class="hint">开一局新的会放弃这一局，并按已经撑过的夜数结算勋章（会再确认一次）</p>
       </div>
 
       <div class="card">
@@ -143,7 +143,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         </div>
 
         <h3>随身武器</h3>
-        <div v-if="!bonuses.sidearm" class="hint">在军械库买下「随身武器」后，可以带一把已解锁的武器开局</div>
+        <div v-if="!bonuses.sidearm" class="hint">军械库解锁</div>
         <div v-else class="sides">
           <button :class="{ on: sidearm === null }" @click="sidearm = null">不带</button>
           <button v-for="k in sidearms" :key="k" :class="{ on: sidearm === k }" @click="sidearm = k">{{ WEAPONS[k].name }}</button>
@@ -157,15 +157,14 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
           <button v-if="confirming" class="ghost" @click="confirming = false">取消</button>
           <button class="ghost" @click="ui.actions.training()">训练场</button>
         </div>
-        <p class="hint">训练场：靶子在 10 / 20 / 30 / 45 米，已解锁的武器按当前等级上限给满；不结算勋章</p>
       </div>
 
       <div class="card">
         <h3>每日挑战 · {{ daily.key }}</h3>
-        <p class="dl">固定地图种子 · 每夜词缀「{{ nightMod(daily.mod).name }}」· 只能用 {{ WEAPONS[daily.weapon].name }} · 不吃局外加成</p>
+        <p class="dl">「{{ nightMod(daily.mod).name }}」· {{ WEAPONS[daily.weapon].name }}</p>
         <div class="row">
-          <button class="ghost" @click="ui.actions.daily()">开始今天的挑战</button>
-          <span class="hint">今日最好：{{ dailyBest !== undefined ? `撑过 ${dailyBest} 夜` : '还没打' }}</span>
+          <button class="ghost" @click="ui.actions.daily()">挑 战</button>
+          <span class="hint">最好 {{ dailyBest !== undefined ? `${dailyBest} 夜` : '—' }}</span>
         </div>
       </div>
     </section>

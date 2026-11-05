@@ -43,8 +43,8 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
               </template>
               <template v-else-if="!w.owned">
                 <button class="buy" :disabled="!w.canBuy" @click="ui.actions.buy(w.kind)"><span class="d">◆</span>{{ w.price }} 购买</button>
-                <span v-if="w.short > 0" class="short">已解锁 · 零件还差 {{ w.short }}</span>
-                <span v-else-if="w.swapOut" class="short">最多带两把 · 会换掉手里的{{ w.swapOut }}</span>
+                <span v-if="w.short > 0" class="short">差 {{ w.short }}</span>
+                <span v-else-if="w.swapOut" class="short">替换 {{ w.swapOut }}</span>
               </template>
               <template v-else-if="w.nextName">
                 <button class="up" :disabled="!w.canUpgrade" @click="ui.actions.upgrade(w.kind)"><span class="d">◆</span>{{ w.nextCost }} 升级：{{ w.nextName }}</button>
@@ -54,14 +54,14 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
               </template>
               <button v-if="w.owned && !w.equipped" class="eq-btn" @click="ui.actions.equip(w.kind)">装备</button>
             </div>
-            <div v-if="!w.owned && !w.locked" class="hint">买下后升到 1 级可达 <b>{{ w.dpsAfter.toFixed(0) }}</b> DPS<template v-if="w.dpsAfter > best">，超过现有的最强 {{ best.toFixed(0) }}</template></div>
+            <div v-if="!w.owned && !w.locked" class="hint">1 级 DPS <b>{{ w.dpsAfter.toFixed(0) }}</b><template v-if="w.dpsAfter > best"> ▲</template></div>
             <div v-else-if="w.nextName" class="hint">{{ w.nextDesc }}（DPS {{ w.dps.toFixed(0) }} → <b>{{ w.dpsAfter.toFixed(0) }}</b>）</div>
           </div>
         </div>
       </div>
 
       <div class="foot">
-        <span>最多随身带两把枪，滚轮或枪前面的编号键切换；买第三把会换掉手里那把（等级清零）。</span>
+        <span>随身 2 把 · 滚轮切换</span>
         <button class="close" @click="ui.actions.closeBench()">关闭（E / Esc）</button>
       </div>
     </div>

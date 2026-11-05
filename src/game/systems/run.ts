@@ -317,6 +317,18 @@ function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
   return k;
 }
 
+/**
+ * 正式局的零件箱奖励：基础 12–22，按天数增长（第 n 天 ×(1 + 0.1(n−1))），离发电机越远越多（每 10 米 +10%）。
+ * 新地图房子多、路绕，跑一趟捡箱子要花不少白天时间；之前固定 10–25，后期根本不值得去。
+ * 沙盒照旧 10–25（旧的 sim 结果不变）
+ */
+export function boxReward(g: Game, x: number, z: number): number {
+  if (!g.config.extras) return g.rng.range(10, 25);
+  const day = 1 + 0.1 * Math.max(0, g.run.night - 1);
+  const far = 1 + 0.01 * Math.hypot(x - g.core.x, z - g.core.z);
+  return g.rng.range(12, 22) * day * far;
+}
+
 /** 地图上的零件箱：走近就捡 */
 function updatePickups(g: Game): void {
   const p = g.player;
@@ -326,7 +338,7 @@ function updatePickups(g: Game): void {
     if (!b.alive) continue;
     if (Math.hypot(b.x - p.x, b.z - p.z) < 1.35) {
       b.alive = false;
-      const amount = Math.round(g.rng.range(10, 25) * g.mods.scrap);
+      const amount = Math.round(boxReward(g, b.x, b.z) * g.mods.scrap);
       g.scrap += amount;
       g.scrapEarned += amount;
       g.events.emit('scrap', { x: b.x, z: b.z, amount });

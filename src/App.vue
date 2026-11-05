@@ -44,4 +44,63 @@ onBeforeUnmount(() => {
   <Cards />
   <Result />
   <Toast />
+  <Transition name="fade">
+    <div v-if="!ui.worldReady" class="loading" role="status" aria-live="polite">
+      <div class="title">黎 明</div>
+      <div class="bar"><i></i></div>
+      <div class="note">正在加载地图…</div>
+    </div>
+  </Transition>
 </template>
+
+<style scoped>
+.loading {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  background: #05070a;
+}
+.title {
+  font-size: 48px;
+  letter-spacing: 24px;
+  padding-left: 24px;
+  color: #e8553f;
+  font-weight: 800;
+}
+.bar {
+  width: 220px;
+  height: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.08);
+}
+.bar i {
+  display: block;
+  width: 40%;
+  height: 100%;
+  background: #d9c9a0;
+  animation: slide 1.2s ease-in-out infinite;
+}
+.note {
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: #7e8a96;
+}
+@keyframes slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar i { animation: none; width: 100%; }
+}
+.fade-leave-active {
+  transition: opacity 0.35s;
+}
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

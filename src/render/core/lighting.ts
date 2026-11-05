@@ -55,6 +55,9 @@ export class Lighting {
   readonly hemi: HemisphereLight;
   readonly fog: FogExp2;
   private readonly lampLights: PointLight[] = [];
+  /** 每盏灯现在挂在哪根路灯上（lampPos 的下标，-1 = 空闲）和它当前的亮度 0–1 */
+  private readonly lampSlot: number[] = [];
+  private readonly lampFade: number[] = [];
   private readonly lampPos: Array<{ x: number; z: number }>;
   private lampStrength = 1;
   private lampTimer = 0;
@@ -97,6 +100,8 @@ export class Lighting {
       l.castShadow = false;
       scene.add(l);
       this.lampLights.push(l);
+      this.lampSlot.push(-1);
+      this.lampFade.push(0);
     }
     this.setNight(0);
   }
@@ -146,22 +151,45 @@ export class Lighting {
     const want = this.baseFog * this.fogMult;
     this.fog.density += (want - this.fog.density) * Math.min(1, dt * 1.5);
 
+    // 路灯比灯光多，只有离玩家最近的几根真正打光。之前每 0.2 秒重新挑一次、直接把灯瞬移过去，
+    // 走动时最近的那几根一换，路面上的光就一闪一闪。现在：挑选时留余量（已经亮着的优先保留），
+    // 换下来的灯先淡出，熄灭了才挂到新的路灯上再淡入
     this.lampTimer -= dt;
-    if (this.lampTimer > 0) return;
-    this.lampTimer = 0.2;
-    const near = this.lampPos
-      .map((p) => ({ p, d: (p.x - x) ** 2 + (p.z - z) ** 2 }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, this.lampLights.length);
-    for (let i = 0; i < this.lampLights.length; i++) {
-      const l = this.lampLights[i] as PointLight;
-      const n = near[i];
-      if (!n) {
-        l.intensity = 0;
-        continue;
+    if (this.lampTimer <= 0) {
+      this.lampTimer = 0.25;
+      const want = this.lampPos
+        .map((p, i) => ({ i, d: (p.x - x) ** 2 + (p.z - z) ** 2 }))
+        // 已经挂着灯的路灯算近 15%，避免两根距离差不多的路灯来回抢
+        .map((e) => (this.lampSlot.includes(e.i) ? { ...e, d: e.d * 0.72 } : e))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, this.lampLights.length)
+        .map((e) => e.i);
+      const free = this.lampSlot.map((s, k) => (s < 0 || !want.includes(s) ? k : -1)).filter((k) => k >= 0);
+      for (const idx of want) {
+        if (this.lampSlot.includes(idx)) continue;
+        // 只用已经熄灭的灯去接新路灯，正在淡出的等下一轮
+        const k = free.find((f) => (this.lampFade[f] as number) <= 0.01);
+        if (k === undefined) break;
+        free.splice(free.indexOf(k), 1);
+        this.lampSlot[k] = idx;
+        const p = this.lampPos[idx] as { x: number; z: number };
+        (this.lampLights[k] as PointLight).position.set(p.x + 0.4, 4.2, p.z);
       }
-      l.position.set(n.p.x + 0.4, 4.2, n.p.z);
-      l.intensity = this.lampsOff ? 0 : 38 * this.lampStrength;
+      for (let k = 0; k < this.lampSlot.length; k++) if ((this.lampSlot[k] as number) >= 0 && !want.includes(this.lampSlot[k] as number)) this.lampSlot[k] = -2 - (this.lampSlot[k] as number);
+    }
+    // 淡入淡出：挂着路灯的灯亮到 1，被换下来的（slot ≤ -2）暗到 0 后释放
+    const k1 = Math.min(1, dt * 2.5);
+    for (let k = 0; k < this.lampLights.length; k++) {
+      const s = this.lampSlot[k] as number;
+      const target = s >= 0 ? 1 : 0;
+      let f = this.lampFade[k] as number;
+      f += (target - f) * k1;
+      if (target === 0 && f < 0.01) {
+        f = 0;
+        if (s <= -2) this.lampSlot[k] = -1;
+      }
+      this.lampFade[k] = f;
+      (this.lampLights[k] as PointLight).intensity = this.lampsOff ? 0 : 38 * this.lampStrength * f;
     }
   }
 }

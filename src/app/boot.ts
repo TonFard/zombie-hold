@@ -70,6 +70,14 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement): App {
   const daily = params.daily ? dailyFor(todayKey()) : null;
   const game = new Game(daily ? daily.seed : Date.now() & 0xffff);
   const view = new GameView(canvas, game, fxLayer);
+  view.onWorldReady = () => {
+    ui.worldReady = true;
+  };
+  if (view.worldReady) ui.worldReady = true;
+  // 兜底：机器太慢（或资源下载卡住）时最多等 15 秒，先进游戏，写实地图在后台继续加载
+  window.setTimeout(() => {
+    ui.worldReady = true;
+  }, 15000);
   const input = new InputController(canvas, game);
   // 没有指针锁定能力的环境（或无头测试）直接当作已锁定
   input.assumeLocked = params.nolock || typeof canvas.requestPointerLock !== 'function';

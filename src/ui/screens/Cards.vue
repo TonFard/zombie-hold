@@ -10,7 +10,7 @@ const list = computed(() => ui.cards.map((id) => CARD_BY_ID[id]).filter((c): c i
   <div v-if="ui.screen === 'cards'" class="cards">
     <div class="title">
       <h2>黎 明</h2>
-      <p>选一张卡牌强化自己</p>
+      <p>选一张</p>
     </div>
     <div class="row">
       <button v-for="(c, i) in list" :key="c.id" class="card" :class="c.rarity" :style="{ animationDelay: i * 0.12 + 's' }" @click="ui.actions.pickCard(c.id)">

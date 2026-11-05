@@ -38,6 +38,7 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
       <div class="cl">
         <span class="c1">连杀</span>
         <span class="c2">零件 ×{{ x.comboMult.toFixed(2) }}</span>
+        <span v-if="hud.comboDmg > 0" class="c3">战意 伤害 +{{ Math.round(hud.comboDmg * 100) }}%</span>
       </div>
     </div>
 
@@ -227,9 +228,20 @@ kbd.mini {
   font-size: 11px;
   color: var(--hud-text);
 }
+.c3 {
+  font-family: var(--hud-num);
+  font-size: 11px;
+  font-weight: 600;
+  color: #ff9a5a;
+}
 @keyframes pop {
   from {
     transform: scale(1.35);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .combo {
+    animation: none;
   }
 }
 

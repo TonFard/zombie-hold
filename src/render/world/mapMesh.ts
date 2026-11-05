@@ -1,4 +1,4 @@
-import { BufferGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry } from 'three';
+import { AdditiveBlending, BufferGeometry, CanvasTexture, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Sprite, SpriteMaterial } from 'three';
 import { Rng } from '../../game/core/rng';
 import { GRID_H, GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
 import type { MapData, Prop, PropKind, WallStyle } from '../../game/world/types';
@@ -13,6 +13,8 @@ export interface MapView {
   /** 发电机能量核心的材质，渲染层用它做脉动 */
   coreMaterial: MeshBasicMaterial;
   scrapBoxes: Group[];
+  /** 零件箱标记的脉动：t = 时间（秒），玩家位置，night 0–1（夜里光柱收一点，免得太抢眼） */
+  updateBeacons(t: number, px: number, pz: number, night: number): void;
   /** 重建静态道具：skip 里的种类不建，trimWalls 里风格的墙只建细节，cliffs = false 时不建岩壁 */
   rebuild(o: StaticOpts): void;
   /** 换成写实地面：原来那张平面藏起来 */
@@ -63,6 +65,86 @@ function scrapBox(): Group {
   b.rod([0.2, 0.55, -0.1], [0.3, 0.8, -0.2], 0.03, { color: 0x7c8890, mat: 'metal', ao: 0 }, 4);
   b.box(0.18, 0.04, 0.12, { x: 0.15, y: 0.6, z: 0.1, ry: 0.5 }, { color: 0x9a6a3a, mat: 'metal', ao: 0 });
   return toGroup(b.build());
+}
+
+/** 零件箱的标记：一道竖直光柱（远处就能看到）、地上一圈光环、箱子上一团光晕。全是加法混合，不加真实光源 */
+interface Beacon {
+  beam: MeshBasicMaterial;
+  ring: Mesh;
+  ringMat: MeshBasicMaterial;
+  halo: Sprite;
+  haloMat: SpriteMaterial;
+  phase: number;
+}
+
+const BEACON_COLOR = 0xffb838;
+let beaconTex: { beam: CanvasTexture; dot: CanvasTexture; ring: CanvasTexture } | null = null;
+const beaconGeo = { beam: null as CylinderGeometry | null, ring: null as PlaneGeometry | null };
+
+function beaconTextures(): { beam: CanvasTexture; dot: CanvasTexture; ring: CanvasTexture } {
+  if (beaconTex) return beaconTex;
+  // 光柱：下亮上暗，横向两边也收一点
+  const bc = document.createElement('canvas');
+  bc.width = 4;
+  bc.height = 128;
+  const bx = bc.getContext('2d') as CanvasRenderingContext2D;
+  const bg = bx.createLinearGradient(0, 128, 0, 0);
+  bg.addColorStop(0, 'rgba(255,255,255,1)');
+  bg.addColorStop(0.15, 'rgba(255,255,255,0.75)');
+  bg.addColorStop(0.6, 'rgba(255,255,255,0.22)');
+  bg.addColorStop(1, 'rgba(255,255,255,0)');
+  bx.fillStyle = bg;
+  bx.fillRect(0, 0, 4, 128);
+  // 光晕：径向渐变
+  const dc = document.createElement('canvas');
+  dc.width = dc.height = 64;
+  const dx = dc.getContext('2d') as CanvasRenderingContext2D;
+  const dg = dx.createRadialGradient(32, 32, 0, 32, 32, 32);
+  dg.addColorStop(0, 'rgba(255,255,255,1)');
+  dg.addColorStop(0.25, 'rgba(255,255,255,0.55)');
+  dg.addColorStop(1, 'rgba(255,255,255,0)');
+  dx.fillStyle = dg;
+  dx.fillRect(0, 0, 64, 64);
+  // 地面光环：细圈 + 里面淡淡一层
+  const rc = document.createElement('canvas');
+  rc.width = rc.height = 128;
+  const rx = rc.getContext('2d') as CanvasRenderingContext2D;
+  const rg = rx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  rg.addColorStop(0, 'rgba(255,255,255,0.12)');
+  rg.addColorStop(0.78, 'rgba(255,255,255,0.18)');
+  rg.addColorStop(0.88, 'rgba(255,255,255,1)');
+  rg.addColorStop(0.95, 'rgba(255,255,255,0.3)');
+  rg.addColorStop(1, 'rgba(255,255,255,0)');
+  rx.fillStyle = rg;
+  rx.fillRect(0, 0, 128, 128);
+  beaconTex = { beam: new CanvasTexture(bc), dot: new CanvasTexture(dc), ring: new CanvasTexture(rc) };
+  return beaconTex;
+}
+
+function addBeacon(g: Group, rng: Rng): Beacon {
+  const tex = beaconTextures();
+  const glow = { color: BEACON_COLOR, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, fog: false } as const;
+  beaconGeo.beam ??= new CylinderGeometry(0.16, 0.26, 9, 14, 1, true).translate(0, 4.5, 0);
+  beaconGeo.ring ??= new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
+  const beam = new MeshBasicMaterial({ ...glow, map: tex.beam, side: DoubleSide, opacity: 0.5 });
+  const beamMesh = new Mesh(beaconGeo.beam, beam);
+  beamMesh.renderOrder = 5;
+  const ringMat = new MeshBasicMaterial({ ...glow, map: tex.ring, opacity: 0.6, fog: true });
+  const ring = new Mesh(beaconGeo.ring, ringMat);
+  ring.position.y = 0.03;
+  ring.renderOrder = 5;
+  const haloMat = new SpriteMaterial({ ...glow, map: tex.dot, opacity: 0.55 });
+  const halo = new Sprite(haloMat);
+  halo.position.y = 0.55;
+  halo.scale.setScalar(1.5);
+  halo.renderOrder = 5;
+  for (const m of [beamMesh, ring, halo]) {
+    m.castShadow = false;
+    m.receiveShadow = false;
+    m.name = 'scrapBeacon';
+    g.add(m);
+  }
+  return { beam, ring, ringMat, halo, haloMat, phase: rng.range(0, 6.28) };
 }
 
 export interface StaticOpts {
@@ -159,11 +241,13 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
 
   // ---- 零件箱 ----
   const scrapBoxes: Group[] = [];
+  const beacons: Beacon[] = [];
   const rng = new Rng(55);
   for (const c of map.scrapBoxes) {
     const g = scrapBox();
     g.position.set(c.cx - HALF_W + 0.5, 0, c.cy - HALF_H + 0.5);
     g.rotation.y = rng.range(0, 6.28);
+    beacons.push(addBeacon(g, rng));
     group.add(g);
     scrapBoxes.push(g);
   }
@@ -172,6 +256,24 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
     group,
     coreMaterial,
     scrapBoxes,
+    updateBeacons(t, px, pz, night) {
+      for (let i = 0; i < beacons.length; i++) {
+        const b = beacons[i] as Beacon;
+        const g = scrapBoxes[i] as Group;
+        if (!g.visible) continue;
+        const d = Math.hypot(g.position.x - px, g.position.z - pz);
+        const pulse = 0.5 + 0.5 * Math.sin(t * 2.6 + b.phase);
+        // 近了（< 6 米）光环放大变亮、光晕更亮，提示"走过去就能捡"；贴脸时光柱淡掉，不糊住视线
+        const near = Math.max(0, Math.min(1, (6 - d) / 4));
+        const close = Math.max(0, Math.min(1, (d - 1.5) / 8));
+        b.beam.opacity = (0.32 + 0.18 * pulse) * (1 - 0.35 * night) * (0.08 + 0.92 * close * close);
+        b.ringMat.opacity = 0.35 + 0.3 * pulse + 0.35 * near;
+        const rs = 1.5 + 0.25 * pulse + 0.7 * near;
+        b.ring.scale.set(rs, 1, rs);
+        b.haloMat.opacity = (0.35 + 0.25 * pulse + 0.3 * near) * (1 - 0.3 * night);
+        b.halo.scale.setScalar(1.2 + 0.3 * pulse + 0.5 * near);
+      }
+    },
     roofs,
     rebuild(o) {
       group.remove(statics.group);
@@ -186,6 +288,11 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
       groundTex.dispose();
       for (const g of statics.geos) g.dispose();
       for (const g of geos) g.dispose();
+      for (const b of beacons) {
+        b.beam.dispose();
+        b.ringMat.dispose();
+        b.haloMat.dispose();
+      }
       ground.geometry.dispose();
       outer.geometry.dispose();
     },

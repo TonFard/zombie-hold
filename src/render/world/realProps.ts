@@ -14,6 +14,7 @@ import {
   Vector3,
   type WebGLRenderer,
 } from 'three';
+import type { Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { Rng } from '../../game/core/rng';
@@ -58,11 +59,35 @@ export async function loadPropsManifest(): Promise<PropsManifest | null> {
   }
 }
 
-async function loadModel(loader: GLTFLoader, file: string): Promise<Model> {
+/**
+ * 模型"落地"的高度：一般就是最低点。但有些树模型带着垂到地下的根须，最低点比树干底部低一两米，
+ * 按最低点落地树就悬在半空。这类模型（groundPct > 0）改用顶点高度的低百分位，让树干底部贴地、根须埋进地里
+ */
+function groundY(root: Object3D, pct: number, fallback: number): number {
+  if (pct <= 0) return fallback;
+  const ys: number[] = [];
+  const v = new Vector3();
+  root.traverse((o) => {
+    const m = o as Mesh;
+    if (!m.isMesh) return;
+    const pos = m.geometry.getAttribute('position');
+    const step = Math.max(1, Math.floor(pos.count / 4000));
+    for (let i = 0; i < pos.count; i += step) ys.push(v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld).y);
+  });
+  if (!ys.length) return fallback;
+  ys.sort((a, b) => a - b);
+  return ys[Math.floor(pct * (ys.length - 1))] as number;
+}
+
+/** 需要按百分位落地的模型（带根须的树） */
+const GROUND_PCT: Record<string, number> = { tree_dead: 0.03, tree_winter: 0.03 };
+
+async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Model> {
   const gltf = await loader.loadAsync(`${BASE}${file}`);
   const root = gltf.scene;
   root.updateMatrixWorld(true);
   const box = new Box3().setFromObject(root);
+  box.min.y = groundY(root, GROUND_PCT[id] ?? 0, box.min.y);
   const size = box.getSize(new Vector3());
   // 长边转到 X
   const swap = size.z > size.x;
@@ -392,7 +417,7 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
     for (let job = queue.shift(); job; job = queue.shift()) {
       const [id, a] = job;
       try {
-        models.set(id, await loadModel(loader, a.file));
+        models.set(id, await loadModel(loader, a.file, id));
       } catch (e) {
         console.warn(`写实道具 ${id} 加载失败`, e);
       }

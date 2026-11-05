@@ -22,6 +22,12 @@ const scoped = computed(() => hud.scope && hud.ads > 0.85);
 const crossAlpha = computed(() => (hud.buildMode ? 1 : Math.max(0, 1 - hud.ads * 1.6)));
 /** 机瞄瞄准时留一个很淡的中心点：背光很强（发电机、爆炸）时照门看不清，也知道子弹往哪去 */
 const adsDot = computed(() => (!hud.scope && !hud.buildMode ? Math.max(0, hud.ads - 0.6) * 0.9 : 0));
+/** 减少动态效果：零件数直接跳到真实值，不滚动 */
+const reduced = typeof window !== 'undefined' && !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+const scrapNum = computed(() => (reduced ? hud.scrap : hud.scrapShown));
+const gainOn = computed(() => hud.scrapGain.life > 0.02 && hud.scrapGain.n > 0);
+/** 白天才提示零件箱（夜里去搜刮是送死，不催） */
+const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hud.alive && ui.screen !== 'training');
 </script>
 
 <template>
@@ -30,18 +36,38 @@ const adsDot = computed(() => (!hud.scope && !hud.buildMode ? Math.max(0, hud.ad
     <div class="hurt" :style="{ opacity: hud.hurt * 0.85 }"></div>
     <div v-if="lowHp && hud.alive" class="low-hp"></div>
 
-    <!-- 左上：零件和击杀 -->
-    <div class="tl">
-      <div class="stat">
-        <span class="ico scrap">◆</span>
-        <span class="num">{{ hud.scrap }}</span>
-        <span class="lbl">零件</span>
+    <!-- 左上：零件和击杀；下面是零件箱进度和本局卡牌 -->
+    <div class="tlcol">
+      <div class="tl" :class="{ gain: gainOn }">
+        <div class="stat">
+          <span class="ico scrap">◆</span>
+          <span class="num">{{ scrapNum }}</span>
+          <span class="lbl">零件</span>
+          <span v-if="gainOn" :key="hud.scrapGain.bump" class="gainchip" :class="{ box: hud.scrapGain.box }" :style="{ opacity: Math.min(1, hud.scrapGain.life * 2.2) }">
+            +{{ hud.scrapGain.n }}<small v-if="hud.scrapGain.box">零件箱</small>
+          </span>
+        </div>
+        <i class="sep"></i>
+        <div class="stat">
+          <span class="ico">✕</span>
+          <span class="num sm">{{ hud.kills }}</span>
+          <span class="lbl">击杀</span>
+        </div>
       </div>
-      <i class="sep"></i>
-      <div class="stat">
-        <span class="ico">✕</span>
-        <span class="num sm">{{ hud.kills }}</span>
-        <span class="lbl">击杀</span>
+      <div v-if="showBoxes" class="boxes" :class="{ near: hud.boxDist < 6 }">
+        <i class="bx"></i>
+        <span>零件箱</span>
+        <b>{{ hud.boxesLeft }}</b><span class="of">/ {{ hud.boxesTotal }}</span>
+        <template v-if="hud.boxesLeft > 0">
+          <i class="vr"></i>
+          <span>最近 <b>{{ Math.round(hud.boxDist) }}</b> 米</span>
+        </template>
+        <template v-else><i class="vr"></i><span>今天已搜刮完</span></template>
+      </div>
+      <div v-if="hud.buffs.length" class="buffs" aria-label="本局卡牌">
+        <span v-for="b in hud.buffs" :key="b.id" class="buff" :class="[b.rarity, { proc: (hud.procs[b.id] ?? 0) > 0.05 }]" :style="{ '--proc': hud.procs[b.id] ?? 0 }">
+          {{ b.name }}<em v-if="b.n > 1">×{{ b.n }}</em>
+        </span>
       </div>
     </div>
 
@@ -90,6 +116,7 @@ const adsDot = computed(() => (!hud.scope && !hud.buildMode ? Math.max(0, hud.ad
         <span class="cross-ico">✚</span>
         <span class="hp-num">{{ hud.hp }}</span>
         <span class="hp-max">/ {{ hud.maxHp }}</span>
+        <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ Math.round(hud.healPop.n) }}<small>嗜血</small></span>
       </div>
       <div class="hp">
         <div class="fill" :style="{ width: hpPct + '%' }"></div>
@@ -107,6 +134,7 @@ const adsDot = computed(() => (!hud.scope && !hud.buildMode ? Math.max(0, hud.ad
         <div class="wname">{{ hud.weaponName }}</div>
       </div>
       <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
+        <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
         <span class="cur">{{ hud.mag }}</span><span class="max">/ {{ hud.magMax }}</span>
       </div>
       <div class="abar" :class="{ reloading: hud.reload >= 0 }">
@@ -194,12 +222,20 @@ kbd {
   }
 }
 
-/* ---------- 左上：零件 / 击杀 ---------- */
-.tl {
+/* ---------- 左上：零件 / 击杀 / 零件箱 / 卡牌 ---------- */
+.tlcol {
   position: absolute;
   left: 24px;
   top: 20px;
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: min(360px, 30vw);
+}
+.tl {
+  display: flex;
+  transition: box-shadow 0.25s, border-color 0.25s;
   align-items: center;
   gap: 14px;
   padding: 6px 16px 6px 12px;
@@ -239,6 +275,167 @@ kbd {
   font-size: 11px;
   letter-spacing: 2px;
   color: var(--hud-muted);
+}
+/* 有零件进账：左边框和数字发光 */
+.tl.gain {
+  border-left-color: #ffd257;
+  box-shadow: -6px 0 14px -6px rgba(255, 190, 40, 0.8);
+}
+.tl.gain .num:not(.sm) {
+  color: #ffe08a;
+  text-shadow: 0 0 10px rgba(255, 190, 40, 0.6), var(--hud-shadow);
+}
+.tl.gain .ico.scrap {
+  animation: spin 0.5s ease-out;
+}
+@keyframes spin {
+  from {
+    transform: scale(1.6) rotate(-90deg);
+  }
+}
+.gainchip {
+  align-self: center;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-left: 4px;
+  padding: 1px 7px;
+  font-family: var(--hud-num);
+  font-size: 17px;
+  font-weight: 700;
+  color: #1a1203;
+  text-shadow: none;
+  background: linear-gradient(90deg, #ffd257, #f0a83a);
+  clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
+  animation: chip 0.28s ease-out;
+}
+.gainchip small {
+  font-family: var(--hud-font);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.gainchip.box {
+  background: linear-gradient(90deg, #fff0b0, #ffc040);
+}
+@keyframes chip {
+  from {
+    transform: translateY(6px) scale(1.25);
+    filter: brightness(1.6);
+  }
+}
+/* 零件箱进度 */
+.boxes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px 0 8px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--hud-muted);
+  background: linear-gradient(90deg, var(--hud-panel), rgba(9, 13, 18, 0));
+}
+.boxes b {
+  font-family: var(--hud-num);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--hud-text);
+}
+.boxes .of {
+  font-family: var(--hud-num);
+  color: var(--hud-dim);
+}
+.boxes .vr {
+  width: 1px;
+  height: 10px;
+  background: var(--hud-line);
+}
+.boxes .bx {
+  width: 9px;
+  height: 7px;
+  border: 1px solid var(--hud-accent);
+  box-shadow: 0 0 5px rgba(240, 184, 58, 0.7);
+}
+.boxes.near {
+  color: #ffe08a;
+}
+.boxes.near .bx {
+  background: var(--hud-accent);
+  animation: breathe 0.9s ease-in-out infinite;
+}
+/* 本局卡牌：按稀有度上色的小标签，触发时亮一下 */
+.buffs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+.buff {
+  --c: #a8b4c0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+  height: 18px;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 18px;
+  letter-spacing: 0.5px;
+  color: var(--hud-text);
+  background: rgba(9, 13, 18, 0.6);
+  border-left: 2px solid var(--c);
+  box-shadow: 0 0 calc(var(--proc) * 12px) var(--c);
+  white-space: nowrap;
+}
+.buff em {
+  font-style: normal;
+  font-family: var(--hud-num);
+  font-size: 11px;
+  color: var(--c);
+}
+.buff.rare {
+  --c: #5ab8f0;
+}
+.buff.epic {
+  --c: #d08af0;
+}
+.buff.curse {
+  --c: #e8553f;
+}
+.buff.proc {
+  background: color-mix(in srgb, var(--c) calc(var(--proc) * 45%), rgba(9, 13, 18, 0.6));
+}
+/* 回血 / 返弹的小数字 */
+.pop {
+  align-self: center;
+  margin-left: 8px;
+  font-family: var(--hud-num);
+  font-size: 16px;
+  font-weight: 700;
+  animation: chip 0.28s ease-out;
+}
+.pop small {
+  margin-left: 3px;
+  font-family: var(--hud-font);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+.pop.heal {
+  color: #7dff9a;
+  text-shadow: 0 0 8px rgba(80, 255, 120, 0.5), var(--hud-shadow);
+}
+.ammo-pop {
+  margin: 0 8px 0 0;
+  color: #66e0ff;
+  text-shadow: 0 0 8px rgba(100, 220, 255, 0.5), var(--hud-shadow);
+}
+@media (prefers-reduced-motion: reduce) {
+  .gainchip,
+  .pop,
+  .tl.gain .ico.scrap,
+  .boxes.near .bx {
+    animation: none;
+  }
 }
 
 /* ---------- 上中：目标条 ---------- */

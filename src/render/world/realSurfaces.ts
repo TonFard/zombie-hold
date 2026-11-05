@@ -4,6 +4,7 @@ import {
   CanvasTexture,
   DataArrayTexture,
   Group,
+  Vector2,
   LinearFilter,
   LinearMipmapLinearFilter,
   Mesh,
@@ -67,7 +68,7 @@ function worldBox(w: number, h: number, d: number, tile: number): BoxGeometry {
   return g;
 }
 
-const WALL_TILE: Record<WallStyle, number> = { compound: 2.4, brick: 1.4, plaster: 2.0, metal: 1.6 };
+const WALL_TILE: Record<WallStyle, number> = { compound: 2.0, brick: 1.0, plaster: 2.0, metal: 2.7 };
 export const WALL_KEY: Record<WallStyle, string> = { compound: 'wall_concrete', brick: 'wall_brick', plaster: 'wall_plaster', metal: 'wall_metal' };
 
 function placeBox(g: BufferGeometry, horiz: boolean, x: number, y: number, z: number): BufferGeometry {
@@ -119,8 +120,11 @@ function buildWalls(map: MapData, kits: Record<string, Kit>): Group {
       normalMap: kit.nor,
       roughnessMap: kit.arm,
       metalnessMap: metal ? kit.arm : null,
+      aoMap: kit.arm,
+      aoMapIntensity: 0.85,
       roughness: 1,
       metalness: metal ? 0.9 : 0,
+      normalScale: new Vector2(0.8, 0.8),
       color: style === 'compound' ? 0xc9c5bc : 0xffffff,
     });
     const m = new Mesh(merged, mat);

@@ -7,6 +7,8 @@ import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifi
 import { PULSE } from '../game/systems/hazards';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import type { Phase } from '../game/systems/run';
+import { CARD_BY_ID, type CardRarity } from '../game/data/cards';
+import type { MetaApplied } from '../game/config';
 
 export interface HurtMark {
   /** 相对当前视线的顺时针角度（弧度，0 = 正前方），每次同步时按攻击者的方位重算 */
@@ -153,9 +155,67 @@ export const hud = reactive({
   buildCosts: {} as Partial<Record<StructureKind, number>>,
   turrets: 0,
   turretCap: 0,
+  /** 零件计数器：显示值朝真实值滚动（花钱时直接跳过去） */
+  scrapShown: 0,
+  /** 短时间内的零件收入合并成一个"+N"：n 累计，life 1→0，bump 每次有新收入加一（让数字弹一下），box = 其中有零件箱 */
+  scrapGain: { n: 0, life: 0, bump: 0, box: false },
+  /** 回血 / 返弹的小数字（同样合并）：life 1→0 */
+  healPop: { n: 0, life: 0, bump: 0 },
+  ammoPop: { n: 0, life: 0, bump: 0 },
+  /** 这一局拿到的卡牌（按拿到的先后），n = 叠了几张 */
+  buffs: [] as BuffRow[],
+  /** 卡牌触发时的闪光：卡牌 id → 1→0 */
+  procs: {} as Record<string, number>,
+  /** 局外（大厅买的）数值加成，一行一条 */
+  metaLines: [] as string[],
+  /** 白天：今天还没捡的零件箱数 / 总数、最近一个的距离（米） */
+  boxesLeft: 0,
+  boxesTotal: 0,
+  boxDist: 99,
+  /** 卡牌「战意」当前的伤害加成（0.12 = +12%） */
+  comboDmg: 0,
 });
 
+export interface BuffRow {
+  id: string;
+  name: string;
+  desc: string;
+  rarity: CardRarity;
+  n: number;
+}
+
+/** 局外加成的文字说明（和大厅里的说法一致） */
+export function metaLinesOf(m: MetaApplied): string[] {
+  const out: string[] = [];
+  const pct = (v: number) => Math.round(Math.abs(v - 1) * 100);
+  if (m.maxHp) out.push(`生命 +${m.maxHp}`);
+  if (m.coreHp) out.push(`发电机 +${m.coreHp}`);
+  if (m.armor < 1) out.push(`受到伤害 −${pct(m.armor)}%`);
+  if (m.regen) out.push(`脱战回血 ${m.regen}/秒`);
+  if (m.speed > 1) out.push(`移速 +${pct(m.speed)}%`);
+  if (m.fireRate > 1) out.push(`射速 +${pct(m.fireRate)}%`);
+  if (m.turretDamage > 1) out.push(`炮塔伤害 +${pct(m.turretDamage)}%`);
+  if (m.structHp > 1) out.push(`建筑生命 +${pct(m.structHp)}%`);
+  if (m.scrapGain > 1) out.push(`零件收益 +${pct(m.scrapGain)}%`);
+  return out;
+}
+
+/** 卡牌触发：闪一下对应的卡牌格（没拿这张牌就不闪） */
+export function procCard(game: Game, id: string): void {
+  if (game.cardCounts[id]) hud.procs[id] = 1;
+}
+
+/** 回血 / 返弹数字：上一个还没消失就累加 */
+export function bumpPop(p: { n: number; life: number; bump: number }, amount: number): void {
+  p.n = p.life > 0.05 ? p.n + amount : amount;
+  p.life = 1;
+  p.bump++;
+}
+
 let lastHp = 100;
+let lastScrap = -1;
+let buffKey = '';
+let metaKey = '';
 
 /** 雷达用的快照。数据量大且每帧变，所以不放进 reactive，由雷达组件自己用 canvas 读取绘制 */
 export const radar = {
@@ -179,6 +239,80 @@ export const radar = {
 
 const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, breaker: 3, colossus: 4, spitter: 5, screamer: 6 };
 const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2, hmg: 1, flamer: 1, mortar: 1 };
+
+let pendingBox = false;
+/** 零件箱被捡走：下一次零件收入的"+N"标成零件箱 */
+export function markBoxTaken(): void {
+  pendingBox = true;
+}
+
+const LIVE: ReadonlySet<Phase> = new Set<Phase>(['day', 'night', 'cards']);
+
+/** 零件滚动、收入合并、卡牌列表、局外加成、零件箱统计 */
+function syncFeedback(game: Game, dt: number): void {
+  const live = LIVE.has(game.run.phase);
+  const g = hud.scrapGain;
+  // 收入：只在局内、而且上一次也是局内时才算（开局的初始零件、读档不弹"+N"）
+  if (lastScrap >= 0 && live && game.scrap > lastScrap) {
+    const d = game.scrap - lastScrap;
+    if (g.life > 0.05) {
+      g.n += d;
+      g.box = g.box || pendingBox;
+    } else {
+      g.n = d;
+      g.box = pendingBox;
+    }
+    g.life = 1;
+    g.bump++;
+    pendingBox = false;
+  }
+  lastScrap = live ? game.scrap : -1;
+  if (!live) hud.scrapShown = game.scrap;
+  // 花钱：直接跳；赚钱：数字滚上去（约 0.3 秒追平）
+  if (game.scrap <= hud.scrapShown || dt <= 0) hud.scrapShown = game.scrap;
+  else hud.scrapShown = Math.min(game.scrap, hud.scrapShown + Math.max(1, Math.ceil((game.scrap - hud.scrapShown) * Math.min(1, dt * 9))));
+  g.life = Math.max(0, g.life - dt * 0.55);
+  hud.healPop.life = Math.max(0, hud.healPop.life - dt * 0.8);
+  hud.ammoPop.life = Math.max(0, hud.ammoPop.life - dt * 0.8);
+  for (const k in hud.procs) {
+    const v = (hud.procs[k] as number) - dt * 1.6;
+    if (v <= 0) delete hud.procs[k];
+    else hud.procs[k] = v;
+  }
+
+  // 卡牌：张数变了才重建列表
+  const ids = Object.keys(game.cardCounts);
+  const key = ids.map((id) => `${id}:${game.cardCounts[id]}`).join(',');
+  if (key !== buffKey) {
+    buffKey = key;
+    hud.buffs = ids
+      .filter((id) => CARD_BY_ID[id] && (game.cardCounts[id] ?? 0) > 0)
+      .map((id) => {
+        const c = CARD_BY_ID[id]!;
+        return { id, name: c.name, desc: c.desc, rarity: c.rarity, n: game.cardCounts[id] ?? 0 };
+      });
+  }
+  const m = game.config.meta;
+  const mk = JSON.stringify(m);
+  if (mk !== metaKey) {
+    metaKey = mk;
+    hud.metaLines = metaLinesOf(m);
+  }
+
+  // 零件箱：还剩几个、最近的多远
+  let left = 0;
+  let best = 99;
+  const p = game.player;
+  for (const b of game.scrapBoxes) {
+    if (!b.alive) continue;
+    left++;
+    best = Math.min(best, Math.hypot(b.x - p.x, b.z - p.z));
+  }
+  hud.boxesLeft = left;
+  hud.boxesTotal = game.scrapBoxes.length;
+  hud.boxDist = best;
+  hud.comboDmg = game.mods.comboDamage > 0 && game.comboT > 0 ? game.mods.comboDamage * Math.min(10, game.combo) : 0;
+}
 
 export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: number }): void {
   const p = game.player;
@@ -233,6 +367,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.magMax = st.mag;
   hud.reload = p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1;
   hud.scrap = game.scrap;
+  syncFeedback(game, dt);
   hud.kills = game.stats.kills;
   hud.coreHp = Math.ceil(game.core.hp);
   hud.coreMaxHp = game.core.maxHp;

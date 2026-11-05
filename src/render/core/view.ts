@@ -24,6 +24,7 @@ import { PostFX } from './postfx';
 import { StructureViews } from '../world/structureViews';
 import { ExtrasView } from '../world/extrasView';
 import { buildRealProps, loadPropsManifest, type RealProps } from '../world/realProps';
+import { bakeLight, type BakedLight } from '../world/bakedLight';
 import { buildRealSurfaces, hasStructs, realWallStyles, STRUCT_KINDS, type RealSurfaces } from '../world/realSurfaces';
 
 /** 把游戏状态画出来。逻辑层不依赖这里 */
@@ -44,9 +45,19 @@ export class GameView {
   private readonly map: MapView;
   private realProps: RealProps | null = null;
   private realSurfaces: RealSurfaces | null = null;
+  /** 烘焙的环境光遮蔽 + 室内遮光（所有档位都开，每像素一次贴图采样） */
+  private readonly baked: BakedLight;
   private disposed = false;
   /** 写实资源已经换上（截图脚本用来判断加载完成） */
   realReady = false;
+  /** 地图（写实资源或回退的程序地图）可以显示了 */
+  worldReady = false;
+  onWorldReady: (() => void) | null = null;
+  private markReady(): void {
+    if (this.worldReady || this.disposed) return;
+    this.worldReady = true;
+    this.onWorldReady?.();
+  }
   /** 当前用的屋顶（每栋房子一个）：玩家在哪栋房子里，那栋的屋面就藏起来 */
   private roofs: Group[] = [];
   private insideHouse = -1;
@@ -92,9 +103,18 @@ export class GameView {
     this.scene.add(this.sky.mesh);
     this.map = buildMapView(game.map, this.renderer.capabilities.getMaxAnisotropy());
     this.scene.add(this.map.group);
-    // 写实道具异步加载，好了再把对应的程序道具撤掉
+    this.baked = bakeLight(game.map);
+    // ?baked=0：关掉烘焙光照（对比截图用）
+    const bakedOn = new URLSearchParams(window.location.search).get('baked') !== '0';
+    if (!bakedOn) this.baked.patch = () => {};
+    this.baked.patchTree(this.map.group);
+    // 写实道具异步加载，好了再把对应的程序道具撤掉。加载期间界面盖着加载画面（onWorldReady），
+    // 不会先看到旧的程序地图再跳成新的
     void loadPropsManifest().then(async (m) => {
-      if (!m || this.disposed) return;
+      if (!m || this.disposed) {
+        this.markReady();
+        return;
+      }
       const aniso = this.renderer.capabilities.getMaxAnisotropy();
       const [real, surf] = await Promise.all([buildRealProps(game.map, m, this.renderer), buildRealSurfaces(game.map, m, aniso)]);
       if (this.disposed) {
@@ -108,6 +128,8 @@ export class GameView {
       if (hasStructs(m)) for (const k of STRUCT_KINDS) skip.add(k);
       this.map.rebuild({ skip, keep: new Set(real.fallback), trimWalls: realWallStyles(m), cliffs: !real.cliffs });
       this.scene.add(real.group, surf.walls);
+      for (const o of [real.group, surf.walls, this.map.group, ...surf.roofs]) this.baked.patchTree(o);
+      if (surf.ground) this.baked.patchTree(surf.ground);
       if (surf.ground) {
         this.map.hideGround();
         this.scene.add(surf.ground);
@@ -119,6 +141,16 @@ export class GameView {
       }
       if (real.envMap) this.scene.environment = real.envMap;
       this.realReady = true;
+      // 新模型和材质的着色器先编译好，不然第一眼看到它们的那一帧会卡一下
+      try {
+        await this.renderer.compileAsync(this.scene, this.rig.camera);
+      } catch {
+        // 不支持异步编译的环境：第一帧渲染时同步编译
+      }
+      this.markReady();
+    }).catch((e: unknown) => {
+      console.warn('写实地图加载失败，用程序地图：', e);
+      this.markReady();
     });
     this.actors = new Actors(this.scene, game);
 
@@ -199,6 +231,8 @@ export class GameView {
 
     // 发电机核心脉动
     this.map.coreMaterial.color.setScalar(0.85 + 0.3 * Math.sin(this.time * 3));
+    // 零件箱光柱脉动，靠近时光环放大
+    this.map.updateBeacons(this.time, game.player.x, game.player.z, this.nightCur);
 
     const fps = this.rig.mode === 'fps';
     if (fps) {
@@ -283,6 +317,7 @@ export class GameView {
     this.disposed = true;
     this.realProps?.dispose();
     this.realSurfaces?.dispose();
+    this.baked.dispose();
     window.removeEventListener('resize', this.onResize);
     for (const f of this.offEvents) f();
     this.structures.dispose();

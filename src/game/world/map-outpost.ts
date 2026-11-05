@@ -63,7 +63,8 @@ export function buildOutpost(seed = 20260207): MapData {
   b.prop('chunk', 40, 53, 41, 54, { h: 1.1 });
 
   // 发电机（核心）、工坊
-  b.prop('generator', 39, 38, 41, 40, { h: 2 });
+  // 子弹高度和写实模型一致（1.3 米）：之前 2 米高，站在发电机旁边平射也会打在上面
+  b.prop('generator', 39, 38, 41, 40, { h: 1.3 });
   b.prop('workbench', 45, 31, 48, 32, { h: 1.1 });
   const coreCells: number[] = [];
   for (let y = 38; y < 40; y++) for (let x = 39; x < 41; x++) coreCells.push(g.idx(x, y));

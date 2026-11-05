@@ -16,12 +16,11 @@ const submit = (register: boolean): void => {
   <div class="cloud">
     <h3>云存档</h3>
     <template v-if="c.name">
-      <p class="who">已登录：<b>{{ c.name }}</b> · 上次同步 {{ syncedAt }}</p>
-      <p class="hint">勋章、解锁、战绩和设置会在每次变化后自动上传；换电脑时登录同一个账号，选「下载覆盖本地」。</p>
+      <p class="who"><b>{{ c.name }}</b> · 已同步 {{ syncedAt }}</p>
       <div class="row">
-        <button :disabled="c.busy" @click="ui.actions.cloudUpload()">上传本地进度</button>
-        <button :disabled="c.busy" @click="ui.actions.cloudDownload()">下载覆盖本地</button>
-        <button class="ghost" :disabled="c.busy" @click="ui.actions.cloudSignOut()">退出登录</button>
+        <button :disabled="c.busy" @click="ui.actions.cloudUpload()">上传</button>
+        <button :disabled="c.busy" @click="ui.actions.cloudDownload()">下载</button>
+        <button class="ghost" :disabled="c.busy" @click="ui.actions.cloudSignOut()">退出</button>
       </div>
     </template>
     <form v-else class="form" @submit.prevent="submit(false)">
@@ -35,11 +34,10 @@ const submit = (register: boolean): void => {
       </label>
       <div class="row">
         <button type="submit" :disabled="c.busy">登 录</button>
-        <button type="button" class="ghost" :disabled="c.busy" @click="submit(true)">注册新账号</button>
+        <button type="button" class="ghost" :disabled="c.busy" @click="submit(true)">注 册</button>
       </div>
-      <p class="hint">注册后会把当前的本地进度传上去；登录已有账号会用云端的进度覆盖本地。</p>
     </form>
-    <p v-if="c.busy" class="hint">请稍候…</p>
+    <p v-if="c.busy" class="hint">…</p>
     <p v-if="c.error" class="err" role="alert">{{ c.error }}</p>
   </div>
 </template>
