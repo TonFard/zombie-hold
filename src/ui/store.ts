@@ -1,12 +1,15 @@
+import type { Replay } from '../game/stats/replay';
 import { reactive } from 'vue';
 import type { Difficulty } from '../game/data/difficulty';
 import type { Quality } from '../game/data/quality';
 import type { MedalBreakdown } from '../game/meta/progress';
+import type { MetaSection } from '../game/data/meta-catalog';
 import { defaultSave, type SaveData } from '../game/save/schema';
 
 export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result';
 
-export type LobbyTab = 'deploy' | 'bench' | 'armory' | 'engineering' | 'supply' | 'fitness' | 'records' | 'codex' | 'settings';
+/** 顶栏 6 个页面；工程部 / 补给站 / 体能训练并进军械库，作为军械库里的子分类（shopTab） */
+export type LobbyTab = 'deploy' | 'bench' | 'armory' | 'records' | 'codex' | 'settings';
 
 export interface Banner {
   text: string;
@@ -28,6 +31,8 @@ export interface ResultInfo {
   medals: MedalBreakdown;
   /** 这一局结算的补给点 */
   supplies: number;
+  /** 战斗复盘（结算页第二页） */
+  replay: Replay | null;
 }
 
 /** 检查点的摘要：大厅里显示"继续第 n 天" */
@@ -44,17 +49,30 @@ export interface CheckpointInfo {
 export const ui = reactive({
   screen: 'menu' as Screen,
   lobbyTab: 'deploy' as LobbyTab,
+  /** 军械库里选中的子分类 */
+  shopTab: 'armory' as MetaSection,
   banner: { text: '', sub: '', id: 0 } as Banner,
   result: null as ResultInfo | null,
   save: defaultSave() as SaveData,
   checkpoint: null as CheckpointInfo | null,
   cards: [] as string[],
+  /** 渲染层给界面的小工具（boot 里填）：武器图标、武器台的 3D 预览 */
+  gfx: {
+    icon: (_kind: string, _tier?: number): string => '',
+    preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number): void; resize(w: number, h: number): void; dispose(): void } | null => null,
+  },
+  /** 这一局每把枪涨的熟练度击杀（结算页显示） */
+  masteryGain: {} as Partial<Record<string, number>>,
   /** 这一局新达成的成就（结算页显示） */
   achievements: [] as string[],
   /** 结算页显示"继续：无尽模式" */
   canEndless: false,
   /** 当前在训练场（暂停菜单换成"离开训练场"） */
   inTraining: false,
+  /** 当前在团队死斗 */
+  inTdm: false,
+  /** 团队死斗结算 */
+  tdmResult: null as { winner: -1 | 0 | 1; score: [number, number]; kills: number; deaths: number } | null,
   /** 训练场：显示弹道偏离表（H 切换） */
   dropHint: true,
   /** 这个黎明还能重抽几次 */
@@ -74,6 +92,7 @@ export const ui = reactive({
     continueRun: () => {},
     training: () => {},
     daily: () => {},
+    tdm: () => {},
     buyMeta: (_id: string) => {},
     resume: () => {},
     restart: () => {},
@@ -87,7 +106,13 @@ export const ui = reactive({
     buy: (_k: string) => {},
     upgrade: (_k: string) => {},
     equip: (_k: string) => {},
+    /** 接下今天的风险事件（工坊里） */
+    acceptRisk: () => {},
     setVolume: (_v: number) => {},
+    /** 分类音量：weapons / zombies / world / ui */
+    setMix: (_ch: string, _v: number) => {},
+    /** 设置页「测试声音」：返回声音系统现在的状态 */
+    testSound: (): string => 'none',
     setQuality: (_q: Quality) => {},
     setSensitivity: (_s: number) => {},
     /** 退出登录（回到登录界面） */

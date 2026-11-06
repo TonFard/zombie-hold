@@ -13,6 +13,7 @@ export class Sfx {
   // ---------------- 武器 ----------------
 
   shot(kind: WeaponKind): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.ready) return;
     const j = jit();
@@ -78,6 +79,7 @@ export class Sfx {
   }
 
   turretShot(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('turret', 0.045)) return;
     const out = e.spatial(x, z, 0.8);
@@ -88,6 +90,7 @@ export class Sfx {
   }
 
   reload(start: boolean, kind: WeaponKind): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.8) ?? undefined;
@@ -110,6 +113,7 @@ export class Sfx {
 
   /** 滑铲：衣服摩擦地面的沙沙声 */
   slide(): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate('slide', 0.3)) return;
     const out = e.flat(0.6) ?? undefined;
@@ -118,6 +122,7 @@ export class Sfx {
 
   /** 近战挥动；hit = 打中了 */
   melee(hit: boolean): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.8) ?? undefined;
@@ -131,6 +136,7 @@ export class Sfx {
 
   /** 爆头击杀返还子弹 */
   refund(): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate('refund', 0.08)) return;
     const out = e.flat(0.6) ?? undefined;
@@ -139,6 +145,7 @@ export class Sfx {
   }
 
   weaponSwitch(): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate('switch', 0.08)) return;
     const out = e.flat(0.7) ?? undefined;
@@ -149,6 +156,7 @@ export class Sfx {
   // ---------------- 命中与爆炸 ----------------
 
   impact(x: number, z: number, flesh: boolean): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate(flesh ? 'hit-flesh' : 'hit-wall', 0.03)) return;
     const out = e.spatial(x, z, flesh ? 0.7 : 0.55);
@@ -163,6 +171,7 @@ export class Sfx {
   }
 
   crit(x: number, z: number): void {
+    this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate('crit', 0.06)) return;
     const out = e.spatial(x, z, 0.5);
@@ -171,6 +180,7 @@ export class Sfx {
   }
 
   explosion(x: number, z: number, big: boolean): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate(big ? 'boom-big' : 'boom', big ? 0.1 : 0.04)) return;
     const out = e.spatial(x, z, big ? 1.1 : 0.7);
@@ -183,6 +193,7 @@ export class Sfx {
   }
 
   acid(x: number, z: number): void {
+    this.e.channel = 'zombies';
     const e = this.e;
     if (!e.gate('acid', 0.1)) return;
     const out = e.spatial(x, z, 0.8);
@@ -195,6 +206,7 @@ export class Sfx {
   // ---------------- 僵尸 ----------------
 
   growl(kind: ZombieKind, x: number, z: number): void {
+    this.e.channel = 'zombies';
     const e = this.e;
     if (!e.ready) return;
     const colossus = kind === 'colossus';
@@ -234,12 +246,13 @@ export class Sfx {
   }
 
   zombieDie(kind: ZombieKind, x: number, z: number): void {
+    this.e.channel = 'zombies';
     const e = this.e;
     const colossus = kind === 'colossus';
     if (!e.gate(colossus ? 'die-boss' : 'die', colossus ? 0.5 : 0.045)) return;
     const out = e.spatial(x, z, colossus ? 1.2 : 0.6);
     if (!out) return;
-    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46, spitter: 120, screamer: 260 }[kind] * jit(0.1);
+    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46, spitter: 120, screamer: 260, crawler: 210, armored: 90 }[kind] * jit(0.1);
     const len = colossus ? 1.4 : kind === 'bloater' ? 0.5 : 0.34;
     e.tone({ freq: base * 1.3, to: base * 0.4, dur: len, vol: colossus ? 0.6 : 0.24, type: 'sawtooth', filter: { type: 'lowpass', freq: 700, to: 180, q: 1.5 }, out });
     e.noise({ dur: colossus ? 0.6 : 0.16, vol: colossus ? 0.5 : 0.24, filter: { type: 'lowpass', freq: 600, to: 200 }, out });
@@ -250,6 +263,7 @@ export class Sfx {
   }
 
   zombieAttack(kind: ZombieKind, target: 'none' | 'core' | 'player' | 'structure', x: number, z: number): void {
+    this.e.channel = 'zombies';
     const e = this.e;
     if (!e.gate(`atk-${target}`, 0.07)) return;
     const out = e.spatial(x, z, kind === 'colossus' ? 1.1 : 0.55);
@@ -269,6 +283,7 @@ export class Sfx {
   // ---------------- 玩家与据点 ----------------
 
   playerHurt(amount: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('hurt', 0.12)) return;
     const out = e.flat(0.9) ?? undefined;
@@ -279,6 +294,7 @@ export class Sfx {
   }
 
   playerDie(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(1) ?? undefined;
@@ -287,6 +303,7 @@ export class Sfx {
   }
 
   coreHit(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('core', 0.35)) return;
     const out = e.flat(0.8) ?? undefined;
@@ -296,6 +313,7 @@ export class Sfx {
   }
 
   structureHit(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('struct-hit', 0.12)) return;
     const out = e.spatial(x, z, 0.5);
@@ -305,6 +323,7 @@ export class Sfx {
   }
 
   structureBuilt(kind: StructureKind, x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('build', 0.05)) return;
     const out = e.spatial(x, z, 0.9);
@@ -320,6 +339,7 @@ export class Sfx {
   }
 
   structureSold(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('sold', 0.06)) return;
     const out = e.spatial(x, z, 0.7);
@@ -329,6 +349,7 @@ export class Sfx {
   }
 
   structureBroken(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('broken', 0.08)) return;
     const out = e.spatial(x, z, 0.95);
@@ -339,6 +360,7 @@ export class Sfx {
   }
 
   spikes(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('spikes', 0.08)) return;
     const out = e.spatial(x, z, 0.5);
@@ -348,6 +370,7 @@ export class Sfx {
   }
 
   repair(x: number, z: number): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.gate('repair', 0.09)) return;
     const out = e.spatial(x, z, 0.7);
@@ -358,6 +381,7 @@ export class Sfx {
   }
 
   pickup(x: number, z: number, amount: number): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.gate('pickup', 0.05)) return;
     const out = e.spatial(x, z, 0.7);
@@ -371,6 +395,7 @@ export class Sfx {
   // ---------------- 界面与阶段 ----------------
 
   buildToggle(on: boolean): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.gate('build-toggle', 0.1)) return;
     const out = e.flat(0.7) ?? undefined;
@@ -378,6 +403,7 @@ export class Sfx {
   }
 
   uiClick(): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.gate('ui-click', 0.04)) return;
     const out = e.flat(0.7) ?? undefined;
@@ -386,6 +412,7 @@ export class Sfx {
   }
 
   uiBuy(): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.gate('ui-buy', 0.08)) return;
     const out = e.flat(0.8) ?? undefined;
@@ -394,12 +421,14 @@ export class Sfx {
   }
 
   uiDeny(): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.gate('ui-deny', 0.2)) return;
     e.tone({ freq: 160, to: 120, dur: 0.14, vol: 0.24, type: 'square', filter: { type: 'lowpass', freq: 600 }, out: e.flat(0.8) ?? undefined });
   }
 
   dayStart(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.8) ?? undefined;
@@ -408,6 +437,7 @@ export class Sfx {
   }
 
   nightStart(boss: boolean): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(1) ?? undefined;
@@ -421,6 +451,7 @@ export class Sfx {
   }
 
   dawn(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.8) ?? undefined;
@@ -428,6 +459,7 @@ export class Sfx {
   }
 
   cardPick(): void {
+    this.e.channel = 'ui';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.9) ?? undefined;
@@ -437,6 +469,7 @@ export class Sfx {
   }
 
   win(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.9) ?? undefined;
@@ -445,6 +478,7 @@ export class Sfx {
   }
 
   lose(): void {
+    this.e.channel = 'world';
     const e = this.e;
     if (!e.ready) return;
     const out = e.flat(0.9) ?? undefined;

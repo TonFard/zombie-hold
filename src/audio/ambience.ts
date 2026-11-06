@@ -18,6 +18,7 @@ export class Ambience {
   start(): void {
     const e = this.e;
     const ctx = e.ctx;
+    e.channel = 'world';
     const bus = e.bus;
     if (this.started || !ctx || !bus) return;
     const t = ctx.currentTime;

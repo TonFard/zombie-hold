@@ -1,3 +1,5 @@
+import type { WeaponKind } from '../data/weapons';
+
 /** 榴弹和它的子弹：沿抛物线飞行（受重力），碰到地面、墙或僵尸就爆炸 */
 export interface Projectile {
   x: number;
@@ -13,4 +15,6 @@ export interface Projectile {
   split: number;
   /** 小炸弹不再分裂 */
   bomblet: boolean;
+  /** 玩家的榴弹：记下武器（熟练度）；迫击炮没有 */
+  weapon?: WeaponKind;
 }

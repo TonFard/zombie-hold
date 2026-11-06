@@ -158,7 +158,9 @@ export class Effects {
         this.decals.add('blood', p.x, p.z, 2.4, 60);
         this.rig.addShake(0.6);
       }),
-      e.on('playerDamaged', () => this.rig.addShake(0.3)),
+      // 镜头震动按伤害量算：以前每次掉血都 +0.3，污染区的污水每帧都扣一点血（6 点/秒），
+      // 站在上面镜头就一直剧烈抖。现在被咬一口（10–30 点）照样震，持续的小伤害几乎不震
+      e.on('playerDamaged', (d) => this.rig.addShake(Math.min(0.3, d.amount * 0.02))),
       e.on('coreDamaged', () => this.rig.addShake(0.08)),
     );
   }

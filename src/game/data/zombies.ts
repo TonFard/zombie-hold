@@ -1,4 +1,4 @@
-export type ZombieKind = 'walker' | 'runner' | 'bloater' | 'breaker' | 'colossus' | 'spitter' | 'screamer';
+export type ZombieKind = 'walker' | 'runner' | 'bloater' | 'breaker' | 'colossus' | 'spitter' | 'screamer' | 'crawler' | 'armored';
 
 export interface ZombieDef {
   kind: ZombieKind;
@@ -30,11 +30,51 @@ export interface ZombieDef {
   headInstakill?: boolean;
   /** 尖叫（尖啸者）：半径、加速比例、持续、冷却 */
   scream?: { radius: number; boost: number; time: number; cd: number };
+  /** 爬行者：能从路障下面钻过去（导航时路障对它几乎不算障碍，钻的时候减速） */
+  crawl?: { slow: number };
+  /** 重装感染者：正面 ±arc 弧度内的子弹伤害 × front（背后、头、爆炸照常） */
+  armor?: { arc: number; front: number };
   /** 冲锋（巨像，M13）：触发距离、蓄力、冲锋速度和时长、撞击伤害、硬直、冷却、冲完落地的震地（半径 / 伤害）、弱点（胸口）的高度 / 半径 / 倍率 */
   charge?: { range: number; windup: number; speed: number; time: number; damage: number; stun: number; cd: number; slam: { r: number; damage: number }; core: { y: number; r: number; mult: number } };
 }
 
 export const ZOMBIES: Record<ZombieKind, ZombieDef> = {
+  // M17：低矮、快、血薄。从路障下面钻过来、优先咬人；站着平射子弹从它头顶飞过去，要压低枪口
+  crawler: {
+    kind: 'crawler',
+    name: '爬行者',
+    hp: 36,
+    speed: 2.15,
+    radius: 0.3,
+    damage: 8,
+    attackInterval: 0.8,
+    structMult: 0.5,
+    reward: 4,
+    aggro: 14,
+    large: false,
+    height: 0.7,
+    head: { y: 0.35, r: 0.18, fwd: 0.5 },
+    headVuln: 1,
+    crawl: { slow: 0.45 },
+  },
+  // M17：正面挂着焊起来的钢板，正面打身体只有四成伤害。打头、绕后、用爆炸
+  armored: {
+    kind: 'armored',
+    name: '重装感染者',
+    hp: 132,
+    speed: 1.28,
+    radius: 0.42,
+    damage: 18,
+    attackInterval: 1.3,
+    structMult: 1.6,
+    reward: 12,
+    aggro: 8,
+    large: false,
+    height: 1.95,
+    head: { y: 1.7, r: 0.2, fwd: 0.06 },
+    headVuln: 1,
+    armor: { arc: Math.PI / 3, front: 0.4 },
+  },
   walker: {
     kind: 'walker',
     name: '行尸',

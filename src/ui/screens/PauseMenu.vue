@@ -15,33 +15,33 @@ watch(
 
 <template>
   <div v-if="ui.screen === 'pause'" class="pause">
-    <div class="box">
+    <div class="box t-panel t-enter">
       <template v-if="page === 'main'">
-        <h2>暂 停</h2>
-        <button class="primary" @click="ui.actions.resume()">继续游戏</button>
+        <h2>暂停 <small>PAUSED</small></h2>
+        <button class="t-btn gold" @click="ui.actions.resume()">继续游戏</button>
         <template v-if="ui.inTraining">
-          <button @click="page = 'settings'">设置</button>
-          <button class="danger" @click="ui.actions.toLobby()">离开训练场</button>
+          <button class="t-btn" @click="page = 'settings'">设置</button>
+          <button class="t-btn danger" @click="ui.actions.toLobby()">离开训练场</button>
         </template>
         <template v-else>
-          <button @click="ui.actions.restart()">重新开始</button>
-          <button @click="page = 'settings'">设置</button>
-          <button class="danger" @click="page = 'confirm'">放弃本局</button>
+          <button class="t-btn" @click="ui.actions.restart()">重新开始</button>
+          <button class="t-btn" @click="page = 'settings'">设置</button>
+          <button class="t-btn danger" @click="page = 'confirm'">放弃本局</button>
         </template>
         <p class="hint"><kbd>Esc</kbd> 继续 · 按住 <kbd>Tab</kbd> 查看本局属性</p>
       </template>
 
       <template v-else-if="page === 'settings'">
-        <h2>设 置</h2>
+        <h2>设置 <small>SYSTEM</small></h2>
         <Settings class="settings" />
-        <button @click="page = 'main'">返回</button>
+        <button class="t-btn" @click="page = 'main'">返回</button>
       </template>
 
       <template v-else>
-        <h2>放弃本局？</h2>
+        <h2>放弃本局？ <small>ABORT</small></h2>
         <p class="warn">按已经撑过的夜数结算勋章，回到大厅</p>
-        <button class="danger" @click="ui.actions.abandon()">确认放弃</button>
-        <button @click="page = 'main'">取消</button>
+        <button class="t-btn danger" @click="ui.actions.abandon()">确认放弃</button>
+        <button class="t-btn" @click="page = 'main'">取消</button>
       </template>
     </div>
   </div>
@@ -55,59 +55,54 @@ watch(
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(3, 5, 8, 0.72);
+  background: rgba(3, 5, 8, 0.68);
   backdrop-filter: blur(4px);
   font-family: var(--hud-font);
+  color: var(--t-text);
 }
 .box {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 340px;
-  padding: 28px 30px 24px;
-  background: rgba(8, 11, 15, 0.92);
-  border-top: 2px solid var(--hud-accent);
+  width: 360px;
+  padding: 24px 28px 22px;
+  background: var(--t-panel-strong);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
 }
+/* 暂停菜单里设置全部显示，宽一点 */
+.box:has(.settings) {
+  width: 460px;
+}
 h2 {
-  margin-bottom: 12px;
-  font-size: 22px;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 8px;
+  font-size: 20px;
   font-weight: 600;
-  letter-spacing: 10px;
-  text-align: center;
-  color: #e6dcc0;
+  letter-spacing: 8px;
+  color: var(--t-gold-soft);
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, transparent, rgba(240, 184, 58, 0.55), transparent) 1;
 }
-button {
-  padding: 12px 0;
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  color: #d8dee4;
-  font: inherit;
+h2 small {
+  font-family: var(--t-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  font-weight: 400;
+  color: var(--t-dim);
+}
+.t-btn {
+  padding: 11px 0;
   font-size: 15px;
-  letter-spacing: 4px;
-  cursor: pointer;
-  transition: 0.15s;
 }
-button:hover,
-button:focus-visible {
-  background: #1d2a36;
-  border-color: var(--hud-cyan);
-  color: #fff;
-  outline: none;
-}
-button.primary {
-  border-color: var(--hud-accent);
-  color: var(--hud-accent);
-}
-button.primary:hover,
-button.primary:focus-visible {
-  background: var(--hud-accent);
-  color: #0b0f14;
-}
-button.danger:hover,
-button.danger:focus-visible {
-  background: #3a1c1a;
-  border-color: var(--hud-danger);
+.t-btn.danger:hover,
+.t-btn.danger:focus-visible {
+  background: rgba(232, 85, 63, 0.16);
+  border-color: var(--t-red);
+  box-shadow: 0 0 22px rgba(232, 85, 63, 0.3);
 }
 .settings {
   margin-bottom: 8px;
@@ -116,18 +111,18 @@ button.danger:focus-visible {
   margin-top: 8px;
   font-size: 12px;
   text-align: center;
-  color: var(--hud-muted);
+  color: var(--t-muted);
 }
 .warn {
   margin-bottom: 6px;
   font-size: 13px;
   text-align: center;
-  color: #c8b8a0;
+  color: var(--t-gold-soft);
 }
 kbd {
   display: inline-block;
   padding: 0 5px;
-  border: 1px solid var(--hud-line-strong);
+  border: 1px solid var(--t-line-strong);
   border-radius: 2px;
   font: 600 11px/16px var(--hud-font);
 }

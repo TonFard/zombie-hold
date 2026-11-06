@@ -9,11 +9,23 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
 
 <template>
   <div v-if="ui.screen === 'bench'" class="bench">
-    <div class="panel">
+    <div class="panel t-panel t-enter">
       <div class="head">
-        <h2>武 器 工 坊</h2>
+        <h2>武器工坊 <small>FIELD WORKSHOP</small></h2>
         <div class="scrap"><span class="d">◆</span>{{ hud.scrap }}<small>零件</small></div>
       </div>
+
+      <div v-if="hud.risk.id && hud.risk.stage === 0" class="risk" role="region" aria-label="风险事件">
+        <div class="rh"><b><i aria-hidden="true">!</i>事件 · {{ hud.risk.name }}</b><span>风险换收益，可以不接</span></div>
+        <div class="rl"><span class="c">代价</span>{{ hud.risk.cost }}</div>
+        <div class="rl"><span class="r">奖励</span>{{ hud.risk.reward }}</div>
+        <button type="button" :disabled="!hud.risk.canAfford" @click="ui.actions.acceptRisk()">{{ hud.risk.canAfford ? '接下' : '零件不够' }}</button>
+      </div>
+      <div v-else-if="hud.risk.id && hud.risk.stage === 1" class="risk on">
+        <div class="rh"><b>事件 · {{ hud.risk.name }}</b><span>进行中</span></div>
+        <div class="rl"><span class="r">奖励</span>{{ hud.risk.reward }}</div>
+      </div>
+      <div v-if="hud.risk.free" class="risk on"><div class="rh"><b>黑市</b><span>下一次升级免费</span></div></div>
 
       <div class="rows">
         <div v-for="w in hud.weapons" :key="w.kind" class="row" :class="{ own: w.owned, eq: w.equipped }">
@@ -65,13 +77,14 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
 
       <div class="foot">
         <span>随身 2 把 · 滚轮切换</span>
-        <button class="close" @click="ui.actions.closeBench()">关闭（E / Esc）</button>
+        <button class="t-btn close" @click="ui.actions.closeBench()">关闭（E / Esc）</button>
       </div>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 局内工坊：保持紧凑一栏（战斗间隙快速操作），换成「指挥终端」的面板、角标、金色进度 */
 .bench {
   position: fixed;
   inset: 0;
@@ -79,66 +92,176 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(3, 5, 8, 0.72);
+  background: rgba(3, 5, 8, 0.66);
   backdrop-filter: blur(4px);
 }
 .panel {
   width: min(980px, 94vw);
-  background: linear-gradient(180deg, #121920, #0b0f14);
-  border: 1px solid #243240;
-  box-shadow: 0 0 80px rgba(0, 0, 0, 0.9);
-  padding: 22px 26px 18px;
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: 20px 24px 16px;
+  background: var(--t-panel-strong);
+  box-shadow: 0 0 80px rgba(0, 0, 0, 0.85);
+  color: var(--t-text);
 }
 .head {
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  padding-bottom: 10px;
   margin-bottom: 14px;
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, rgba(240, 184, 58, 0.55), transparent 80%) 1;
 }
 h2 {
   font-size: 18px;
-  letter-spacing: 14px;
-  color: #d9c9a0;
+  letter-spacing: 8px;
+  color: var(--t-gold-soft);
+  font-weight: 500;
+}
+h2 small {
+  margin-left: 10px;
+  font-family: var(--t-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--t-dim);
   font-weight: 400;
 }
 .scrap {
+  font-family: var(--t-mono);
   font-size: 28px;
   font-weight: 700;
   color: #f3e9cf;
+  font-variant-numeric: tabular-nums;
 }
 .scrap small {
   margin-left: 8px;
+  font-family: var(--hud-font);
   font-size: 12px;
   letter-spacing: 3px;
-  color: #7e8a96;
+  color: var(--t-muted);
   font-weight: 400;
 }
 .d {
-  color: #f0b83a;
+  color: var(--t-gold);
   font-size: 0.7em;
   margin-right: 6px;
 }
+/* ---- 风险事件：醒目的警示条 ---- */
+.risk {
+  position: relative;
+  margin: 0 0 12px;
+  padding: 10px 14px 10px 18px;
+  border: 1px solid rgba(240, 184, 58, 0.55);
+  background: repeating-linear-gradient(135deg, rgba(240, 184, 58, 0.09) 0 10px, rgba(240, 184, 58, 0.03) 10px 20px);
+  box-shadow: 0 0 22px rgba(240, 184, 58, 0.12);
+  font-size: 13px;
+}
+.risk::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--t-gold);
+}
+.risk.on {
+  border-color: rgba(111, 208, 232, 0.45);
+  background: rgba(111, 208, 232, 0.05);
+  box-shadow: none;
+}
+.risk.on::before {
+  background: var(--t-cyan);
+}
+.rh {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.rh b {
+  color: var(--t-gold);
+  letter-spacing: 2px;
+}
+.rh b i {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  line-height: 18px;
+  text-align: center;
+  font-style: normal;
+  color: #0b0f14;
+  background: var(--t-gold);
+}
+.risk.on .rh b {
+  color: var(--t-cyan);
+}
+.rh span {
+  color: var(--t-muted);
+  font-size: 12px;
+}
+.rl {
+  padding: 2px 0;
+  color: #c8d0d8;
+}
+.rl span {
+  display: inline-block;
+  width: 40px;
+  font-size: 12px;
+}
+.rl .c {
+  color: var(--t-red);
+}
+.rl .r {
+  color: var(--t-ok);
+}
+.risk button {
+  margin-top: 8px;
+  padding: 5px 20px;
+  background: transparent;
+  border: 1px solid var(--t-gold);
+  color: var(--t-gold);
+  font: inherit;
+  letter-spacing: 3px;
+  cursor: pointer;
+}
+.risk button:hover:not(:disabled),
+.risk button:focus-visible {
+  background: var(--t-gold);
+  color: #0b0f14;
+  outline: none;
+}
+.risk button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* ---- 武器行 ---- */
 .rows {
   display: grid;
-  gap: 8px;
+  gap: 6px;
 }
 .row {
   display: grid;
-  grid-template-columns: 250px 100px 70px 1fr;
+  grid-template-columns: 250px 120px 70px 1fr;
   align-items: center;
   gap: 16px;
-  padding: 12px 16px;
+  padding: 11px 16px;
   background: rgba(255, 255, 255, 0.025);
-  border-left: 3px solid #2a3846;
-  opacity: 0.85;
+  border: 1px solid var(--t-line);
+  border-left: 3px solid rgba(255, 255, 255, 0.12);
+  opacity: 0.8;
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease);
+}
+.row:hover {
+  border-color: var(--t-line-strong);
 }
 .row.own {
   opacity: 1;
-  border-left-color: #2e7d5b;
+  border-left-color: rgba(111, 208, 232, 0.7);
 }
 .row.eq {
-  border-left-color: #f0b83a;
-  background: rgba(240, 184, 58, 0.06);
+  border-left-color: var(--t-gold);
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.09), rgba(240, 184, 58, 0.02) 60%);
 }
 .id {
   display: flex;
@@ -150,9 +273,14 @@ h2 {
   height: 24px;
   line-height: 24px;
   text-align: center;
+  font-family: var(--t-mono);
   font-size: 12px;
-  color: #8f9aa6;
-  border: 1px solid #3a4a5a;
+  color: var(--t-muted);
+  border: 1px solid var(--t-line-strong);
+}
+.eq .key {
+  color: var(--t-gold);
+  border-color: var(--t-gold);
 }
 .name {
   font-size: 15px;
@@ -162,9 +290,11 @@ h2 {
 .name em {
   font-style: normal;
   margin-left: 10px;
-  font-size: 11px;
-  color: #f0b83a;
-  letter-spacing: 2px;
+  padding: 0 5px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: #0b0f14;
+  background: var(--t-gold);
 }
 .tags {
   margin-top: 4px;
@@ -175,36 +305,49 @@ h2 {
 .tag {
   font-size: 10px;
   padding: 1px 6px;
-  color: #6fd0e8;
+  color: var(--t-cyan);
   border: 1px solid rgba(111, 208, 232, 0.4);
 }
+.tag.info {
+  color: #a9b8c8;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.tag.out {
+  color: #ff7a62;
+  border-color: rgba(255, 122, 98, 0.5);
+}
+/* 等级：金色圆点；超过熟练度上限的用斜纹 */
 .pips {
   display: flex;
-  gap: 4px;
+  gap: 5px;
 }
 .pips i {
-  width: 14px;
-  height: 5px;
-  background: rgba(255, 255, 255, 0.12);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
 }
 .pips i.cap {
-  background: repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.06) 0 2px, transparent 2px 4px);
-  outline: 1px solid rgba(255, 255, 255, 0.08);
+  border-style: dashed;
+  border-color: rgba(255, 255, 255, 0.1);
 }
 .pips i.on {
-  background: #f0b83a;
+  background: var(--t-gold);
+  border-color: var(--t-gold);
   box-shadow: 0 0 6px rgba(240, 184, 58, 0.6);
 }
 .dps .n {
+  font-family: var(--t-mono);
   font-size: 24px;
   font-weight: 700;
   color: #f3e9cf;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
 }
 .dps .l {
   font-size: 10px;
   letter-spacing: 3px;
-  color: #6f7c88;
+  color: var(--t-dim);
 }
 .act {
   display: grid;
@@ -214,21 +357,29 @@ h2 {
 button {
   font-family: inherit;
   cursor: pointer;
-  transition: 0.15s;
+  transition: 0.15s var(--t-ease);
 }
 button.buy,
 button.up {
   padding: 7px 16px;
-  background: rgba(240, 184, 58, 0.1);
-  border: 1px solid #8a6a20;
-  color: #f0c85a;
+  background: rgba(240, 184, 58, 0.06);
+  border: 1px solid var(--t-gold);
+  color: var(--t-gold);
   font-size: 13px;
   letter-spacing: 2px;
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
 }
 button.buy:hover:not(:disabled),
-button.up:hover:not(:disabled) {
-  background: #8a6a20;
-  color: #fff;
+button.up:hover:not(:disabled),
+button.buy:focus-visible,
+button.up:focus-visible {
+  outline: none;
+  background: var(--t-gold);
+  color: #0b0f14;
+}
+button.buy:hover:not(:disabled) .d,
+button.up:hover:not(:disabled) .d {
+  color: #0b0f14;
 }
 button:disabled {
   opacity: 0.35;
@@ -236,19 +387,19 @@ button:disabled {
 }
 .hint {
   font-size: 12px;
-  color: #8f9aa6;
+  color: var(--t-muted);
 }
 .hint b {
-  color: #f1e8cc;
+  color: var(--t-ok);
 }
 .maxed {
   font-size: 13px;
-  letter-spacing: 6px;
-  color: #4fc98d;
+  letter-spacing: 4px;
+  color: var(--t-cyan);
 }
 .maxed.off {
   letter-spacing: 2px;
-  color: #6f7c88;
+  color: var(--t-dim);
 }
 .short {
   font-size: 12px;
@@ -263,39 +414,27 @@ button:disabled {
 .eq-btn {
   padding: 6px 12px;
   background: transparent;
-  border: 1px solid #3a4a5a;
+  border: 1px solid var(--t-line-strong);
   color: #a9b8c8;
   font-size: 12px;
 }
-.eq-btn:hover {
-  border-color: #6fd0e8;
+.eq-btn:hover,
+.eq-btn:focus-visible {
+  outline: none;
+  border-color: var(--t-cyan);
   color: #fff;
 }
 .foot {
-  margin-top: 16px;
+  margin-top: 14px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   font-size: 12px;
-  color: #6f7c88;
+  color: var(--t-dim);
 }
 .close {
-  padding: 8px 20px;
-  background: transparent;
-  border: 1px solid #2c3a48;
-  color: #8f9aa6;
+  padding: 7px 20px;
+  font-size: 13px;
   letter-spacing: 3px;
-}
-.close:hover {
-  background: #1a2430;
-  color: #fff;
-}
-.tag.info {
-  color: #a9b8c8;
-  border-color: rgba(255, 255, 255, 0.18);
-}
-.tag.out {
-  color: #ff7a62;
-  border-color: rgba(255, 122, 98, 0.5);
 }
 </style>

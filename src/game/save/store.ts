@@ -17,12 +17,12 @@ export interface LoadResult {
 export function resetOnUpdate(st: Storage, runKey: string, epoch = SAVE_EPOCH): boolean {
   if (st.get(EPOCH_KEY) === String(epoch)) return false;
   const had = st.get(SAVE_KEY) !== null || st.get(SAVE_KEY_V1) !== null || st.get(runKey) !== null;
-  let keep: Pick<SaveData, 'volume' | 'quality' | 'sensitivity'> | null = null;
+  let keep: Pick<SaveData, 'volume' | 'quality' | 'sensitivity' | 'mix'> | null = null;
   const raw = st.get(SAVE_KEY);
   if (raw !== null) {
     try {
       const old = parseSave(JSON.parse(raw));
-      keep = { volume: old.volume, quality: old.quality, sensitivity: old.sensitivity };
+      keep = { volume: old.volume, quality: old.quality, sensitivity: old.sensitivity, mix: old.mix };
     } catch {
       keep = null;
     }

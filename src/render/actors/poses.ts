@@ -28,10 +28,14 @@ const GAIT: Record<ZombieKind, Gait> = {
   colossus: { legSwing: 0.4, knee: 0.5, bob: 0.06, armRaise: -0.4, armSwing: 0.3, elbow: -0.3, spread: 0.3, lean: 0.22, loll: 0.08, sway: 0.12, pump: false },
   spitter: { legSwing: 0.5, knee: 0.7, bob: 0.04, armRaise: -0.55, armSwing: 0.2, elbow: -0.9, spread: 0.22, lean: 0.35, loll: 0.25, sway: 0.12, pump: false },
   screamer: { legSwing: 0.7, knee: 0.9, bob: 0.05, armRaise: -0.2, armSwing: 0.6, elbow: -1.1, spread: 0.12, lean: 0.4, loll: 0.3, sway: 0.08, pump: true },
+  // 爬行者的步态在 poseZombie 里单独处理（四肢着地），这里的数只给通用部分用
+  crawler: { legSwing: 0.4, knee: 0.6, bob: 0.02, armRaise: -1.4, armSwing: 0.5, elbow: -0.3, spread: 0.2, lean: 0, loll: 0.15, sway: 0.1, pump: true },
+  // 重装感染者：沉、慢，双臂护在胸前的钢板后面
+  armored: { legSwing: 0.42, knee: 0.5, bob: 0.04, armRaise: -0.6, armSwing: 0.06, elbow: -1.3, spread: 0.08, lean: 0.12, loll: 0.06, sway: 0.14, pump: false },
 };
 
 /** 攻击动画时长（秒），渲染层据此把攻击事件展开成 0–1 的进度 */
-export const ATTACK_TIME: Record<ZombieKind, number> = { walker: 0.6, runner: 0.4, bloater: 0.8, breaker: 0.75, colossus: 1.1, spitter: 0.7, screamer: 0.5 };
+export const ATTACK_TIME: Record<ZombieKind, number> = { walker: 0.6, runner: 0.4, bloater: 0.8, breaker: 0.75, colossus: 1.1, spitter: 0.7, screamer: 0.5, crawler: 0.35, armored: 0.9 };
 
 export interface ZombiePose {
   kind: ZombieKind;
@@ -140,6 +144,30 @@ export function poseZombie(a: RigActor, p: ZombiePose): void {
   bone(B.armUR).rotation.set(aUR, 0, -spreadR);
   bone(B.armLL).rotation.x = eL;
   bone(B.armLR).rotation.x = eR;
+
+  // 爬行者：四肢着地。骨盆压低、上身前倾到几乎水平，手臂向下撑地前后交替爬
+  if (p.kind === 'crawler') {
+    pelvis.position.y = a.pelvisBaseY * 0.42 - 0.02 * move * (0.5 - 0.5 * Math.cos(2 * ph));
+    pelvis.rotation.x = 0.35;
+    chest.rotation.x = 1.15 + 0.03 * idle;
+    head.rotation.x = -1.25 + 0.1 * Math.sin(p.t * 2.3 + p.seed);
+    const reach = 0.45 * move;
+    bone(B.armUL).rotation.set(-2.5 + s * reach, 0, 0.18);
+    bone(B.armUR).rotation.set(-2.5 - s * reach, 0, -0.18);
+    bone(B.armLL).rotation.x = -0.25 - Math.max(0, c) * 0.5 * move;
+    bone(B.armLR).rotation.x = -0.25 - Math.max(0, -c) * 0.5 * move;
+    // 腿向后拖、膝盖着地
+    bone(B.legUL).rotation.x = 1.0 - s * 0.3 * move;
+    bone(B.legUR).rotation.x = 1.0 + s * 0.3 * move;
+    bone(B.legLL).rotation.x = 1.2;
+    bone(B.legLR).rotation.x = 1.2;
+    if (p.attack >= 0) {
+      // 扑咬：上身往前一窜
+      const st = strike(p.attack);
+      chest.rotation.x -= st.lean * 0.6;
+      head.rotation.x += st.arm * 0.4;
+    }
+  }
 
   // 受击后仰
   if (p.flinch > 0) {

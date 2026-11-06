@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { STAR_COLOR } from '../../game/data/stars';
 import { computed } from 'vue';
 import { hud } from '../hud';
 import { MAX_TIER } from '../../game/data/weapons';
@@ -37,7 +38,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
     <div v-if="lowHp && hud.alive" class="low-hp"></div>
 
     <!-- 左上：零件和击杀；下面是零件箱进度和本局卡牌 -->
-    <div class="tlcol">
+    <div v-if="!ui.inTdm" class="tlcol">
       <div class="tl" :class="{ gain: gainOn }">
         <div class="stat">
           <span class="ico scrap">◆</span>
@@ -72,7 +73,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
     </div>
 
     <!-- 上中：发电机、阶段、首领 -->
-    <div class="tc">
+    <div v-if="!ui.inTdm" class="tc">
       <div class="obj-head">
         <span class="obj-name">发电机</span>
         <span class="obj-pct" :class="{ hit: hud.coreHurt > 0.05 }">{{ Math.ceil(corePct) }}%</span>
@@ -131,7 +132,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
         <div class="pips">
           <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
         </div>
-        <div class="wname">{{ hud.weaponName }}<small v-if="hud.dual"> ×2</small></div>
+        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ hud.weaponName }}<small v-if="hud.dual"> ×2</small><small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
       </div>
       <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
         <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
@@ -402,7 +403,7 @@ kbd {
   --c: #d08af0;
 }
 .buff.curse {
-  --c: #e8553f;
+  --c: var(--t-red);
 }
 .buff.proc {
   background: color-mix(in srgb, var(--c) calc(var(--proc) * 45%), rgba(9, 13, 18, 0.6));
@@ -578,7 +579,7 @@ kbd {
 }
 .bf {
   height: 100%;
-  background: linear-gradient(90deg, #8a2a18, #e8553f 60%, #f0a04b);
+  background: linear-gradient(90deg, #8a2a18, var(--t-red) 60%, #f0a04b);
   transition: width 0.12s linear;
 }
 

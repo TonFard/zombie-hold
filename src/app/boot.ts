@@ -5,12 +5,16 @@ import { AMMO_LIMITED, WEAPON_ORDER, type WeaponKind } from '../game/data/weapon
 import { FINAL_NIGHT } from '../game/data/waves';
 import type { ZombieKind } from '../game/data/zombies';
 import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
-import { applyDaily, applyMeta, applyTraining, sidearmOk, widenMeta } from '../game/meta/loadout';
+import { applyDaily, applyMeta, applyTraining, configFor, sidearmOk, widenMeta } from '../game/meta/loadout';
+import { startTdm } from '../game/systems/tdm';
 import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunOutcome } from '../game/meta/progress';
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
 import { isMapId, type MapId } from '../game/world/maps';
 import { chapterUnlocked } from '../game/data/chapters';
 import { buyAmmo, buyBench, cloneMeta, suppliesFor } from '../game/meta/progress';
+import { buildReplay } from '../game/stats/replay';
+import { createPreview, weaponIcon } from '../render/weapons/preview';
+import { acceptRisk } from '../game/systems/events';
 import type { BenchLine } from '../game/data/bench';
 import { SAVE_KEY } from '../game/save/schema';
 import { Game, STEP } from '../game/sim';
@@ -38,6 +42,13 @@ export interface App {
   step(seconds: number): void;
   /** 调试用：给截图脚本用的小工具 */
   dev: { buildWeapon: typeof buildWeapon };
+  /** 渲染实验面板（?render=1） */
+  render: {
+    toggle(key: 'ao' | 'grade' | 'decals' | 'vista' | 'contact' | 'shadows', on?: boolean): boolean;
+    stats(): { calls: number; tris: number };
+    quality(q: 'low' | 'mid' | 'high'): void;
+    night(t: number): void;
+  };
   dispose(): void;
 }
 
@@ -63,6 +74,7 @@ function readParams() {
     daily: q.get('daily') === '1',
     sidearm: q.get('sidearm'),
     chapter: q.get('chapter'),
+    tdm: q.get('tdm') === '1',
     /** 无头截图用：没有真实鼠标，假装已锁定指针 */
     nolock: q.get('nolock') === '1',
     quality,
@@ -78,7 +90,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   // 每日挑战：同一天固定种子
   const daily = params.daily ? dailyFor(todayKey()) : null;
   // 地图：出征时按 ?chapter=，继续时按检查点里记的章节，其余（菜单 / 大厅背景、训练场、每日挑战）用第一章
-  const mapId: MapId = params.resume ? (peekCheckpoint(storage.get(RUN_KEY))?.chapter ?? 'outpost') : params.deploy && isMapId(params.chapter) ? params.chapter : 'outpost';
+  const mapId: MapId = params.tdm ? 'arena' : params.resume ? (peekCheckpoint(storage.get(RUN_KEY))?.chapter ?? 'outpost') : params.deploy && isMapId(params.chapter) ? params.chapter : 'outpost';
   const game = new Game(daily ? daily.seed : Date.now() & 0xffff, mapId);
   const view = new GameView(canvas, game, fxLayer);
   view.onWorldReady = () => {
@@ -105,6 +117,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   view.setQuality(params.quality ?? ui.save.quality);
   if (params.nopost) view.post.enabled = false;
   const audio = createAudio(game, ui.save.volume, () => input.look.yaw);
+  for (const [ch, v] of Object.entries(ui.save.mix)) audio.setChannel(ch as keyof typeof ui.save.mix, v);
   const screens = new Screens(game, input);
   const unwire = wireEvents(game, audio);
   // TACZ 枪：动画音效走采样，加载好的武器停掉合成枪声
@@ -143,6 +156,9 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   let runKills: Record<string, number> = {};
   /** 已经计入存档的挑战数（无尽模式第二次结算时不重复算） */
   let challengesPaid = 0;
+  /** 无尽模式第二次结算时，熟练度只加通关以后的击杀 */
+  let wkPaid: Partial<Record<WeaponKind, number>> = {};
+  let whPaid: Partial<Record<WeaponKind, number>> = {};
   game.events.on('zombieDied', ({ zombie }) => {
     if (!zombie.dummy) runKills[zombie.kind] = (runKills[zombie.kind] ?? 0) + 1;
   });
@@ -157,6 +173,10 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   let demoTimer = 0;
   let hudTimer = 0;
   let menuT = 0;
+  /** 相机平滑过渡：目标和当前各 5 个分量 [x, z, dist, pitch, yaw] */
+  let camCur = [0, 0, 30, 30, 0];
+  let camTgt = [...camCur];
+  let camSmooth = false; // 第一帧不 lerp，直接跳过去
   const timers: number[] = [];
   const disposers: Array<() => void> = [];
   const kinds: ZombieKind[] = ['walker', 'walker', 'walker', 'runner', 'bloater', 'breaker'];
@@ -188,10 +208,27 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       }
     },
     frame: (dt) => {
-      // 主菜单 / 大厅：镜头缓缓绕着据点转
+      // 主菜单 / 大厅：镜头缓缓绕着据点转，切换页面时 1.5 秒平滑过渡
       if (ui.screen === 'menu' || ui.screen === 'lobby') {
         menuT += dt;
-        view.rig.setView(0.5 + Math.sin(menuT * 0.12) * 2, -1, ui.screen === 'lobby' ? 30 : 36, ui.screen === 'lobby' ? 30 : 36, menuT * 4.5 - 20);
+        if (ui.screen === 'menu') {
+          // 标题页：低机位电影镜头，一圈约 90 秒，高度和距离缓慢呼吸；据点偏在画面右侧（左边是菜单）
+          const yaw = menuT * 4 - 20;
+          const dist = 26 + Math.sin(menuT * 0.07) * 3;
+          const pitch = 17 + Math.sin(menuT * 0.11) * 3;
+          const r = (yaw * Math.PI) / 180;
+          camTgt = [0.5 - Math.cos(r) * 9, -1 + Math.sin(r) * 9, dist, pitch, yaw];
+        } else {
+          // 大厅：稍高一点的俯视环绕
+          camTgt = [0.5 + Math.sin(menuT * 0.12) * 2, -1, 30, 30, menuT * 4.5 - 20];
+        }
+        // lerp 平滑过渡（~1.5 秒 95% 衰减）
+        const k = camSmooth ? 1 - Math.exp(-2.5 * dt) : 1;
+        for (let i = 0; i < 5; i++) camCur[i] += (camTgt[i] - camCur[i]) * k;
+        camSmooth = true;
+        view.rig.setView(camCur[0], camCur[1], camCur[2], camCur[3], camCur[4]);
+        // 标题页装饰：发电机灯光微弱呼吸
+        if (ui.screen === 'menu') view.menuFlicker(menuT);
       }
       // 黎明选卡：每帧检查，而不是只在 1.5 秒后检查一次。
       // 之前那一刻刚好在暂停 / 指针锁丢了，卡牌界面就永远不出来，游戏卡在"黎明"没有下一天
@@ -221,6 +258,12 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       }
     },
     dev: { buildWeapon },
+    render: {
+      toggle: (key, on) => view.renderToggle(key, on),
+      stats: () => view.renderStats(),
+      quality: (q) => view.setQuality(q),
+      night: (t) => view.setNight(t, true),
+    },
     dispose() {
       window.clearInterval(retry);
       loop.stop();
@@ -235,6 +278,12 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   };
 
   /** 进入第一人称，面朝 (tx, tz) */
+  // 团队死斗：复活时视角转回出生朝向；比赛结束弹结算
+  game.events.on('tdmRespawn', ({ yaw }) => input.setLook(yaw, -0.03));
+  game.events.on('tdmOver', ({ winner }) => {
+    ui.tdmResult = { winner, score: [...game.tdm.score] as [number, number], kills: game.tdm.playerKills, deaths: game.tdm.playerDeaths };
+    later(1800, () => screens.set('result'));
+  });
   const enterPlay = (screen: 'play' | 'training', tx = game.core.x, tz = game.core.z): void => {
     view.rig.enterFps();
     input.setLook(Math.atan2(tx - game.player.x, tz - game.player.z), -0.05);
@@ -276,12 +325,17 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
 
   /** 一局结束或放弃：结算勋章、更新统计、删除检查点 */
   const settle = (won: boolean, reason: string): void => {
-    const outcome: RunOutcome = { difficulty: game.config.difficulty, nights: nightsSurvived(game.run), won: won || game.run.night > FINAL_NIGHT, kills: game.stats.kills, headshotKills: game.stats.headshotKills, challenges: game.stats.challenges, chapter: game.config.chapter };
-    // 无尽模式结束是同一局的第二次结算：出征次数不再加一，击杀只加通关以后的部分
+    const plusXp = (a: Record<WeaponKind, number>, b: Record<WeaponKind, number>) => Object.fromEntries(WEAPON_ORDER.map((k) => [k, a[k] + b[k]])) as Record<WeaponKind, number>;
     const again = game.run.medalsPaid > 0;
+    const minus = (a: Record<WeaponKind, number>, b: Partial<Record<WeaponKind, number>>) => Object.fromEntries(WEAPON_ORDER.map((k) => [k, Math.max(0, a[k] - (b[k] ?? 0))])) as Record<WeaponKind, number>;
+    const outcome: RunOutcome = { difficulty: game.config.difficulty, nights: nightsSurvived(game.run), won: won || game.run.night > FINAL_NIGHT, kills: game.stats.kills, headshotKills: game.stats.headshotKills, challenges: game.stats.challenges, chapter: game.config.chapter, weaponKills: minus(plusXp(game.stats.weaponKills, game.stats.bonusXp), wkPaid), weaponHeads: minus(game.stats.weaponHeads, whPaid), eventSupplies: again ? 0 : game.ev.supplies + game.loot.supplies, migrationNights: game.ev.migrationNights };
+    wkPaid = plusXp(game.stats.weaponKills, game.stats.bonusXp);
+    whPaid = { ...game.stats.weaponHeads };
+    ui.masteryGain = outcome.weaponKills ?? {};
+    // 无尽模式结束是同一局的第二次结算：出征次数不再加一，击杀只加通关以后的部分
     const [stats0, isBest] = recordRun(ui.save, { won, night: game.run.night, kills: again ? 0 : game.stats.kills, headshotKills: again ? 0 : game.stats.headshotKills, time: game.run.time });
     const stats = again ? { ...stats0, runs: ui.save.runs, wins: ui.save.wins, bestKills: Math.max(ui.save.bestKills, game.stats.kills) } : stats0;
-    const none = { nights: 0, bosses: 0, kills: 0, headshots: 0, win: 0, challenges: 0, base: 0, mult: 1, total: 0 };
+    const none = { nights: 0, bosses: 0, kills: 0, headshots: 0, win: 0, challenges: 0, events: 0, base: 0, mult: 1, total: 0 };
     const full = ranked ? medalsFor(outcome) : none;
     const owed = { ...full, total: Math.max(0, full.total - game.run.medalsPaid) };
     let meta = stats.meta;
@@ -313,7 +367,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     save(next);
     storage.remove(RUN_KEY);
     ui.checkpoint = null;
-    ui.result = { supplies: ranked && !again ? suppliesFor(outcome) : 0, won, reason, night: game.run.night, kills: game.stats.kills, headshotKills: game.stats.headshotKills, scrap: game.scrapEarned, time: game.run.time, newBest: isBest, difficulty: outcome.difficulty, medals };
+    ui.result = { supplies: ranked && !again ? suppliesFor(outcome) : 0, won, reason, night: game.run.night, kills: game.stats.kills, headshotKills: game.stats.headshotKills, scrap: game.scrapEarned, time: game.run.time, newBest: isBest, difficulty: outcome.difficulty, medals, replay: buildReplay(game.stats, reason) };
   };
 
   // ---------------- 界面动作 ----------------
@@ -326,6 +380,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   ui.actions.continueRun = () => reload('?continue=1');
   ui.actions.training = () => reload('?training=1');
   ui.actions.daily = () => reload('?daily=1');
+  ui.actions.tdm = () => reload('?tdm=1');
   ui.actions.buyMeta = (id) => {
     const [next, r] = buyMeta(ui.save.meta, id);
     if (r === 'ok') {
@@ -398,6 +453,23 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     input.sensitivity = sensitivity;
     save({ ...ui.save, sensitivity });
   };
+  ui.gfx.icon = (k, tier = 0) => weaponIcon(k as WeaponKind, tier);
+  ui.gfx.preview = (w, h) => {
+    const p = createPreview(w, h);
+    return { canvas: p.canvas, setWeapon: (k, tier) => p.setWeapon(k as WeaponKind, tier), resize: (w2, h2) => p.resize(w2, h2), dispose: () => p.dispose() };
+  };
+  ui.actions.testSound = () => {
+    // 点按钮本身就是手势：先解锁，再放声音
+    audio.unlock();
+    audio.test();
+    return audio.engine.state;
+  };
+  ui.actions.setMix = (ch, v) => {
+    const k = ch as keyof typeof ui.save.mix;
+    const x = Math.min(1, Math.max(0, v));
+    audio.setChannel(k, x);
+    save({ ...ui.save, mix: { ...ui.save.mix, [k]: x } });
+  };
   ui.actions.setVolume = (v) => {
     const volume = Math.min(1, Math.max(0, v));
     audio.setVolume(volume);
@@ -409,6 +481,11 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       .flush()
       .then(() => signOut(auth))
       .then(() => window.location.replace(window.location.pathname));
+  };
+  ui.actions.acceptRisk = () => {
+    if (acceptRisk(game)) audio.sfx.uiBuy();
+    else audio.sfx.uiDeny();
+    refreshHud();
   };
   ui.actions.equip = (k) => {
     game.takeWeapon(k as WeaponKind);
@@ -443,7 +520,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     startRun(game);
     enterPlay('play');
   } else if (params.training) {
-    applyTraining(game, bonuses, ui.save.meta.bench);
+    applyTraining(game, bonuses, ui.save.meta.bench, ui.save.meta.mastery);
     training = new Training(game);
     training.start();
     ui.inTraining = true;
@@ -477,7 +554,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     const old = peekCheckpoint(storage.get(RUN_KEY));
     if (old && isDifficulty(old.difficulty)) {
       const nights = old.phase === 'cards' ? old.night : old.night - 1;
-      const [meta] = settleRun(ui.save.meta, { difficulty: old.difficulty, nights, won: false, kills: old.kills, headshotKills: old.headshotKills, chapter: old.chapter });
+      const [meta] = settleRun(ui.save.meta, { difficulty: old.difficulty, nights, won: false, kills: old.kills, headshotKills: old.headshotKills, chapter: old.chapter, weaponKills: old.weaponKills, weaponHeads: old.weaponHeads });
       // 旧检查点里的备弹也退回去
       for (const [k, n] of Object.entries(old.ammo)) meta.ammo[k as WeaponKind] = (meta.ammo[k as WeaponKind] ?? 0) + (n ?? 0);
       save({ ...ui.save, meta });
@@ -487,9 +564,28 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     // 子弹：库存整份带进这一局（结算时把剩下的退回来）；无限弹药时库存不动
     const stock = { ...ui.save.meta.ammo };
     if (AMMO_LIMITED) save({ ...ui.save, meta: { ...cloneMeta(ui.save.meta), ammo: {} } });
-    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, ammo: stock });
+    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, mastery: ui.save.meta.mastery, ammo: stock });
     startRun(game);
     enterPlay('play');
+  } else if (params.tdm) {
+    // 5v5 团队死斗：不结算勋章、不存检查点；用当前解锁的枪，工坊升到 3 级
+    game.config = { ...configFor(bonuses, 'normal', 'outpost', ui.save.meta.bench), extras: false, ammo: false, endless: false };
+    game.run.phase = 'night';
+    game.scrap = 0;
+    // 玩家用一把步枪（没解锁就用冲锋枪 / 手枪）
+    const k: WeaponKind = (['rifle', 'smg'] as WeaponKind[]).find((w) => bonuses.weapons.has(w)) ?? 'rifle';
+    const slot = game.loadout[k];
+    slot.owned = slot.carried = true;
+    slot.tier = 2;
+    slot.mag = game.statsOf(k, 2).mag;
+    game.player.weapon = k;
+    game.player.tier = 2;
+    game.loadout.pistol.tier = 2;
+    startTdm(game);
+    ui.inTdm = true;
+    view.setNight(0.05, true);
+    enterPlay('play', game.player.x, game.player.z - 10);
+    toast('团队死斗 · 先到 50 杀获胜');
   } else if (daily) {
     // 每日挑战：算正式局（结算勋章、记录成绩），但不存检查点
     ranked = true;

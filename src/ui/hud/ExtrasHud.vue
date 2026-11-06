@@ -17,6 +17,15 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
 
 <template>
   <template v-if="show">
+    <!-- 搜刮点（M18）：站在旁边时提示按住 E 和奖励 -->
+    <div v-if="hud.loot.name && hud.phase === 'day'" class="survivor loot" :class="{ danger: hud.loot.danger }" role="status">
+      按住 <kbd>E</kbd> 搜刮 · {{ hud.loot.name }}<span class="bar"><i :style="{ width: `${Math.round(hud.loot.pct * 100)}%` }"></i></span><small>{{ hud.loot.reward }}</small>
+    </div>
+    <!-- 幸存者求救：靠近信号弹时提示按住 E，显示读条 -->
+    <div v-if="hud.risk.id === 'survivor' && hud.risk.stage === 1 && hud.phase === 'day'" class="survivor" role="status">
+      <template v-if="hud.risk.dist < 1.8">按住 <kbd>E</kbd> 救人<span class="bar"><i :style="{ width: `${Math.round(hud.risk.hold * 100)}%` }"></i></span></template>
+      <template v-else>幸存者在红色信号烟处 · {{ Math.round(hud.risk.dist) }} 米</template>
+    </div>
     <!-- 右上（雷达下面）：今晚的词缀和挑战，做成任务列表 -->
     <div v-if="mod || ch" class="tasks">
       <div v-if="mod" class="task mod" :class="x.mod">
@@ -74,6 +83,55 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
 </template>
 
 <style scoped>
+.survivor.loot {
+  color: #f0e2b8;
+  background: rgba(30, 24, 8, 0.72);
+  border-color: rgba(240, 184, 58, 0.5);
+}
+.survivor.loot .bar i {
+  background: var(--t-gold);
+}
+.survivor.loot.danger {
+  color: #ffd8c8;
+  border-color: rgba(232, 85, 63, 0.6);
+}
+.survivor.loot.danger .bar i {
+  background: var(--t-red);
+}
+.survivor small {
+  font-size: 12px;
+  color: #c8c0a8;
+}
+.survivor {
+  position: fixed;
+  left: 50%;
+  bottom: 22%;
+  transform: translateX(-50%);
+  padding: 6px 16px;
+  font-size: 14px;
+  color: #ffd8c8;
+  background: rgba(40, 10, 8, 0.7);
+  border: 1px solid rgba(232, 85, 63, 0.5);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+.survivor kbd {
+  padding: 0 5px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  font: 600 12px/16px inherit;
+}
+.survivor .bar {
+  width: 120px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.15);
+}
+.survivor .bar i {
+  display: block;
+  height: 100%;
+  background: var(--t-red);
+}
 kbd {
   display: inline-block;
   min-width: 18px;
@@ -149,10 +207,10 @@ kbd.mini {
   background: #d8283a;
 }
 .task.fog {
-  border-color: #8f9aa6;
+  border-color: var(--t-muted);
 }
 .task.fog .mk {
-  background: #8f9aa6;
+  background: var(--t-muted);
 }
 .task.blackout {
   border-color: #4a6078;
@@ -349,7 +407,7 @@ kbd.mini {
 .bat i {
   display: block;
   height: 100%;
-  background: #8f9aa6;
+  background: var(--t-muted);
 }
 .bat i.on {
   background: #fff2c8;

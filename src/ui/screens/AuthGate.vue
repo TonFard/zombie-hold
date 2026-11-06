@@ -14,9 +14,10 @@ const go = (): void => {
 
 <template>
   <div class="gate">
-    <form class="box" @submit.prevent="go">
+    <form class="box t-panel t-enter" @submit.prevent="go">
       <h1>黎 明</h1>
-      <div class="tabs" role="tablist">
+      <small class="code">DAWN · SURVIVAL PROTOCOL</small>
+      <div class="t-seg tabs" role="tablist">
         <button type="button" role="tab" :aria-selected="mode === 'login'" :class="{ on: mode === 'login' }" @click="mode = 'login'">登 录</button>
         <button type="button" role="tab" :aria-selected="mode === 'register'" :class="{ on: mode === 'register' }" @click="mode = 'register'">注 册</button>
       </div>
@@ -28,7 +29,7 @@ const go = (): void => {
         <span>密码</span>
         <input v-model="password" type="password" :autocomplete="mode === 'login' ? 'current-password' : 'new-password'" maxlength="64" placeholder="至少 6 位" />
       </label>
-      <button type="submit" class="go" :disabled="busy">{{ busy ? '…' : mode === 'login' ? '进 入' : '注册并进入' }}</button>
+      <button type="submit" class="t-btn primary go" :disabled="busy">{{ busy ? '…' : mode === 'login' ? '进 入' : '注册并进入' }}</button>
       <p v-if="error" class="err" role="alert">{{ error }}</p>
     </form>
   </div>
@@ -42,77 +43,68 @@ const go = (): void => {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(ellipse at center, #0c1118, #05070a);
+  color: var(--t-text);
+  background: radial-gradient(ellipse at 50% 40%, #121a24, #05070a 70%);
+}
+.gate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 3px);
+  pointer-events: none;
 }
 .box {
-  width: min(360px, 90vw);
+  width: min(380px, 90vw);
   display: grid;
   gap: 14px;
+  padding: 30px 30px 26px;
+  background: var(--t-panel-strong);
 }
 h1 {
   text-align: center;
   font-size: 46px;
   letter-spacing: 22px;
   padding-left: 22px;
-  margin-bottom: 10px;
-  color: #e8553f;
+  color: var(--t-red);
+  text-shadow: 0 0 30px rgba(232, 85, 63, 0.45);
   font-weight: 800;
 }
-.tabs {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid #243240;
-}
-.tabs button {
-  padding: 10px;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: #7e8a96;
-  font: inherit;
-  font-size: 14px;
+.code {
+  margin: -10px 0 6px;
+  text-align: center;
+  font-family: var(--t-mono);
+  font-size: 10px;
   letter-spacing: 4px;
-  cursor: pointer;
-}
-.tabs button.on {
-  color: #f0b83a;
-  border-bottom-color: #f0b83a;
+  color: var(--t-dim);
 }
 label {
   display: grid;
   gap: 6px;
   font-size: 12px;
   letter-spacing: 2px;
-  color: #8f9aa6;
+  color: var(--t-muted);
 }
 input {
   padding: 11px 12px;
   background: rgba(0, 0, 0, 0.4);
-  border: 1px solid #2c3a48;
-  color: #e8eef4;
+  border: 1px solid var(--t-line-strong);
+  color: var(--t-text);
   font: inherit;
   font-size: 15px;
+  transition: border-color 0.15s var(--t-ease), box-shadow 0.15s var(--t-ease);
 }
 input:focus {
   outline: none;
-  border-color: #f0b83a;
+  border-color: var(--t-gold);
+  box-shadow: 0 0 14px rgba(240, 184, 58, 0.2);
 }
 .go {
   margin-top: 6px;
   padding: 12px;
-  background: rgba(232, 85, 63, 0.14);
-  border: 1px solid #e8553f;
-  color: #fff;
-  font: inherit;
   font-size: 15px;
   letter-spacing: 6px;
-  cursor: pointer;
-}
-.go:hover:not(:disabled) {
-  background: #e8553f;
 }
 .go:disabled {
-  opacity: 0.5;
   cursor: wait;
 }
 .err {

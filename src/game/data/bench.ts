@@ -1,17 +1,17 @@
 import { NO_MOD, WEAPON_ORDER, WEAPONS, type WeaponKind, type WeaponMod } from './weapons';
 
 /**
- * 武器工作台（大厅）：每把枪一张台子，四条强化线各 3 级，花「补给」。
+ * 武器工作台（大厅）：每把枪一张台子，五条强化线各 3 级，花「补给」：伤害、后坐、射速（枪机）、重量、弹匣。
  * 和局内工坊的升级（零件，每局清零）不同，这里的强化永久生效、每一局都带着。
  */
-export type BenchLine = 'damage' | 'recoil' | 'lighter' | 'mag';
+export type BenchLine = 'damage' | 'recoil' | 'rate' | 'lighter' | 'mag';
 
-export const BENCH_LINES: BenchLine[] = ['damage', 'recoil', 'lighter', 'mag'];
+export const BENCH_LINES: BenchLine[] = ['damage', 'recoil', 'rate', 'lighter', 'mag'];
 
-export const BENCH_NAME: Record<BenchLine, string> = { damage: '弹药改装', recoil: '制退器', lighter: '轻量化', mag: '扩容' };
+export const BENCH_NAME: Record<BenchLine, string> = { damage: '弹药改装', recoil: '制退器', rate: '枪机', lighter: '轻量化', mag: '扩容' };
 
-/** 每一级的效果 */
-const STEP: Record<BenchLine, number> = { damage: 0.06, recoil: 0.12, lighter: 0, mag: 0.12 };
+/** 每一级的效果。枪机 +4% / 级：射速直接乘进 DPS，比伤害线弱一点，免得两条叠起来太猛 */
+const STEP: Record<BenchLine, number> = { damage: 0.06, recoil: 0.12, rate: 0.04, lighter: 0, mag: 0.12 };
 
 export const BENCH_MAX = 3;
 
@@ -35,6 +35,8 @@ export function benchDesc(k: WeaponKind, line: BenchLine, lv: number): string {
       return `伤害 +${Math.round(STEP.damage * lv * 100)}%`;
     case 'recoil':
       return `后坐力 −${Math.round(STEP.recoil * lv * 100)}%`;
+    case 'rate':
+      return `射速 +${Math.round(STEP.rate * lv * 100)}%`;
     case 'lighter':
       return `重量 −${(lighterPerLevel(k) * lv).toFixed(1)} 千克`;
     case 'mag':
@@ -53,6 +55,7 @@ export function benchMods(levels: Record<string, number>): Record<WeaponKind, We
       recoil: 1 - STEP.recoil * lv('recoil'),
       lighter: lighterPerLevel(k) * lv('lighter'),
       mag: 1 + STEP.mag * lv('mag'),
+      rate: 1 + STEP.rate * lv('rate'),
     };
   }
   return out;

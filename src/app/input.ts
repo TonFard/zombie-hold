@@ -40,6 +40,8 @@ export class InputController {
     this.keys.add(e.code);
     const g = this.game.input;
     if (!this.enabled) return;
+    // 按住 Tab 看面板时，Q / E 是翻页（screens.ts 处理），不能顺手放出电击脉冲或者打开工坊
+    if (this.keys.has('Tab') && (e.code === 'KeyQ' || e.code === 'KeyE')) return;
     if (e.code === 'KeyR') g.reload = true;
     // F：开关建造模式；E：交互（工坊由应用层处理，其余时候修理）；V：近战
     if (e.code === 'KeyF') g.toggleBuild = true;
@@ -171,6 +173,7 @@ export class InputController {
       g.select = 0;
       g.cycle = 0;
       g.use = false;
+      g.useHeld = false;
       g.toggleBuild = false;
       g.sell = false;
       g.confirm = false;
@@ -191,6 +194,7 @@ export class InputController {
     g.sprint = k.has('ShiftLeft') || k.has('ShiftRight');
     // 蹲：C（不用 Ctrl，Ctrl+W 会直接关掉浏览器标签页）
     g.crouch = k.has('KeyC');
+    g.useHeld = k.has('KeyE') && !k.has('Tab');
     const locked = this.locked;
     g.fire = this.mouseDown && locked;
     // 右键：建造模式下是拆除，其他时候是瞄准

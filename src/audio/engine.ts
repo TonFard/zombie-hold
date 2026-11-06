@@ -50,16 +50,41 @@ function softClipCurve(): Float32Array<ArrayBuffer> {
   return c;
 }
 
+/**
+ * 滑条 → 增益。以前是平方：滑条 20% 实际只有 4%，听起来像没声音（"新版本没有声音"的一个可能原因）。
+ * 改成 1.5 次方：20% → 9%、50% → 35%，低端不至于听不见，高端变化仍然均匀
+ */
+export const volumeGain = (v: number): number => Math.pow(Math.min(1, Math.max(0, v)), 1.5);
+
 /** 同时发声的音源数量上限，超过后新的次要声音会被丢弃 */
 const MAX_VOICES = 56;
 /** 听不到的距离（格） */
 const MAX_HEAR = 55;
 
+/** 分类音量（M20）：每个声音属于哪一类，设置页每类一个滑条 */
+export type Channel = 'weapons' | 'zombies' | 'world' | 'ui';
+export const CHANNELS: Channel[] = ['weapons', 'zombies', 'world', 'ui'];
+
 export class AudioEngine {
   ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
-  /** 音效总线（经过压缩器） */
-  bus: GainNode | null = null;
+  /** 音效总线（经过压缩器）。下面挂 4 条分类子总线；音效默认进「当前分类」那一条 */
+  private main: GainNode | null = null;
+  private readonly sub: Partial<Record<Channel, GainNode>> = {};
+  private readonly chVol: Record<Channel, number> = { weapons: 1, zombies: 1, world: 1, ui: 1 };
+  /** 当前分类：Sfx 每个方法开头设一下，之后 spatial / flat / tone / noise 都进这条子总线 */
+  channel: Channel = 'world';
+  /** 当前分类的子总线（没有上下文时为 null） */
+  get bus(): GainNode | null {
+    return this.sub[this.channel] ?? this.main;
+  }
+
+  /** 某一类的音量 0–1（曲线和主音量一样） */
+  setChannel(ch: Channel, v: number): void {
+    this.chVol[ch] = Math.min(1, Math.max(0, v));
+    const g = this.sub[ch];
+    if (g && this.ctx) g.gain.setTargetAtTime(volumeGain(this.chVol[ch]), this.ctx.currentTime, 0.03);
+  }
   private noiseBuf: AudioBuffer | null = null;
   private voices = 0;
   private last = new Map<string, number>();
@@ -103,7 +128,7 @@ export class AudioEngine {
     clip.curve = softClipCurve();
     clip.oversample = '2x';
     const master = ctx.createGain();
-    master.gain.value = this.vol * this.vol;
+    master.gain.value = volumeGain(this.vol);
     const bus = ctx.createGain();
     bus.connect(comp);
     comp.connect(makeup);
@@ -111,7 +136,13 @@ export class AudioEngine {
     clip.connect(master);
     master.connect(ctx.destination);
     this.master = master;
-    this.bus = bus;
+    this.main = bus;
+    for (const ch of CHANNELS) {
+      const g = ctx.createGain();
+      g.gain.value = volumeGain(this.chVol[ch]);
+      g.connect(bus);
+      this.sub[ch] = g;
+    }
 
     // 一秒钟的白噪声，所有噪声类声音共用
     const len = Math.floor(ctx.sampleRate);
@@ -163,10 +194,36 @@ export class AudioEngine {
     src.start();
   }
 
-  /** 0–1，按平方映射成增益，听感更均匀 */
+  /** 0–1，映射成增益见 volumeGain */
   setVolume(v: number): void {
     this.vol = Math.min(1, Math.max(0, v));
-    if (this.master && this.ctx) this.master.gain.setTargetAtTime(this.vol * this.vol, this.ctx.currentTime, 0.03);
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(volumeGain(this.vol), this.ctx.currentTime, 0.03);
+  }
+
+  /** 上下文状态（设置页显示）：none = 还没创建（从没点过鼠标 / 按过键） */
+  get state(): 'none' | 'running' | 'suspended' | 'closed' | 'interrupted' {
+    return this.ctx ? ((this.ctx as AudioContext).state as 'running' | 'suspended' | 'closed') : 'none';
+  }
+
+  /**
+   * 切回窗口、换了输出设备之后调用：挂起了就恢复；被关掉了（有的系统换设备会让上下文报废）就重建，
+   * 已经解码的采样要在新上下文里重新加载
+   */
+  revive(): void {
+    const c = this.ctx as AudioContext | null;
+    if (!c) return;
+    if (c.state === 'suspended') {
+      void c.resume();
+      return;
+    }
+    if (c.state === 'closed') {
+      const urls = [...this.samples.keys()];
+      this.samples.clear();
+      this.ctx = null;
+      this.voices = 0;
+      this.unlock();
+      for (const u of urls) this.load(u);
+    }
   }
 
   get now(): number {
@@ -322,7 +379,8 @@ export class AudioEngine {
   dispose(): void {
     const c = this.ctx;
     this.ctx = null;
-    this.bus = null;
+    this.main = null;
+    for (const ch of CHANNELS) delete this.sub[ch];
     this.master = null;
     if (c && 'close' in c) void (c as AudioContext).close().catch(() => undefined);
   }

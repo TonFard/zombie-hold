@@ -3,6 +3,7 @@
   "enabled": true,
   "resolution": "1k",
   "hdri": "sunset_jhbcentral",
+  "hdriNight": "dikhololo_night",
   "maxTexture": 1024,
   "assets": {
     "Barrel_01": {},

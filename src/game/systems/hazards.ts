@@ -142,7 +142,7 @@ function detonate(g: Game, e: Explosive): void {
  * 范围爆炸：伤害僵尸（距离衰减到 40%）、可选伤害玩家、连锁引爆附近的爆炸物、伤害建筑。
  * 和榴弹的 explode() 分开：那个只打僵尸，且要保持 M7 时的数值。
  */
-export function blast(g: Game, x: number, z: number, radius: number, damage: number, hurtsPlayer: boolean): void {
+export function blast(g: Game, x: number, z: number, radius: number, damage: number, hurtsPlayer: boolean, src: 'explosive' | 'grenade' = 'explosive'): void {
   g.events.emit('explosion', { x, z, radius, big: true });
   for (const zb of g.zombies) {
     if (!zb.alive) continue;
@@ -152,7 +152,7 @@ export function blast(g: Game, x: number, z: number, radius: number, damage: num
     if (d > radius) continue;
     const f = 1 - 0.6 * clamp(d / radius, 0, 1);
     const len = Math.hypot(dx, dz) || 1;
-    g.damageZombie(zb, damage * f, { kx: (dx / len) * 3, kz: (dz / len) * 3 });
+    g.damageZombie(zb, damage * f, { kx: (dx / len) * 3, kz: (dz / len) * 3, src });
   }
   const p = g.player;
   if (hurtsPlayer && p.alive) {
@@ -246,7 +246,7 @@ function firePulse(g: Game): void {
   for (const z of g.zombies) {
     if (!z.alive || Math.hypot(z.x - g.core.x, z.z - g.core.z) - z.radius > PULSE.radius) continue;
     z.stunT = Math.max(z.stunT, PULSE.stun);
-    g.damageZombie(z, PULSE.damage, {});
+    g.damageZombie(z, PULSE.damage, { src: 'pulse' });
   }
 }
 
@@ -333,9 +333,9 @@ export function updateHazards(g: Game, dt: number): void {
     if (t.fuse > 0) continue;
     h.thrown.splice(i, 1);
     if (t.fire) {
-      blast(g, t.x, t.z, GRENADE.fire.radius, GRENADE.fire.damage, false);
+      blast(g, t.x, t.z, GRENADE.fire.radius, GRENADE.fire.damage, false, 'grenade');
       h.hazards.push({ kind: 'fire', x: t.x, z: t.z, r: GRENADE.fire.radius * 0.8, life: GRENADE.fire.burn });
-    } else blast(g, t.x, t.z, GRENADE.frag.radius, GRENADE.frag.damage, false);
+    } else blast(g, t.x, t.z, GRENADE.frag.radius, GRENADE.frag.damage, false, 'grenade');
   }
 
   // 地面危险区：站在里面的僵尸持续受伤；玩家踩酸池 / 火也会受伤
@@ -349,7 +349,7 @@ export function updateHazards(g: Game, dt: number): void {
     }
     const dps = hz.kind === 'fire' ? FIRE_DPS : ACID_DPS;
     if (hz.kind === 'fire') {
-      for (const z of g.zombies) if (z.alive && Math.hypot(z.x - hz.x, z.z - hz.z) < hz.r + z.radius) g.damageZombie(z, dps * dt, { silent: true });
+      for (const z of g.zombies) if (z.alive && Math.hypot(z.x - hz.x, z.z - hz.z) < hz.r + z.radius) g.damageZombie(z, dps * dt, { silent: true, src: 'fire' });
     }
     if (p.alive && Math.hypot(p.x - hz.x, p.z - hz.z) < hz.r + p.radius) g.damagePlayer(dps * dt * (hz.kind === 'fire' ? 0.6 : 1));
   }

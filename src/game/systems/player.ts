@@ -1,4 +1,5 @@
 import { clamp } from '../core/math';
+import { STAR_FX } from '../data/stars';
 import { EYE_HEIGHT } from '../data/ballistics';
 import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { resolveCircleVsGrid } from '../world/collision';
@@ -28,7 +29,10 @@ function startReload(g: Game): void {
   const st = g.statsOf(p.weapon, p.tier);
   const tactical = g.loadout[p.weapon].mag > 0;
   // 重的枪换弹也慢一点（重量的"操控"系数）
-  p.reloadTotal = Math.max(0.01, st.reload * (tactical ? TACTICAL_RELOAD : 1) * g.weightNow().handling);
+  // 升星：手枪 ★2 换弹 −25%，★3 双持时再 −25%
+  const sp = g.config.stars.pistol;
+  const starK = p.weapon === 'pistol' ? (sp >= 2 ? STAR_FX.pistolReload : 1) * (sp >= 3 && g.config.dual ? STAR_FX.pistolDualReload : 1) : 1;
+  p.reloadTotal = Math.max(0.01, st.reload * (tactical ? TACTICAL_RELOAD : 1) * g.weightNow().handling * starK);
   p.reloadTimer = p.reloadTotal;
   g.events.emit('reload', { kind: p.weapon, start: true });
 }
@@ -126,7 +130,9 @@ export function updatePlayer(g: Game, dt: number): void {
   const wantAds = adsHeld && !wantSprint && !sliding && p.reloadTimer <= 0 && p.meleeTimer <= 0;
   // 双持手枪不能举镜；重的枪举镜慢
   const canAds = !(g.config.dual && p.weapon === 'pistol');
-  p.ads = clamp(p.ads + ((wantAds && canAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime * wt.handling), 0, 1);
+  // 步枪 ★2：举镜时间 −30%
+  const adsK = p.weapon === 'rifle' && g.config.stars.rifle >= 2 ? STAR_FX.rifleAds : 1;
+  p.ads = clamp(p.ads + ((wantAds && canAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime * wt.handling * adsK), 0, 1);
   const crouchTarget = inp.crouch || sliding ? 1 : 0;
   p.crouch = clamp(p.crouch + (crouchTarget - p.crouch) * Math.min(1, dt * 12), 0, 1);
   p.eye = EYE_HEIGHT + (CROUCH_EYE - EYE_HEIGHT) * p.crouch;
@@ -205,6 +211,8 @@ export function updatePlayer(g: Game, dt: number): void {
       p.reloadTimer = 0;
       // 从备弹里补满（不够就补多少算多少）
       slot.mag += g.takeAmmo(p.weapon, st.mag - slot.mag);
+      // 冲锋枪 ★1：换完弹 2 秒内射速 +15%
+      if (p.weapon === 'smg' && g.config.stars.smg >= 1) p.burstT = STAR_FX.smgBurst.time;
       g.events.emit('reload', { kind: p.weapon, start: false });
     }
     inp.reload = false;
@@ -215,16 +223,28 @@ export function updatePlayer(g: Game, dt: number): void {
     if (p.fireTimer <= 0 && p.meleeTimer <= 0 && canReload && ((inp.reload && slot.mag < st.mag) || slot.mag <= 0)) {
       startReload(g);
     } else if (inp.fire && canShoot && p.fireTimer <= 0 && slot.mag > 0) {
+      // 复盘：开火时间按每发占用的射击间隔累加
+      g.stats.fireTime[p.weapon] += 1 / (st.rate * (1 + st.ramp * p.ramp) * g.mods.fireRate * burstK(g));
       fireWeapon(g);
-      const rate = st.rate * (1 + st.ramp * p.ramp) * g.mods.fireRate;
+      const rate = st.rate * (1 + st.ramp * p.ramp) * g.mods.fireRate * burstK(g);
       p.fireTimer += 1 / rate;
     }
     inp.reload = false;
   }
 
+  // 升星计时：冲锋枪换弹后的加速、轻机枪持续开火时间（松开扳机就清零）
+  if (p.burstT > 0) p.burstT = Math.max(0, p.burstT - dt);
+  if (inp.fire && canShoot && p.reloadTimer <= 0 && slot.mag > 0) p.sustainT += dt;
+  else p.sustainT = 0;
   // 射速递增（过热弹链）：持续射击 2 秒达到上限，松开后很快回落
   if (inp.fire && canShoot && p.reloadTimer <= 0 && slot.mag > 0) p.ramp = Math.min(1, p.ramp + dt / 2);
   else p.ramp = Math.max(0, p.ramp - dt * 1.2);
+}
+
+/** 冲锋枪 ★1：换弹后几秒的射速倍率 */
+export function burstK(g: Game): number {
+  const p = g.player;
+  return p.weapon === 'smg' && p.burstT > 0 ? STAR_FX.smgBurst.rate : 1;
 }
 
 /** 当前武器的后坐力参数，蹲下 / 瞄准时减小 */

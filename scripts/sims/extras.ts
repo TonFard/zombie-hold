@@ -602,7 +602,7 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
   check(gd.config.dual && gd.statsOf('pistol').mag === 24 && gd.statsOf('pistol').rate > 5, `双持手枪：弹匣 ${gd.statsOf('pistol').mag}、射速 ${gd.statsOf('pistol').rate.toFixed(1)}`);
 
   // 工作台强化：伤害、扩容带进局内
-  let m: ReturnType<typeof newMeta> = { ...newMeta(), levels: all, supplies: 9999 };
+  let m: ReturnType<typeof newMeta> = { ...newMeta(), levels: all, supplies: 9999, mastery: { smg: 9999 } };
   m = buyBench(m, 'smg', 'damage')!;
   m = buyBench(m, 'smg', 'mag')!;
   const gb = new Game(44);

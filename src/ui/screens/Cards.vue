@@ -4,22 +4,29 @@ import { CARD_BY_ID, RARITY_NAME } from '../../game/data/cards';
 import { ui } from '../store';
 
 const list = computed(() => ui.cards.map((id) => CARD_BY_ID[id]).filter((c): c is NonNullable<typeof c> => !!c));
+/** 稀有度英文代号（卡面右上角） */
+const CODE: Record<string, string> = { common: 'STD', rare: 'RARE', epic: 'EPIC', curse: 'CURSE' };
 </script>
 
 <template>
   <div v-if="ui.screen === 'cards'" class="cards">
+    <div class="scan" aria-hidden="true"></div>
     <div class="title">
+      <small>DAWN · SUPPLY DROP</small>
       <h2>黎 明</h2>
-      <p>选一张</p>
+      <p>天亮了，选一张卡带进下一夜</p>
     </div>
     <div class="row">
-      <button v-for="(c, i) in list" :key="c.id" class="card" :class="c.rarity" :style="{ animationDelay: i * 0.12 + 's' }" @click="ui.actions.pickCard(c.id)">
-        <div class="rar">{{ RARITY_NAME[c.rarity] }}</div>
+      <button v-for="(c, i) in list" :key="c.id" class="card t-panel" :class="c.rarity" :style="{ animationDelay: i * 0.12 + 's' }" @click="ui.actions.pickCard(c.id)">
+        <div class="rar">
+          <span>{{ RARITY_NAME[c.rarity] }}</span><small>{{ CODE[c.rarity] }}</small>
+        </div>
         <div class="name">{{ c.name }}</div>
         <div class="desc">{{ c.desc }}</div>
+        <div class="pick">点击选取 ▸</div>
       </button>
     </div>
-    <button v-if="ui.rerolls > 0" class="reroll" @click="ui.actions.reroll()">重抽（剩 {{ ui.rerolls }} 次）</button>
+    <button v-if="ui.rerolls > 0" class="t-btn reroll" @click="ui.actions.reroll()">重抽（剩 {{ ui.rerolls }} 次）</button>
   </div>
 </template>
 
@@ -32,58 +39,74 @@ const list = computed(() => ui.cards.map((id) => CARD_BY_ID[id]).filter((c): c i
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 36px;
-  background: radial-gradient(ellipse at center, rgba(8, 12, 18, 0.7), rgba(2, 3, 5, 0.92));
+  gap: 34px;
+  color: var(--t-text);
+  background: radial-gradient(ellipse at 50% 40%, rgba(40, 30, 10, 0.55), rgba(2, 3, 5, 0.92) 75%);
 }
-.reroll {
-  padding: 8px 26px;
-  background: transparent;
-  border: 1px solid rgba(111, 208, 232, 0.5);
-  color: #6fd0e8;
-  font: inherit;
-  font-size: 13px;
-  letter-spacing: 4px;
-  cursor: pointer;
-}
-.reroll:hover {
-  background: rgba(111, 208, 232, 0.12);
+.scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.015) 0 1px, transparent 1px 3px);
+  pointer-events: none;
 }
 .title {
+  position: relative;
   text-align: center;
 }
+.title small {
+  font-family: var(--t-mono);
+  font-size: 11px;
+  letter-spacing: 5px;
+  color: var(--t-dim);
+}
 h2 {
-  font-size: 36px;
+  margin-top: 6px;
+  font-size: 38px;
   letter-spacing: 22px;
-  color: #f0c85a;
-  font-weight: 300;
   padding-left: 22px;
+  color: var(--t-gold);
+  text-shadow: 0 0 30px rgba(240, 184, 58, 0.45);
+  font-weight: 500;
 }
 .title p {
   margin-top: 8px;
   font-size: 13px;
-  letter-spacing: 6px;
-  color: #8f9aa6;
+  letter-spacing: 5px;
+  color: var(--t-muted);
 }
 .row {
+  position: relative;
   display: flex;
   gap: 22px;
 }
+/* 卡牌：战术面板 + 顶部稀有度色带；颜色都从 --rc 取 */
 .card {
-  position: relative;
+  --rc: #8fa0b2;
+  --corner: var(--rc);
   width: 240px;
-  height: 280px;
-  padding: 26px 22px;
-  border-top: 3px solid #8fa0b2;
+  height: 290px;
+  padding: 24px 22px 18px;
   display: flex;
   flex-direction: column;
   text-align: left;
   font-family: inherit;
   color: inherit;
   cursor: pointer;
-  background: linear-gradient(180deg, #151d26, #0b1016);
-  border: 1px solid #2c3a48;
-  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
-  animation: rise 0.5s ease both;
+  border-top: 3px solid var(--rc);
+  transition: transform 0.18s var(--t-ease), box-shadow 0.18s var(--t-ease), border-color 0.18s var(--t-ease);
+  animation: rise 0.5s var(--t-ease) both;
+}
+.card.rare {
+  --rc: #5ab8f0;
+  background: linear-gradient(180deg, rgba(20, 40, 60, 0.75), var(--t-panel));
+}
+.card.epic {
+  --rc: #d08af0;
+  background: linear-gradient(180deg, rgba(44, 22, 60, 0.78), var(--t-panel));
+}
+.card.curse {
+  --rc: var(--t-red);
+  background: linear-gradient(180deg, rgba(60, 14, 10, 0.8), var(--t-panel));
 }
 @keyframes rise {
   from {
@@ -91,72 +114,59 @@ h2 {
     transform: translateY(30px);
   }
 }
-.card:hover {
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    animation: none;
+  }
+}
+.card:hover,
+.card:focus-visible {
+  outline: none;
   transform: translateY(-12px);
-}
-.card.common:hover {
-  border-color: #8fa0b2;
-  box-shadow: 0 0 30px rgba(143, 160, 178, 0.35);
-}
-.card.rare {
-  border-color: #2f6f9a;
-  border-top-color: #5ab8f0;
-}
-.card.rare:hover {
-  border-color: #5ab8f0;
-  box-shadow: 0 0 34px rgba(90, 184, 240, 0.45);
-}
-.card.epic {
-  border-color: #8a4aa8;
-  border-top-color: #d08af0;
-  background: linear-gradient(180deg, #1d1428, #0e0a14);
-}
-.card.curse {
-  border-color: #7a1a1a;
-  border-top-color: #e8553f;
-  background: linear-gradient(180deg, #2a0e0c, #120605);
-}
-.card.curse:hover {
-  border-color: #e8553f;
-  box-shadow: 0 0 40px rgba(232, 85, 63, 0.5);
-}
-.card.epic:hover {
-  border-color: #d08af0;
-  box-shadow: 0 0 40px rgba(208, 138, 240, 0.5);
+  border-color: var(--rc);
+  box-shadow: 0 0 34px color-mix(in srgb, var(--rc) 45%, transparent);
 }
 .rar {
-  font-size: 11px;
-  letter-spacing: 6px;
-  color: #8f9aa6;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: 12px;
+  letter-spacing: 5px;
+  color: var(--rc);
 }
-.rare .rar {
-  color: #5ab8f0;
-}
-.epic .rar {
-  color: #d08af0;
+.rar small {
+  font-family: var(--t-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  opacity: 0.7;
 }
 .name {
-  margin: 20px 0 14px;
+  margin: 20px 0 12px;
+  padding-bottom: 12px;
   font-size: 24px;
   letter-spacing: 4px;
   color: #f4ecd6;
+  border-bottom: 1px solid var(--t-line);
 }
 .desc {
-  font-size: 17px;
+  flex: 1;
+  font-size: 16px;
   line-height: 1.7;
   color: #c3ced9;
 }
-.card::after {
-  content: '点击选取';
-  position: absolute;
-  left: 22px;
-  bottom: 18px;
+.pick {
   font-size: 11px;
-  letter-spacing: 6px;
-  color: #56626e;
-  transition: color 0.18s;
+  letter-spacing: 5px;
+  color: var(--t-dim);
+  transition: color 0.18s var(--t-ease);
 }
-.card:hover::after {
-  color: #f0c85a;
+.card:hover .pick,
+.card:focus-visible .pick {
+  color: var(--rc);
+}
+.reroll {
+  position: relative;
+  padding: 8px 26px;
+  font-size: 13px;
 }
 </style>

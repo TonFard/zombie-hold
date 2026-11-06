@@ -1,6 +1,7 @@
 {
   "enabled": true,
   "hdri": "env.hdr",
+  "hdriNight": "env_night.hdr",
   "assets": {
     "Barrel_01": {
       "file": "Barrel_01/Barrel_01.gltf",
@@ -558,6 +559,12 @@
       "author": "Kuutti Siitonen",
       "license": "CC0",
       "url": "https://polyhaven.com/a/electric_stove"
+    },
+    "hdriNight": {
+      "name": "dikhololo_night",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dikhololo_night"
     }
   }
 }

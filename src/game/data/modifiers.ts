@@ -74,4 +74,5 @@ export const COMBO_WINDOW = 3;
 export const comboMult = (combo: number): number => 1 + Math.min(0.5, Math.max(0, combo - 1) * 0.05);
 
 /** 手电筒：电量（秒）、每秒充电、照明距离（米）、开灯时僵尸索敌范围倍率 */
-export const FLASHLIGHT = { battery: 12, recharge: 0.6, range: 25, aggro: 1.3 };
+// 电量 12 秒太短：开一会儿就自动关了，看起来像"手电没效果"。改成 45 秒、关着时 1 秒充 0.75 秒
+export const FLASHLIGHT = { battery: 45, recharge: 0.75, range: 28, aggro: 1.3 };

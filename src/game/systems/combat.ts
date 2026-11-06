@@ -1,13 +1,15 @@
-import { clamp, lerp } from '../core/math';
+import { angleDiff, clamp, lerp } from '../core/math';
+import { STAR_FX } from '../data/stars';
 import { BARRICADE_HEIGHT, BULLET_GRAVITY, MUZZLE_OFFSET, TURRET_HEIGHT, WALL_HEIGHT, zeroPitch } from '../data/ballistics';
 import { isTurret } from '../data/structures';
-import { WEAPONS, falloffAt, type WeaponStats } from '../data/weapons';
+import { WEAPONS, falloffAt, type WeaponKind, type WeaponStats } from '../data/weapons';
 import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Zombie } from '../entities/zombie';
 import type { Game } from '../sim';
 import { damageExplosive, explosiveAt } from './hazards';
 import { segmentVsZombie } from './hitvolume';
+import { tdmDamage, tdmPlayerShot, tdmSegHit } from './tdm';
 
 const DEG = Math.PI / 180;
 /** 榴弹的重力（米/秒²）。比子弹用的小得多：榴弹慢，要有明显的抛物线 */
@@ -78,9 +80,11 @@ function launchGrenade(g: Game, st: WeaponStats, ox: number, oy: number, oz: num
     vz: Math.cos(yaw) * cp * st.speed,
     life: st.range / st.speed,
     damage: st.damage * g.mods.damage,
-    aoe: st.aoe,
+    // 榴弹 ★1：爆炸半径 +15%
+    aoe: st.aoe * (g.config.stars.launcher >= 1 ? STAR_FX.launcherAoe : 1),
     split: st.split,
     bomblet: false,
+    weapon: g.player.weapon,
   };
   g.projectiles.push(p);
 }
@@ -119,14 +123,21 @@ export function fireWeapon(g: Game): void {
   // 瞄准越充分，散布越小；蹲下再小 20%，滑铲 / 移动时腰射更散
   const moveK = Math.min(1, Math.hypot(p.vx, p.vz) / 3.4);
   const hip = 1 + 0.35 * moveK * (1 - p.ads) + (p.slide > 0 ? 0.6 : 0);
-  const spread = st.spread * hip * lerp(1, def.ads.spread * g.mods.adsSpread, p.ads) * (1 - 0.2 * p.crouch) * DEG;
+  // 升星：冲锋枪 ★2 移动中散布 −30%；轻机枪 ★1 持续开火 2 秒后散布 −40%
+  const stars = g.config.stars;
+  const starSpread = (kind === 'smg' && stars.smg >= 2 ? lerp(1, STAR_FX.smgMoveSpread, moveK) : 1) * (kind === 'lmg' && stars.lmg >= 1 && p.sustainT >= 2 ? STAR_FX.lmgSustainSpread : 1);
+  const spread = st.spread * hip * lerp(1, def.ads.spread * g.mods.adsSpread, p.ads) * (1 - 0.2 * p.crouch) * DEG * starSpread;
   // 两个均匀随机数相加：偏向中心的散布
   const jitter = () => (g.rng.next() + g.rng.next() - 1) * spread;
 
   if (st.speed > 0) {
-    launchGrenade(g, st, ox, oy, oz, aimYaw + jitter(), pitch + jitter());
+    // 榴弹 ★2：射程和弹速 +20%；★1 / ★3 在 launchGrenade 里
+    const reach = kind === 'launcher' && stars.launcher >= 2 ? STAR_FX.launcherReach : 1;
+    launchGrenade(g, { ...st, speed: st.speed * reach, range: st.range * reach }, ox, oy, oz, aimYaw + jitter(), pitch + jitter());
     return;
   }
+  // 发射时就定下来的伤害加成：冲锋枪 ★3 连杀 ≥ 5、轻机枪 ★3 弹链最后 20 发
+  const starDmg = (kind === 'smg' && stars.smg >= 3 && g.combo >= STAR_FX.smgCombo.combo && g.comboT > 0 ? STAR_FX.smgCombo.damage : 1) * (kind === 'lmg' && stars.lmg >= 3 && slot.mag < STAR_FX.lmgTail.last ? STAR_FX.lmgTail.damage : 1);
   const lift = zeroPitch(kind);
   for (let i = 0; i < st.pellets; i++) {
     const yaw = aimYaw + jitter();
@@ -141,17 +152,23 @@ export function fireWeapon(g: Game): void {
       vx: Math.sin(yaw) * c * def.muzzle,
       vy: Math.sin(pit) * def.muzzle,
       vz: Math.cos(yaw) * c * def.muzzle,
-      damage: st.damage * g.mods.damage,
-      pierceLeft: st.pierce,
+      damage: st.damage * g.mods.damage * starDmg,
+      // 狙击 ★3：穿透 +1
+      pierceLeft: st.pierce + (kind === 'sniper' && stars.sniper >= 3 ? STAR_FX.sniperPierce : 0),
       traveled: 0,
       range: st.range,
       burn: st.burn,
-      slowHit: st.slowHit,
-      refund: st.refund,
+      // 轻机枪 ★2：减速 +15%（只在本来就有减速时）
+      slowHit: st.slowHit > 0 && kind === 'lmg' && stars.lmg >= 2 ? Math.min(0.8, st.slowHit + STAR_FX.lmgSlow) : st.slowHit,
+      // 手枪 ★1 / 狙击 ★2：爆头击杀返弹 +1
+      refund: st.refund + (kind === 'pistol' && stars.pistol >= 1 ? STAR_FX.pistolRefund : 0) + (kind === 'sniper' && stars.sniper >= 2 ? STAR_FX.sniperRefund : 0),
       hit: [],
+      owner: -1,
+      team: 0,
     };
     g.bullets.push(b);
   }
+  tdmPlayerShot(g);
 }
 
 // ---------------------------------------------------------------- 子弹飞行
@@ -190,6 +207,16 @@ export function updateBullets(g: Game, dt: number): void {
       }
     }
 
+    // 团队死斗：子弹打人（士兵 / 玩家），一颗子弹只打一个人
+    if (g.tdm.on) {
+      const hit = tdmSegHit(g, b.team ?? 0, b.owner ?? -1, b.x, b.y, b.z, dx, dy, dz, stopT);
+      if (hit) {
+        tdmDamage(g, hit, b.kind, b.damage, b.traveled + len * hit.t, b.range, b.owner ?? -1);
+        g.events.emit('impact', { x: b.x + dx * hit.t, y: b.y + dy * hit.t, z: b.z + dz * hit.t, nx: -ux, nz: -uz, flesh: true, zone: hit.head ? 'head' : 'body', kind: b.kind });
+        bs.splice(i, 1);
+        continue;
+      }
+    }
     // 候选命中：在被挡住之前，线段碰到的所有僵尸，按先后排序
     cands.length = 0;
     for (const z of g.zombies) {
@@ -200,24 +227,51 @@ export function updateBullets(g: Game, dt: number): void {
     cands.sort((a, c) => a.t - c.t);
 
     // 爆头的额外部分（倍率 − 1）吃卡牌加成和僵尸的头部脆弱系数
-    const headBonus = (WEAPONS[b.kind].headMult - 1) * g.mods.head;
+    const stars = g.config.stars;
+    const own = b.owner === undefined || b.owner < 0;
+    // 步枪 ★1：爆头伤害 +20%（乘在爆头加成上）
+    const headBonus = (WEAPONS[b.kind].headMult - 1) * g.mods.head * (own && b.kind === 'rifle' && stars.rifle >= 1 ? STAR_FX.rifleHead : 1);
     for (const c of cands) {
       let dmg = b.damage * falloffAt(b.kind, b.traveled + len * c.t, b.range);
       if (c.head) dmg *= 1 + headBonus * c.z.def.headVuln;
       // 首领弱点：硬直时打胸口的核心，按弱点倍率（替代爆头）
-      if (c.core && c.z.def.charge) dmg *= c.z.def.charge.core.mult;
+      if (c.core && c.z.def.charge) dmg *= c.z.def.charge.core.mult * (own && b.kind === 'sniper' && stars.sniper >= 1 ? STAR_FX.sniperCore : 1);
+      // 重装感染者：子弹从正面 ±60° 打在身上，只有四成伤害（头不算，背后照常）
+      const arm = c.z.def.armor;
+      if (arm && !c.head) {
+        // 子弹从哪个方向来（-u）和僵尸的朝向比
+        if (Math.abs(angleDiff(c.z.yaw, Math.atan2(-ux, -uz))) < arm.arc) dmg *= arm.front;
+      }
       // 吐酸者：打破酸囊一枪毙命
       if (c.head && c.z.def.headInstakill) dmg = Math.max(dmg, c.z.hp + 1);
       const crit = g.mods.crit > 0 && g.rng.next() < g.mods.crit;
       if (crit) dmg *= 2;
       // 卡牌「战意」：连杀越高伤害越高；「近身狂暴」：3 米内伤害更高
       if (g.mods.comboDamage > 0 && g.combo > 0 && g.comboT > 0) dmg *= 1 + g.mods.comboDamage * Math.min(10, g.combo);
-      if (g.mods.closeDamage !== 1 && Math.hypot(c.z.x - g.player.x, c.z.z - g.player.z) < 3 + c.z.radius) dmg *= g.mods.closeDamage;
-      const kb = knockback(dmg, c.z);
-      const killed = g.damageZombie(c.z, dmg, { crit, head: c.head, kx: ux * kb, kz: uz * kb, burn: b.burn });
+      // 近身：卡牌「近身狂暴」和霰弹枪自带的贴脸加成（两者相乘）
+      // 霰弹 ★1：3 米内再 +20%
+      const closeK = g.mods.closeDamage * (WEAPONS[b.kind].close ?? 1) * (own && b.kind === 'shotgun' && stars.shotgun >= 1 ? STAR_FX.shotgunClose : 1);
+      if (closeK !== 1 && Math.hypot(c.z.x - g.player.x, c.z.z - g.player.z) < 3 + c.z.radius) dmg *= closeK;
+      // 步枪 ★3：连续命中同一目标逐发 +3%（最多 +30%），换目标清零
+      if (own && b.kind === 'rifle' && stars.rifle >= 3) {
+        const p = g.player;
+        if (p.focusId === c.z.id) p.focusN = Math.min(STAR_FX.rifleFocus.max / STAR_FX.rifleFocus.step, p.focusN + 1);
+        else {
+          p.focusId = c.z.id;
+          p.focusN = 0;
+        }
+        dmg *= 1 + STAR_FX.rifleFocus.step * p.focusN;
+      }
+      // 霰弹 ★2：击退 +50%
+      const kb = knockback(dmg, c.z) * (own && b.kind === 'shotgun' && stars.shotgun >= 2 ? STAR_FX.shotgunKnock : 1);
+      const killed = g.damageZombie(c.z, dmg, { crit, head: c.head, kx: ux * kb, kz: uz * kb, burn: b.burn, ...(b.owner === undefined || b.owner < 0 ? { weapon: b.kind } : {}) });
       if (b.slowHit > 0 && !killed) {
         c.z.slowT = 1.2;
         c.z.slowK = b.slowHit;
+      }
+      // 霰弹 ★3：击杀让周围 2 米的僵尸硬直 0.5 秒
+      if (killed && own && b.kind === 'shotgun' && stars.shotgun >= 3) {
+        for (const o of g.zombies) if (o.alive && Math.hypot(o.x - c.z.x, o.z - c.z.z) < STAR_FX.shotgunStun.radius) o.stunT = Math.max(o.stunT, STAR_FX.shotgunStun.time);
       }
       // 狙击招牌：爆头击杀返还子弹
       // 卡牌「弹匣回收」：所有武器爆头击杀都返还子弹
@@ -282,7 +336,7 @@ export function updateBullets(g: Game, dt: number): void {
 
 // ---------------------------------------------------------------- 爆炸与榴弹
 
-export function explode(g: Game, x: number, z: number, aoe: number, damage: number, direct: Zombie | null, split: number, bomblet: boolean, y = 0.4): void {
+export function explode(g: Game, x: number, z: number, aoe: number, damage: number, direct: Zombie | null, split: number, bomblet: boolean, y = 0.4, weapon?: WeaponKind): void {
   for (const zb of g.zombies) {
     if (!zb.alive) continue;
     const dx = zb.x - x;
@@ -292,7 +346,7 @@ export function explode(g: Game, x: number, z: number, aoe: number, damage: numb
     const f = zb === direct ? 1 : lerp(1, 0.4, clamp(d / aoe, 0, 1));
     const len = Math.hypot(dx, dz) || 1;
     const kb = knockback(damage, zb) * 2.2 * (1 - clamp(d / aoe, 0, 1) * 0.6);
-    g.damageZombie(zb, damage * f, { kx: (dx / len) * kb, kz: (dz / len) * kb });
+    g.damageZombie(zb, damage * f, { kx: (dx / len) * kb, kz: (dz / len) * kb, ...(weapon ? { weapon } : {}) });
   }
   g.events.emit('explosion', { x, z, radius: aoe, big: !bomblet });
   // 榴弹 / 迫击炮也能引爆附近的爆炸物
@@ -309,10 +363,12 @@ export function explode(g: Game, x: number, z: number, aoe: number, damage: numb
         vy: g.rng.range(2.5, 4),
         vz: Math.sin(a) * sp,
         life: g.rng.range(0.45, 0.6),
-        damage: damage * 0.28,
+        // 榴弹 ★3：集束子弹伤害 +30%（只算玩家的榴弹；迫击炮不分裂）
+        damage: damage * 0.28 * (weapon === 'launcher' && g.config.stars.launcher >= 3 ? STAR_FX.launcherSplit : 1),
         aoe: Math.max(1.2, aoe * 0.55),
         split: 0,
         bomblet: true,
+        ...(weapon ? { weapon } : {}),
       });
     }
   }
@@ -351,7 +407,7 @@ export function updateProjectiles(g: Game, dt: number): void {
     }
     if (boom) {
       ps.splice(i, 1);
-      explode(g, ex, ez, p.aoe, p.damage, direct, p.split, p.bomblet, ey);
+      explode(g, ex, ez, p.aoe, p.damage, direct, p.split, p.bomblet, ey, p.weapon);
     } else {
       p.x = ex;
       p.y = ey;
@@ -367,7 +423,7 @@ export function updateStatus(g: Game, dt: number): void {
     if (z.slowT > 0) z.slowT -= dt;
     if (!z.alive || z.burnT <= 0) continue;
     z.burnT -= dt;
-    g.damageZombie(z, z.burnDps * dt, { silent: true, burn: 0 });
+    g.damageZombie(z, z.burnDps * dt, { silent: true, burn: 0, ...(z.burnBy ? { weapon: z.burnBy as WeaponKind } : { src: 'fire' as const }) });
   }
 }
 
@@ -404,6 +460,6 @@ export function melee(g: Game): void {
     return;
   }
   const kb = knockback(MELEE_DAMAGE, best) * 2.5;
-  g.damageZombie(best, MELEE_DAMAGE * g.mods.damage, { kx: fx * kb, kz: fz * kb });
+  g.damageZombie(best, MELEE_DAMAGE * g.mods.damage, { kx: fx * kb, kz: fz * kb, weapon: p.weapon });
   g.events.emit('meleeHit', { zombie: best, x: best.x - fx * best.radius, y: Math.min(best.def.height * 0.75, p.eye), z: best.z - fz * best.radius });
 }

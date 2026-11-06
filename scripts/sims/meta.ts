@@ -3,7 +3,12 @@ import { CARD_BY_ID } from '../../src/game/data/cards';
 import { META_BY_ID, META_ITEMS, RANKS, SECTION_NAME, baseBonuses, rankFor, rankOf } from '../../src/game/data/meta-catalog';
 import { FINAL_NIGHT } from '../../src/game/data/waves';
 import { applyMeta, applyTraining, sidearmOk, widenMeta } from '../../src/game/meta/loadout';
-import { bonusesOf, buyMeta, canBuy, medalsFor, newMeta, settleRun, totalMetaCost, unlockedDifficulties, type MetaState } from '../../src/game/meta/progress';
+import { bonusesOf, buyBench, buyMeta, canBench, canBuy, masteryOf, medalsFor, newMeta, settleRun, totalMetaCost, unlockedDifficulties, type MetaState } from '../../src/game/meta/progress';
+import { MASTERY_XP, MASTERY_MAX } from '../../src/game/data/mastery';
+import { WEAPON_ORDER } from '../../src/game/data/weapons';
+
+/** 每把枪都练到某一级熟练度 */
+const masteredAll = (lv = MASTERY_MAX): MetaState['mastery'] => Object.fromEntries(WEAPON_ORDER.map((k) => [k, MASTERY_XP[k][lv - 1] as number]));
 import { RUN_KEY, applyCheckpoint, loadCheckpoint, parseCheckpoint, serialize } from '../../src/game/save/checkpoint';
 import { EPOCH_KEY, SAVE_KEY, SAVE_KEY_V1, defaultSave } from '../../src/game/save/schema';
 import { MemoryStorage } from '../../src/game/save/storage';
@@ -129,12 +134,15 @@ console.log('\n== 购买 ==');
   // 累计勋章 10000：军衔已到顶，这里只测价格和前置
   let m: MetaState = { ...newMeta(), medals: 1000, medalsEarned: 10000 };
   let r;
-  [m, r] = buyMeta(m, 'cap-sniper');
-  check(r === 'requires' && m.medals === 1000, '前置没满（没解锁狙击）时买不了狙击等级上限');
-  [m, r] = buyMeta(m, 'unlock-sniper');
-  check(r === 'requires' && m.medals === 1000, '没解锁突击步枪时买不了狙击（武器解锁是一条链）');
-  [m] = buyMeta(m, 'unlock-smg');
+  [m, r] = buyMeta(m, 'unlock-smg');
+  check(r === 'mastery' && m.medals === 1000, '手枪没精通时解锁不了冲锋枪（勋章再多也不行）');
+  m = { ...m, mastery: { pistol: MASTERY_XP.pistol[MASTERY_MAX - 1] as number } };
+  [m, r] = buyMeta(m, 'unlock-smg');
+  check(r === 'ok' && bonusesOf(m).weapons.has('smg'), '手枪精通后能解锁冲锋枪');
+  check(canBuy(m, 'unlock-shotgun') === 'mastery', '冲锋枪没精通时解锁不了霰弹枪（武器解锁是一条链）');
+  m = { ...m, mastery: masteredAll() };
   [m] = buyMeta(m, 'unlock-shotgun');
+  check(canBuy(m, 'unlock-sniper') === 'requires', '没解锁突击步枪时买不了狙击');
   [m] = buyMeta(m, 'unlock-rifle');
   const m0 = m.medals;
   const sniperPrice = META_BY_ID['unlock-sniper']?.prices[0] ?? 0;
@@ -153,26 +161,40 @@ console.log('\n== 购买 ==');
   check(canBuy(m, 'nope') === 'unknown', '未知项目被拒绝');
 }
 
+console.log('\n== 武器熟练度 ==');
+{
+  const xp5 = MASTERY_XP.pistol[MASTERY_MAX - 1] as number;
+  const caps = [0, 1, 2, 3, 4, 5].map((lv) => bonusesOf({ ...newMeta(), mastery: { pistol: lv ? (MASTERY_XP.pistol[lv - 1] as number) : 0 } }).tierCap.pistol);
+  check(caps.join() === '5,5,6,6,7,8', `手枪熟练度 0–5 级 → 局内等级上限 ${caps.join(' / ')}`);
+  const [m1] = settleRun(newMeta(), { difficulty: 'normal', nights: 3, won: false, kills: 120, headshotKills: 20, weaponKills: { pistol: 80, smg: 0 }, weaponHeads: { pistol: 20 } });
+  check(m1.mastery.pistol === 100 && !m1.mastery.smg, `一局手枪击杀 80、爆头 20 → 手枪经验 +100（${m1.mastery.pistol}）`);
+  check(masteryOf(m1, 'pistol') === 1, `100 经验 = 手枪熟练度 1 级（门槛 ${MASTERY_XP.pistol[0]} / ${MASTERY_XP.pistol[1]}）`);
+  // 武器台每条线：熟练度 1 / 3 / 5 级各开一级
+  let b: MetaState = { ...newMeta(), supplies: 9999 };
+  check(canBench(b, 'pistol', 'damage') === 'mastery', '熟练度 0：手枪武器台一级都买不了');
+  b = { ...b, mastery: { pistol: MASTERY_XP.pistol[0] as number } };
+  b = buyBench(b, 'pistol', 'damage') as MetaState;
+  check(!!b && canBench(b, 'pistol', 'damage') === 'mastery', '熟练度 1：只能买到 1 级');
+  b = { ...b, mastery: { pistol: xp5 } };
+  b = buyBench(b, 'pistol', 'damage') as MetaState;
+  b = buyBench(b, 'pistol', 'damage') as MetaState;
+  check(!!b && canBench(b, 'pistol', 'damage') === 'maxed', '精通：3 级全开');
+  check(canBuy({ ...newMeta(), medals: 999, mastery: { pistol: MASTERY_XP.pistol[2] as number } }, 'dual') === 'ok' && canBuy({ ...newMeta(), medals: 999, mastery: { pistol: MASTERY_XP.pistol[1] as number } }, 'dual') === 'mastery', '手枪双持要熟练度 3 级');
+}
+
 console.log('\n== 军衔 ==');
 {
   const r1st = (RANKS[1] as { earned: number }).earned;
   check(rankOf(0) === 0 && rankOf(r1st - 1) === 0 && rankOf(r1st) === 1 && rankOf(1e6) === RANKS.length - 1, `累计勋章 0 / ${r1st - 1} / ${r1st} / 很多 对应列兵 / 列兵 / 下士 / 最高军衔`);
-  // 新号攒了很多勋章（比如改了存档、或者以后有活动送），也不能直接买高级的东西
   const rich: MetaState = { ...newMeta(), medals: 9000, medalsEarned: 0 };
-  const richSmg: MetaState = { ...rich, levels: { 'unlock-smg': 1 } };
-  check(canBuy(richSmg, 'unlock-shotgun') === 'rank' && canBuy(rich, 'turret-cap') === 'rank' && canBuy(rich, 'reroll') === 'rank', '列兵勋章再多也买不了霰弹枪、炮塔上限、重抽');
-  check(canBuy(rich, 'unlock-smg') === 'ok' && canBuy(rich, 'unlock-shotgun') === 'requires', '冲锋枪要先解锁（列兵就能买），霰弹枪要先有冲锋枪');
+  check(canBuy(rich, 'turret-cap') === 'rank' && canBuy(rich, 'reroll') === 'rank', '列兵勋章再多也买不了炮塔上限、重抽');
   check(canBuy(rich, 'start-scrap') === 'ok' && canBuy(rich, 'max-hp') === 'ok', '列兵能买开局零件、最大生命的第一级');
   const [b1] = buyMeta(rich, 'start-scrap');
   check(canBuy(b1, 'start-scrap') === 'rank', '开局零件第二级要下士');
-  const corp: MetaState = { ...rich, medalsEarned: r1st, levels: { 'unlock-smg': 1 } };
-  const [c1] = buyMeta(corp, 'unlock-shotgun');
-  check(canBuy(corp, 'unlock-shotgun') === 'ok' && canBuy(c1, 'unlock-rifle') === 'rank', '下士能解锁霰弹枪，突击步枪要中士');
-  // 全部军衔、全部勋章：能按前置顺序把整张表买满（没有死锁）
-  let all: MetaState = { ...newMeta(), medals: 1e6, medalsEarned: 1e6 };
+  // 全部军衔、全部勋章、全部精通：能按前置顺序把整张表买满（没有死锁）
+  let all: MetaState = { ...newMeta(), medals: 1e6, medalsEarned: 1e6, mastery: masteredAll() };
   for (let pass = 0; pass < 10; pass++) for (const it of META_ITEMS) while (canBuy(all, it.id) === 'ok') [all] = buyMeta(all, it.id);
-  check(META_ITEMS.every((it) => canBuy(all, it.id) === 'maxed'), '军衔到顶时整张表都能按前置买满（没有死锁的前置）');
-  // 每一级的军衔不降：越往后越高
+  check(META_ITEMS.every((it) => canBuy(all, it.id) === 'maxed'), '军衔到顶、全部精通时整张表都能按前置买满（没有死锁的前置）');
   const mono = META_ITEMS.every((it) => it.prices.every((_, i) => i === 0 || rankFor(it, i) >= rankFor(it, i - 1)) && (it.ranks ?? []).length <= it.prices.length);
   check(mono, '每个项目的军衔要求逐级不降，长度不超过级数');
   const pre = META_ITEMS.every((it) => !it.requires || rankFor(it, 0) >= rankFor(META_BY_ID[it.requires.id] as typeof it, 0));
@@ -230,7 +252,7 @@ console.log('\n== 开局应用加成 ==');
   check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.player.weapon === 'smg' && gr.loadout.smg.owned, '带冲锋枪出征，读第 1 天的检查点继续：手里还是冲锋枪');
 
   // 存档之后在大厅解锁了步枪、买了冲锋枪上限：继续这一局时要生效
-  const later = bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-smg': 1, 'unlock-rifle': 1, 'cap-smg': 2, 'unlock-hmg': 1 } });
+  const later = bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-smg': 1, 'unlock-rifle': 1, 'unlock-hmg': 1 }, mastery: { smg: MASTERY_XP.smg[3] as number } });
   widenMeta(gr, later);
   gr.scrap = 9999;
   for (let i = 0; i < 9; i++) gr.upgradeWeapon('smg');
@@ -299,7 +321,7 @@ console.log('\n== 开局应用加成 ==');
 
   // 训练场
   const gt = new Game(5);
-  applyTraining(gt, bonusesOf({ ...newMeta(), levels: { 'unlock-lmg': 1, 'cap-lmg': 2 } }));
+  applyTraining(gt, bonusesOf({ ...newMeta(), levels: { 'unlock-lmg': 1 }, mastery: { lmg: MASTERY_XP.lmg[3] as number } }));
   check(gt.loadout.lmg.owned && gt.loadout.lmg.tier === 7 && gt.loadout.pistol.tier === 5 && !gt.loadout.shotgun.owned, '训练场：已解锁的武器按当前上限给满（轻机枪 7 级、手枪 5 级），没解锁的没有');
   const tr = new Training(gt);
   tr.start();

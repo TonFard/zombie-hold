@@ -71,6 +71,8 @@ export class Zombie {
   /** 灼烧剩余时间与每秒伤害 */
   burnT = 0;
   burnDps = 0;
+  /** 谁点的火（武器种类，熟练度用）；炮塔点的是空串 */
+  burnBy = '';
   /** 减速（轻机枪压制）：剩余时间和减速比例 */
   slowT = 0;
   slowK = 0;

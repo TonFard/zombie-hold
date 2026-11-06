@@ -1,4 +1,5 @@
 import { BUILD_RANGE, REPAIR_HP_PER_SCRAP, REPAIR_RANGE, SELL_REFUND, SPIKES, STRUCTURES, TURRETS, costOf, isTurret, type TurretKind } from '../data/structures';
+import { RISK_FX, riskOn } from './events';
 import type { Structure } from '../entities/structure';
 import { angleDiff } from '../core/math';
 import { HALF_H, HALF_W } from '../world/grid';
@@ -208,7 +209,7 @@ function updateTurret(g: Game, s: Structure, kind: TurretKind, dt: number): void
   s.aim += Math.abs(diff) < step ? diff : Math.sign(diff) * step;
 
   if (s.cd <= 0 && Math.abs(angleDiff(s.aim, want)) < (kind === 'flamer' ? t.cone : 0.18)) {
-    s.cd += 1 / (t.rate * g.mods.turretRate * (g.run.phase === 'night' && g.run.mod === 'blackout' ? 0.6 : 1));
+    s.cd += 1 / (t.rate * g.mods.turretRate * (g.run.phase === 'night' && g.run.mod === 'blackout' ? 0.6 : 1) * (riskOn(g, 'fuel') ? RISK_FX.fuelTurret : 1));
     s.sinceShot = 0;
     const dx = target.x - sx;
     const dz = target.z - sz;
@@ -222,7 +223,7 @@ function updateTurret(g: Game, s: Structure, kind: TurretKind, dt: number): void
         const d = Math.hypot(z.x - sx, z.z - sz);
         if (d > range + z.radius) continue;
         if (Math.abs(angleDiff(s.aim, Math.atan2(z.x - sx, z.z - sz))) > t.cone || !sees(z.x, z.z)) continue;
-        g.damageZombie(z, dmg, { burn: t.burn * g.mods.turret, silent: true });
+        g.damageZombie(z, dmg, { burn: t.burn * g.mods.turret, silent: true, src: 'turret' });
       }
     } else if (kind === 'mortar') {
       // 炮弹固定飞 1.6 秒，落点是开火时目标所在的位置
@@ -231,7 +232,7 @@ function updateTurret(g: Game, s: Structure, kind: TurretKind, dt: number): void
       const y0 = 1.6;
       g.projectiles.push({ x: sx, y: y0, z: sz, vx: dx / T, vy: (-y0 + 0.5 * 9.8 * T * T) / T, vz: dz / T, life: T + 0.3, damage: dmg, aoe: t.aoe, split: 0, bomblet: false });
     } else {
-      g.damageZombie(target, dmg, { kx: (dx / len) * 0.4, kz: (dz / len) * 0.4 });
+      g.damageZombie(target, dmg, { kx: (dx / len) * 0.4, kz: (dz / len) * 0.4, src: 'turret' });
     }
   }
   if (s.cd < -0.1) s.cd = -0.1;
@@ -249,7 +250,7 @@ function updateSpikes(g: Game, s: Structure, dt: number): void {
     const qz = Math.min(Math.max(z.z, z0), z0 + 1);
     // 脚踩在这一格里才算（用圆心 + 半径的一部分判断）
     if (Math.hypot(z.x - qx, z.z - qz) > Math.min(0.2, z.radius * 0.5)) continue;
-    g.damageZombie(z, SPIKES.damage * g.mods.turret, {});
+    g.damageZombie(z, SPIKES.damage * g.mods.turret, { src: 'spikes' });
     hit = true;
     s.hp -= 1;
     if (s.hp <= 0) break;

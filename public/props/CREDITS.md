@@ -62,3 +62,4 @@
 | painted_wooden_cabinet_02 | Painted Wooden Cabinet 02 | Kirill Sannikov | CC0 | https://polyhaven.com/a/painted_wooden_cabinet_02 |
 | wooden_bookshelf_worn | Wooden Bookshelf Worn | Ulan Cabanilla | CC0 | https://polyhaven.com/a/wooden_bookshelf_worn |
 | electric_stove | Electric Stove | Kuutti Siitonen | CC0 | https://polyhaven.com/a/electric_stove |
+| hdriNight | dikhololo_night | Poly Haven | CC0 | https://polyhaven.com/a/dikhololo_night |

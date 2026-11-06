@@ -1,6 +1,7 @@
 // 武器平衡检查：npm run check:balance
 // 把"手枪最弱，哪怕升满"变成可执行的约束，而不是口头承诺。
-import { MAX_TIER, WEAPON_ORDER, WEAPONS, statsAt, sustainedDps, totalUpgradeCost, type WeaponKind } from '../src/game/data/weapons';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, effectiveStats, statsAt, sustainedDps, totalUpgradeCost, type WeaponKind } from '../src/game/data/weapons';
+import { BENCH_LINES, BENCH_MAX, benchMods } from '../src/game/data/bench';
 import { EYE_HEIGHT, bulletHeightAt, flightTime } from '../src/game/data/ballistics';
 import { STRUCTURES, TURRETS, turretDps, type TurretKind } from '../src/game/data/structures';
 
@@ -54,6 +55,19 @@ for (const k of WEAPON_ORDER) {
   let mono = true;
   for (let i = 1; i < arr.length; i++) if ((arr[i] as number) < (arr[i - 1] as number)) mono = false;
   check(mono, `${WEAPONS[k].name} 每一级升级都不会降低 DPS`);
+}
+
+console.log('\n== 武器台全满（M16：五条线各 3 级）==');
+// 手枪最弱的约束在武器台全部买满之后也要成立：手枪 8 级 + 全满，仍低于其他枪 1 级 + 全满（双持另算，见 sim:extras）
+{
+  const full: Record<string, number> = {};
+  for (const k of WEAPON_ORDER) for (const l of BENCH_LINES) full[`${k}.${l}`] = BENCH_MAX;
+  const mods = benchMods(full);
+  const p8 = sustainedDps(effectiveStats('pistol', MAX_TIER, mods.pistol));
+  for (const k of others) {
+    const o1 = sustainedDps(effectiveStats(k, 1, mods[k]));
+    check(p8 < o1, `武器台全满：8 级手枪（${p8.toFixed(1)}）低于 1 级${WEAPONS[k].name}（${o1.toFixed(1)}）`);
+  }
 }
 
 console.log('\n== 弹道（M6）==');

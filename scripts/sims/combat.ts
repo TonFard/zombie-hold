@@ -73,7 +73,8 @@ for (const kind of WEAPON_ORDER) {
       pin(target, PX + 2.6, PZ);
     }
     const measured = dmg / (cycles * cycle);
-    const formula = sustainedDps(st);
+    // 目标在 2.6 米：霰弹枪的贴脸加成（3 米内）生效，公式也乘上
+    const formula = sustainedDps(st) * (WEAPONS[kind].close ?? 1);
     const ratio = measured / formula;
     console.log(`  ${WEAPONS[kind].name.padEnd(10, '　')}  ${tier}    ${formula.toFixed(1).padStart(6)}   ${measured.toFixed(1).padStart(6)}   ${ratio.toFixed(3)}`);
     // 有射速递增 / 爆炸分裂的版本，实测应不低于公式；其余必须在 3% 以内

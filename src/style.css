@@ -15,6 +15,239 @@
   /* Bahnschrift 是 Windows 自带的 DIN 风格字体，窄体数字很适合 HUD；中文回落到雅黑 */
   --hud-font: 'Bahnschrift', 'Segoe UI', 'Microsoft YaHei UI', 'PingFang SC', sans-serif;
   --hud-num: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Segoe UI', 'Microsoft YaHei UI', sans-serif;
+
+  /* ---- 菜单「指挥终端」视觉语言（UI-PLAN 第二节）---- */
+  --t-gold: #f0b83a;
+  --t-gold-soft: #d9c9a0;
+  --t-red: #e8553f;
+  --t-cyan: #6fd0e8;
+  --t-ok: #6fcf8a;
+  --t-text: #d8dee4;
+  --t-muted: #8f9aa6;
+  --t-dim: #5f6b77;
+  --t-panel: rgba(8, 12, 18, 0.74);
+  --t-panel-strong: rgba(8, 12, 18, 0.88);
+  --t-line: rgba(255, 255, 255, 0.1);
+  --t-line-strong: rgba(255, 255, 255, 0.22);
+  --t-mono: 'Bahnschrift', 'Consolas', 'Microsoft YaHei UI', monospace;
+  --t-ease: cubic-bezier(0.25, 0, 0.2, 1);
+}
+
+/* 滚动条：细金条、没有箭头、轨道几乎透明（Chromium / Electron 认 ::-webkit-scrollbar；
+   不能同时写 scrollbar-color，写了 Chromium 就改用系统样式、箭头又回来了） */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.03);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(240, 184, 58, 0.32);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(240, 184, 58, 0.6);
+}
+::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* 战术面板：半透明 + 毛玻璃 + 四角 L 形角标（两个伪元素各画两个角） */
+.t-panel {
+  position: relative;
+  background: var(--t-panel);
+  border: 1px solid var(--t-line);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+.t-panel::before,
+.t-panel::after {
+  content: '';
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  pointer-events: none;
+  border-color: var(--corner, rgba(240, 184, 58, 0.7));
+  border-style: solid;
+}
+.t-panel::before {
+  top: -1px;
+  left: -1px;
+  border-width: 2px 0 0 2px;
+}
+/* 右下角画在边框里面（bottom/right 0）：放到 -1px 时，可滚动的面板会因为这 1 像素多出横竖两条滚动条 */
+.t-panel::after {
+  bottom: 0;
+  right: 0;
+  border-width: 0 2px 2px 0;
+}
+/* 面板标题：等宽英文标签 + 中文，下面一条从主色淡出的扫描线 */
+.t-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 8px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  letter-spacing: 4px;
+  color: var(--t-gold-soft);
+  border-bottom: 1px solid transparent;
+  border-image: linear-gradient(90deg, rgba(240, 184, 58, 0.55), transparent 80%) 1;
+}
+.t-head small {
+  font-family: var(--t-mono);
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--t-dim);
+}
+
+/* 按钮：主（红）/ 次（白→蓝绿）/ 购买（金）/ 幽灵 */
+.t-btn {
+  position: relative;
+  padding: 10px 26px;
+  background: rgba(8, 12, 18, 0.4);
+  border: 1px solid var(--t-line-strong);
+  color: var(--t-text);
+  font: inherit;
+  font-size: 14px;
+  letter-spacing: 4px;
+  cursor: pointer;
+  transition: background 0.15s var(--t-ease), border-color 0.15s var(--t-ease), color 0.15s var(--t-ease), box-shadow 0.15s var(--t-ease);
+}
+.t-btn:hover:not(:disabled),
+.t-btn:focus-visible {
+  outline: none;
+  border-color: var(--t-cyan);
+  color: #fff;
+  box-shadow: 0 0 22px rgba(111, 208, 232, 0.25);
+}
+.t-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.t-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.t-btn.primary {
+  border-color: var(--t-red);
+  color: #ffc2b4;
+  background: rgba(232, 85, 63, 0.08);
+}
+.t-btn.primary:hover:not(:disabled),
+.t-btn.primary:focus-visible {
+  background: var(--t-red);
+  border-color: var(--t-red);
+  color: #fff;
+  box-shadow: 0 0 30px rgba(232, 85, 63, 0.5);
+}
+.t-btn.gold {
+  border-color: var(--t-gold);
+  color: var(--t-gold);
+}
+.t-btn.gold:hover:not(:disabled),
+.t-btn.gold:focus-visible {
+  background: var(--t-gold);
+  color: #0b0f14;
+  box-shadow: 0 0 22px rgba(240, 184, 58, 0.4);
+}
+
+/* 分段选择（难度、随身武器、Tab） */
+.t-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.t-seg button {
+  flex: 1;
+  min-width: 0;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--t-line);
+  color: var(--t-muted);
+  font: inherit;
+  font-size: 13px;
+  letter-spacing: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: 0.15s var(--t-ease);
+}
+.t-seg button:hover:not(:disabled),
+.t-seg button:focus-visible {
+  outline: none;
+  color: var(--t-text);
+  border-color: var(--t-line-strong);
+}
+.t-seg button.on {
+  color: var(--t-gold);
+  border-color: rgba(240, 184, 58, 0.6);
+  background: rgba(240, 184, 58, 0.09);
+}
+.t-seg button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* 属性条：名称 / 条 / 数值 */
+.t-stat {
+  display: grid;
+  grid-template-columns: 64px 1fr 84px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--t-muted);
+}
+.t-stat i {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.t-stat i b,
+.t-stat i s {
+  position: absolute;
+  inset: 0 auto 0 0;
+  transition: width 0.25s var(--t-ease);
+}
+.t-stat i b {
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.55), var(--t-gold));
+}
+/* 升级预览：在当前值后面多出来的一截 */
+.t-stat i s {
+  background: var(--t-ok);
+  opacity: 0.75;
+}
+.t-stat em {
+  font-style: normal;
+  text-align: right;
+  color: var(--t-text);
+  font-family: var(--t-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 菜单页面进场：淡入 + 上移 8px */
+@keyframes t-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.t-enter {
+  animation: t-enter 0.25s var(--t-ease) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .t-enter {
+    animation: none;
+  }
 }
 
 *,

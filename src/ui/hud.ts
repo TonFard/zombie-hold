@@ -12,6 +12,22 @@ import type { MetaApplied } from '../game/config';
 import { STRUCTURES } from '../game/data/structures';
 import { ZOMBIES, type ZombieKind } from '../game/data/zombies';
 import { HEAL_TICK, POOL_PER_TICK } from '../game/data/heal';
+import { TDM } from '../game/systems/tdm';
+import { RISKS, RISK_FX, type RiskId } from '../game/systems/events';
+import { LOOT, isDanger, lootAvailable } from '../game/systems/loot';
+import { liveBreakdown, weaponBreakdown, type Part, type SourceKind } from '../game/stats/breakdown';
+
+/** Tab 面板一行：名称、基础值、各来源（已格式化）、最终值 */
+export interface TabRow {
+  id: string;
+  name: string;
+  base: string;
+  parts: Array<{ kind: SourceKind; name: string; text: string; good: boolean }>;
+  final: string;
+  /** 和基础值比：变好 / 变差 / 不变 */
+  trend: 'up' | 'down' | '';
+  capped: boolean;
+}
 
 export interface HurtMark {
   /** 相对当前视线的顺时针角度（弧度，0 = 正前方），每次同步时按攻击者的方位重算 */
@@ -83,6 +99,8 @@ export const hud = reactive({
   stamina: 100,
   maxStamina: 100,
   weaponName: '',
+  /** 手上这把枪的星级（0–3），名字按星级上色 */
+  weaponStars: 0,
   weaponKind: 'pistol' as WeaponKind,
   /** M12：手雷、推搡、手电、脉冲、连杀、词缀和挑战 */
   extras: {
@@ -156,6 +174,10 @@ export const hud = reactive({
   total: 0,
   dayTimer: 0,
   benchNear: false,
+  /** 站在哪个搜刮点旁边（M18）：名字、是否危险区、读条进度 0–1、奖励说明 */
+  loot: { name: '', danger: false, pct: 0, reward: '' },
+  /** 风险事件（M17）：今天的事件、状态（0 未接 / 1 进行中 / 2 完成）、幸存者读条进度 0–1、离信号弹多远 */
+  risk: { id: '', name: '', cost: '', reward: '', stage: 0, hold: 0, dist: 0, canAfford: true, free: false },
   benchDist: 99,
   bossName: '',
   bossHp: 0,
@@ -191,11 +213,32 @@ export const hud = reactive({
   boxDist: 99,
   /** 卡牌「战意」当前的伤害加成（0.12 = +12%） */
   comboDmg: 0,
+  /** 团队死斗 */
+  tdm: {
+    on: false,
+    score: [0, 0] as [number, number],
+    target: 50,
+    time: 0,
+    respawn: 0,
+    shield: 0,
+    kills: 0,
+    deaths: 0,
+    feed: [] as Array<{ killer: string; victim: string; kt: 0 | 1; vt: 0 | 1; weapon: string; head: boolean; life: number }>,
+    board: [] as Array<{ name: string; team: 0 | 1; kills: number; deaths: number; you: boolean; alive: boolean; weapon: string }>,
+  },
   /** Tab 面板：按住时显示，只在显示时刷新 */
   tab: {
     open: false,
     /** 属性：名称 + 数值（已经格式化好） */
     stats: [] as Array<{ k: string; v: string; up?: boolean; down?: boolean }>,
+    /** 当前页：0 属性、1 武器、2 战况（按住 Tab 时 Q / E 切换） */
+    page: 0,
+    /** 属性页：每一项的基础值 × 各来源 = 最终值 */
+    rows: [] as TabRow[],
+    /** 武器页：身上每把枪的五项属性 */
+    guns: [] as Array<{ kind: string; name: string; tier: number; hand: boolean; rows: TabRow[]; dps: string; kills: number }>,
+    /** 展开的那一行（属性页点 / 方向键） */
+    open1: '',
     /** 按种类的击杀 */
     kills: [] as Array<{ name: string; n: number }>,
     /** 战况：时长、爆头率、最高连杀…… */
@@ -258,6 +301,8 @@ export const radar = {
   structs: [] as number[],
   /** 还没捡的零件箱：每 2 个数一组 [x, z] */
   boxes: [] as number[],
+  /** 能搜的搜刮点（M18）：每 3 个数一组 [x, z, 是否危险区 0/1] */
+  loot: [] as number[],
   coreX: 0,
   coreZ: 0,
   benchX: 0,
@@ -402,10 +447,70 @@ function syncTab(game: Game): void {
     by.set(x.kind, e);
   }
   t.structs = [...by.values()].map((e) => ({ name: e.name, n: e.n, low: e.low, avg: e.sum / e.n }));
+
+  // ---- 数值后台：基础 × 各来源 = 最终（数据来自 game/stats/breakdown，sim:stats 保证和实际一致）
+  const pctOf = (v: number) => `${Math.round(v * 1000) / 10}%`;
+  const mulTxt = (v: number) => `×${v >= 10 ? v.toFixed(1) : v.toFixed(2)}`;
+  t.rows = liveBreakdown(game)
+    .filter((l) => l.parts.length > 0 || ['damage', 'fireRate', 'reload', 'speed', 'armor', 'crit', 'scrap', 'turret', 'structHp'].includes(l.id))
+    .map((l) => {
+      const show = (v: number) => (l.fmt === 'pct' ? (l.op === 'mul' ? pctOf(v) : `${Math.round(v * 100)}%`) : l.fmt === 'rate' ? `${v.toFixed(1)}${l.unit ?? ''}` : `${Math.round(v * 10) / 10}${l.unit ? ` ${l.unit}` : ''}`);
+      const better = (p: Part) => (l.op === 'mul' ? p.value > 1 : p.value > 0) === l.higherBetter;
+      const d = l.final - l.base;
+      return {
+        id: l.id,
+        name: l.name,
+        base: show(l.base),
+        parts: l.parts.map((p) => ({ kind: p.kind, name: p.name, text: l.op === 'mul' ? mulTxt(p.value) : `+${l.fmt === 'pct' ? `${Math.round(p.value * 100)}%` : Math.round(p.value * 10) / 10}`, good: better(p) })),
+        final: show(l.final),
+        trend: Math.abs(d) < 1e-9 ? '' : (d > 0) === l.higherBetter ? 'up' : 'down',
+        capped: l.capped,
+      };
+    });
+  t.guns = game.carried().map((k) => {
+    const slot = game.loadout[k];
+    const rows = weaponBreakdown(game, k, slot.tier).map((w) => {
+      const f = (v: number) => `${v.toFixed(w.digits)} ${w.unit}`.trim();
+      const d = w.final - w.base;
+      return {
+        id: w.id,
+        name: w.name,
+        base: f(w.base),
+        parts: w.parts.map((p) => ({ kind: p.kind, name: p.name, text: mulTxt(p.value), good: (p.value > 1) === w.higherBetter })),
+        final: f(w.final),
+        trend: (Math.abs(d) < 1e-9 ? '' : (d > 0) === w.higherBetter ? 'up' : 'down') as TabRow['trend'],
+        capped: false,
+      };
+    });
+    const st = game.statsOf(k, slot.tier);
+    return { kind: k, name: WEAPONS[k].name, tier: slot.tier + 1, hand: game.player.weapon === k, rows, dps: (sustainedDps(st) * game.mods.damage * game.mods.fireRate).toFixed(0), kills: game.stats.weaponKills[k] };
+  });
+}
+
+function syncTdm(game: Game): void {
+  const t = game.tdm;
+  const h = hud.tdm;
+  h.on = t.on;
+  if (!t.on) return;
+  h.score = [t.score[0], t.score[1]];
+  h.target = TDM.score;
+  h.time = Math.max(0, t.time);
+  h.respawn = game.player.alive ? 0 : Math.max(0, t.playerRespawn);
+  h.shield = t.playerShield;
+  h.kills = t.playerKills;
+  h.deaths = t.playerDeaths;
+  h.feed = t.feed.map((f) => ({ killer: f.killer, victim: f.victim, kt: f.kt, vt: f.vt, weapon: WEAPONS[f.weapon].name, head: f.head, life: 1 - f.t / 6 }));
+  if (hud.tab.open || t.over) {
+    h.board = [
+      { name: '你', team: 0 as const, kills: t.playerKills, deaths: t.playerDeaths, you: true, alive: game.player.alive, weapon: WEAPONS[game.player.weapon].name },
+      ...t.soldiers.map((s) => ({ name: s.name, team: s.team, kills: s.kills, deaths: s.deaths, you: false, alive: s.alive, weapon: WEAPONS[s.weapon].name })),
+    ].sort((a, b) => a.team - b.team || b.kills - a.kills || a.deaths - b.deaths);
+  }
 }
 
 export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: number }): void {
-  if (hud.tab.open) syncTab(game);
+  syncTdm(game);
+  if (hud.tab.open && !game.tdm.on) syncTab(game);
   const p = game.player;
   // ---- 雷达快照 ----
   radar.px = p.x;
@@ -418,10 +523,23 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   radar.solid = game.grid.solid;
   radar.zombies.length = 0;
   for (const z of game.zombies) if (z.alive) radar.zombies.push(z.x, z.z, ZOMBIE_CODE[z.kind] ?? 0);
+  // 团队死斗：队友一直显示；敌人只在最近开过枪时显示（像真的小地图，不开枪就是隐身的）
+  for (const s of game.tdm.soldiers) if (s.alive && (s.team === 0 || s.sinceShot < 1.5)) radar.zombies.push(s.x, s.z, s.team === 0 ? 7 : 8);
   radar.structs.length = 0;
   for (const s of game.structures.values()) radar.structs.push(s.cx - HALF_W + 0.5, s.cy - HALF_H + 0.5, STRUCT_CODE[s.kind] ?? 0);
   radar.boxes.length = 0;
   for (const b of game.scrapBoxes) if (b.alive) radar.boxes.push(b.x, b.z);
+  radar.loot.length = 0;
+  (game.map.loot ?? []).forEach((l, i) => {
+    if (lootAvailable(game, i)) radar.loot.push(l.x, l.z, isDanger(l.kind) ? 1 : 0);
+  });
+  // 搜刮读条（HUD 提示用）
+  const la = game.loot.at;
+  const lq = la >= 0 ? game.map.loot?.[la] : undefined;
+  hud.loot.name = lq ? lq.name : '';
+  hud.loot.danger = lq ? isDanger(lq.kind) : false;
+  hud.loot.pct = lq ? Math.min(1, game.loot.hold / LOOT[lq.kind].hold) : 0;
+  hud.loot.reward = lq ? LOOT[lq.kind].reward : '';
 
   // ---- 命中标记、受击方向的衰减 ----
   hud.hit = Math.max(0, hud.hit - dt * 7);
@@ -447,6 +565,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.stamina = p.stamina;
   hud.maxStamina = p.maxStamina;
   hud.weaponName = WEAPONS[p.weapon].name;
+  hud.weaponStars = game.config.stars[p.weapon];
   hud.weaponKind = p.weapon;
   hud.tier = p.tier;
   hud.range = st.range;
@@ -487,6 +606,17 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   const wb = game.map.workbench;
   hud.benchDist = Math.hypot(p.x - wb.x, p.z - wb.z);
   hud.benchNear = run.phase === 'day' && hud.benchDist < 3.8;
+  const ev = game.ev;
+  const rd = ev.id ? RISKS[ev.id as RiskId] : null;
+  hud.risk.id = ev.id;
+  hud.risk.name = rd?.name ?? '';
+  hud.risk.cost = rd?.cost ?? '';
+  hud.risk.reward = rd?.reward ?? '';
+  hud.risk.stage = ev.stage;
+  hud.risk.hold = Math.min(1, ev.hold / RISK_FX.survivorHold);
+  hud.risk.dist = Math.hypot(p.x - ev.x, p.z - ev.z);
+  hud.risk.canAfford = ev.id !== 'market' || game.scrap >= RISK_FX.marketCost;
+  hud.risk.free = ev.freeUpgrade > 0;
   const boss = game.zombies.find((z) => z.alive && z.kind === 'colossus');
   hud.bossName = boss ? (run.night >= 10 ? '巨像·终焉' : '巨像·初代') : '';
   hud.bossHp = boss ? boss.hp : 0;

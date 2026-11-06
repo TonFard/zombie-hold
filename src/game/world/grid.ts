@@ -40,6 +40,9 @@ export class Grid {
    */
   readonly post = new Float32Array(COUNT);
 
+  /** 1 = 这一格的阻挡建筑是路障：爬行者能从底下钻过去（炮塔不行） */
+  readonly crawl = new Uint8Array(COUNT);
+
   /** 阻挡建筑变化时自增，寻路据此重算 */
   structVersion = 0;
 
@@ -93,6 +96,13 @@ export class Grid {
     return this.solid[i] === 1 || this.structure[i] >= 0;
   }
 
+  /** 对爬行者来说挡不挡：路障格可以钻过去 */
+  blocksCrawler(cx: number, cy: number): boolean {
+    if (cx < 0 || cy < 0 || cx >= GRID_W || cy >= GRID_H) return true;
+    const i = cy * GRID_W + cx;
+    return this.solid[i] === 1 || (this.structure[i] >= 0 && this.crawl[i] === 0);
+  }
+
   private refresh(i: number): void {
     let c = 0;
     if (this.slow[i]) c += 2;
@@ -106,9 +116,10 @@ export class Grid {
     this.refresh(i);
   }
 
-  placeBlocking(i: number, id: number, navCost: number): void {
+  placeBlocking(i: number, id: number, navCost: number, crawlable = false): void {
     this.structure[i] = id;
     this.structCost[i] = navCost;
+    this.crawl[i] = crawlable ? 1 : 0;
     this.refresh(i);
     this.structVersion++;
   }
@@ -116,6 +127,7 @@ export class Grid {
   clearBlocking(i: number): void {
     this.structure[i] = -1;
     this.structCost[i] = 0;
+    this.crawl[i] = 0;
     this.refresh(i);
     this.structVersion++;
   }

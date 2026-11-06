@@ -186,3 +186,17 @@ export class CloudStore implements Storage {
     return this.chain;
   }
 }
+
+/**
+ * 开发用（只在 vite dev 里生效）：?offline=1 不登录、进度只放在内存里（刷新就没了）。
+ * 给截图脚本和本地调试用，不碰服务器上的任何账号
+ */
+export class OfflineStore extends CloudStore {
+  constructor() {
+    super({ name: 'offline', token: '' });
+    this.hydrate({ save: null, run: null, rev: 0 });
+  }
+  override flush(): Promise<void> {
+    return Promise.resolve();
+  }
+}

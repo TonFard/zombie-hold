@@ -1,0 +1,2726 @@
+{
+  "title": "雨夜便利店 · 资产库",
+  "version": 1,
+  "conventions": [
+    "单位：米。1 Blender 单位 = 1 m，导出前应用全部变换（Ctrl+A → 全部变换）。",
+    "朝向：正面朝 +Z（Blender 里朝 −Y），向上 +Y；导出 glTF 时勾选\"+Y 向上\"（默认就是）。",
+    "原点：底面中心（y = 0 贴地，x / z 居中）；目录里标了\"原点按约定\"的（路灯、吸顶灯）以说明为准。",
+    "格式：glb（二进制，贴图打包进去）。不导出相机和灯光。材质用 Principled BSDF（PBR）。",
+    "贴图：固有色 / 法线（OpenGL，绿色向上）/ ORM（R = AO、G = 粗糙度、B = 金属度）。商品 ≤ 512 px，其他 ≤ 2048 px，尽量合图。",
+    "可动部件：做成单独对象，名字按目录里的节点名；转轴 / 滑动的原点放在铰链或滑轨上。",
+    "动画：名字按目录（例如 door_open、locker_01_open），开关类动画只做\"打开\"一段，平台倒放就是关。",
+    "自发光：招牌、灯条、屏幕用 Emission，强度 1 左右（游戏里有 Bloom）。玻璃用 Alpha Blend，粗糙度低。",
+    "交付：放进 public/assets/konbini/models/<id>.glb；有款式的放 models/<id>/<款式 id>.glb。刷新平台页面就能看到并自动校验。"
+  ],
+  "categories": [
+    {
+      "id": "goods",
+      "name": "商品"
+    },
+    {
+      "id": "fixture",
+      "name": "店内陈设"
+    },
+    {
+      "id": "building",
+      "name": "店铺本体"
+    },
+    {
+      "id": "outdoor",
+      "name": "店门口"
+    },
+    {
+      "id": "street",
+      "name": "街道设施"
+    },
+    {
+      "id": "vehicle",
+      "name": "车辆"
+    },
+    {
+      "id": "neighbor",
+      "name": "周边建筑"
+    }
+  ],
+  "assets": [
+    {
+      "id": "goods_snack",
+      "name": "薯片袋",
+      "category": "goods",
+      "dims": [
+        0.17,
+        0.24,
+        0.07
+      ],
+      "budget": 300,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('snack')",
+      "notes": "鼓起来的软包装袋，上下有压边封口；正反两面印刷。 包装贴图对应图集 snack0..5。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "snack_01",
+          "name": "のり塩",
+          "price": 148,
+          "color": "#2e8b3a",
+          "status": "pending"
+        },
+        {
+          "id": "snack_02",
+          "name": "うすしお",
+          "price": 148,
+          "color": "#2a62c8",
+          "status": "pending"
+        },
+        {
+          "id": "snack_03",
+          "name": "コンソメ",
+          "price": 158,
+          "color": "#7a2fa0",
+          "status": "pending"
+        },
+        {
+          "id": "snack_04",
+          "name": "チーズ",
+          "price": 168,
+          "color": "#f08a1a",
+          "status": "pending"
+        },
+        {
+          "id": "snack_05",
+          "name": "わさび",
+          "price": 178,
+          "color": "#86b82a",
+          "status": "pending"
+        },
+        {
+          "id": "snack_06",
+          "name": "カレー",
+          "price": 158,
+          "color": "#c8402a",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_bread",
+      "name": "袋装面包",
+      "category": "goods",
+      "dims": [
+        0.14,
+        0.13,
+        0.07
+      ],
+      "budget": 250,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('bread')",
+      "notes": "透明袋装面包，正面和顶面印刷。 包装贴图对应图集 bread0..4。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "bread_01",
+          "name": "あんぱん",
+          "price": 128,
+          "color": "#c8282a",
+          "status": "pending"
+        },
+        {
+          "id": "bread_02",
+          "name": "クリーム",
+          "price": 138,
+          "color": "#efc020",
+          "status": "pending"
+        },
+        {
+          "id": "bread_03",
+          "name": "メロン",
+          "price": 148,
+          "color": "#6cb84a",
+          "status": "pending"
+        },
+        {
+          "id": "bread_04",
+          "name": "食パン",
+          "price": 198,
+          "color": "#f4f0e6",
+          "status": "pending"
+        },
+        {
+          "id": "bread_05",
+          "name": "ロール",
+          "price": 118,
+          "color": "#2a9a5a",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_bottle",
+      "name": "瓶装饮料（PET）",
+      "category": "goods",
+      "dims": [
+        0.075,
+        0.24,
+        0.075
+      ],
+      "budget": 600,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('bottle')",
+      "notes": "PET 瓶：瓶身液体色 + 中段一圈标签 + 瓶肩收口 + 瓶盖（瓶盖用标签第二色）。茶类液体 #9a8a3a，可乐 #3a0a0a，奶茶 #c8a070，其余透明水色。 包装贴图对应图集 bottle0..7。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "bottle_01",
+          "name": "緑茶",
+          "price": 128,
+          "color": "#2f7a3a",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_02",
+          "name": "天然水",
+          "price": 108,
+          "color": "#4aa0e8",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_03",
+          "name": "ソーダ",
+          "price": 158,
+          "color": "#e8323a",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_04",
+          "name": "オレンジ",
+          "price": 148,
+          "color": "#f08a1a",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_05",
+          "name": "レモン",
+          "price": 148,
+          "color": "#f0d020",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_06",
+          "name": "ミルクティー",
+          "price": 158,
+          "color": "#c8a070",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_07",
+          "name": "スポーツ",
+          "price": 158,
+          "color": "#2a58c8",
+          "status": "pending"
+        },
+        {
+          "id": "bottle_08",
+          "name": "麦茶",
+          "price": 128,
+          "color": "#a86a2a",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_can",
+      "name": "罐装饮料",
+      "category": "goods",
+      "dims": [
+        0.066,
+        0.12,
+        0.066
+      ],
+      "budget": 400,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('can')",
+      "notes": "铝罐：罐底、罐身一圈印刷、罐顶收口和拉环。 包装贴图对应图集 can0..7。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "can_01",
+          "name": "COFFEE",
+          "price": 130,
+          "color": "#5a3a2a",
+          "status": "sample",
+          "file": "samples/goods_can__can_01.glb"
+        },
+        {
+          "id": "can_02",
+          "name": "BLACK",
+          "price": 130,
+          "color": "#1c1c1e",
+          "status": "pending"
+        },
+        {
+          "id": "can_03",
+          "name": "微糖",
+          "price": 130,
+          "color": "#c8a060",
+          "status": "pending"
+        },
+        {
+          "id": "can_04",
+          "name": "サイダー",
+          "price": 150,
+          "color": "#3ab0e0",
+          "status": "pending"
+        },
+        {
+          "id": "can_05",
+          "name": "ENERGY",
+          "price": 210,
+          "color": "#38b860",
+          "status": "pending"
+        },
+        {
+          "id": "can_06",
+          "name": "ピーチ",
+          "price": 140,
+          "color": "#f08aa0",
+          "status": "pending"
+        },
+        {
+          "id": "can_07",
+          "name": "コーンスープ",
+          "price": 130,
+          "color": "#f0c030",
+          "status": "pending"
+        },
+        {
+          "id": "can_08",
+          "name": "お汁粉",
+          "price": 140,
+          "color": "#8a2a3a",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_onigiri",
+      "name": "饭团",
+      "category": "goods",
+      "dims": [
+        0.11,
+        0.1,
+        0.045
+      ],
+      "budget": 200,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('onigiri')",
+      "notes": "三角饭团，白色包装，正面标签贴纸（口味名），底部海苔，中间红色撕带。 包装贴图对应图集 onigiri0..5。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "onigiri_01",
+          "name": "しゃけ",
+          "price": 150,
+          "status": "pending"
+        },
+        {
+          "id": "onigiri_02",
+          "name": "ツナマヨ",
+          "price": 170,
+          "status": "pending"
+        },
+        {
+          "id": "onigiri_03",
+          "name": "梅",
+          "price": 130,
+          "status": "pending"
+        },
+        {
+          "id": "onigiri_04",
+          "name": "昆布",
+          "price": 130,
+          "status": "pending"
+        },
+        {
+          "id": "onigiri_05",
+          "name": "明太子",
+          "price": 180,
+          "status": "pending"
+        },
+        {
+          "id": "onigiri_06",
+          "name": "おかか",
+          "price": 130,
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_bento",
+      "name": "便当",
+      "category": "goods",
+      "dims": [
+        0.21,
+        0.06,
+        0.15
+      ],
+      "budget": 400,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('bento')",
+      "notes": "黑色便当盒 + 透明盖（盖顶面印菜品俯视图）+ 侧面红色腰封。 包装贴图对应图集 bento0..3。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "bento_01",
+          "name": "唐揚げ弁当",
+          "price": 550,
+          "status": "pending"
+        },
+        {
+          "id": "bento_02",
+          "name": "のり弁",
+          "price": 450,
+          "status": "pending"
+        },
+        {
+          "id": "bento_03",
+          "name": "幕の内",
+          "price": 520,
+          "status": "pending"
+        },
+        {
+          "id": "bento_04",
+          "name": "ハンバーグ",
+          "price": 580,
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_noodle",
+      "name": "杯面",
+      "category": "goods",
+      "dims": [
+        0.12,
+        0.11,
+        0.12
+      ],
+      "budget": 300,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('noodle')",
+      "notes": "上大下小的纸杯，侧面一圈印刷，顶部纸盖。 包装贴图对应图集 noodle0..3。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "noodle_01",
+          "name": "ラーメン",
+          "price": 198,
+          "color": "#d8282a",
+          "status": "pending"
+        },
+        {
+          "id": "noodle_02",
+          "name": "うどん",
+          "price": 168,
+          "color": "#f0f0e8",
+          "status": "pending"
+        },
+        {
+          "id": "noodle_03",
+          "name": "そば",
+          "price": 168,
+          "color": "#3a3a3a",
+          "status": "pending"
+        },
+        {
+          "id": "noodle_04",
+          "name": "焼そば",
+          "price": 218,
+          "color": "#f0a020",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_mag",
+      "name": "杂志",
+      "category": "goods",
+      "dims": [
+        0.2,
+        0.27,
+        0.012
+      ],
+      "budget": 100,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('mag')",
+      "notes": "薄平装杂志，封面印刷；在杂志架上后仰 0.3 rad 摆放。 包装贴图对应图集 mag0..7。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "mag_01",
+          "name": "週刊ヨル",
+          "price": 380,
+          "status": "pending"
+        },
+        {
+          "id": "mag_02",
+          "name": "JUMPER",
+          "price": 290,
+          "status": "pending"
+        },
+        {
+          "id": "mag_03",
+          "name": "CAR LIFE",
+          "price": 650,
+          "status": "pending"
+        },
+        {
+          "id": "mag_04",
+          "name": "まんが王",
+          "price": 300,
+          "status": "pending"
+        },
+        {
+          "id": "mag_05",
+          "name": "Gourmet",
+          "price": 720,
+          "status": "pending"
+        },
+        {
+          "id": "mag_06",
+          "name": "GAME★",
+          "price": 580,
+          "status": "pending"
+        },
+        {
+          "id": "mag_07",
+          "name": "Fashion",
+          "price": 680,
+          "status": "pending"
+        },
+        {
+          "id": "mag_08",
+          "name": "旅とカメラ",
+          "price": 900,
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_sweet",
+      "name": "甜点 / 糖果",
+      "category": "goods",
+      "dims": [
+        0.11,
+        0.08,
+        0.08
+      ],
+      "budget": 200,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('sweet')",
+      "notes": "小盒包装，正面印刷。 包装贴图对应图集 sweet0..5。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "sweet_01",
+          "name": "プリン",
+          "price": 198,
+          "color": "#f6d060",
+          "status": "pending"
+        },
+        {
+          "id": "sweet_02",
+          "name": "ロールケーキ",
+          "price": 330,
+          "color": "#f4c8c8",
+          "status": "pending"
+        },
+        {
+          "id": "sweet_03",
+          "name": "チョコ",
+          "price": 158,
+          "color": "#5a2a1a",
+          "status": "pending"
+        },
+        {
+          "id": "sweet_04",
+          "name": "グミ",
+          "price": 128,
+          "color": "#e04aa0",
+          "status": "pending"
+        },
+        {
+          "id": "sweet_05",
+          "name": "ガム",
+          "price": 110,
+          "color": "#3ac0b0",
+          "status": "pending"
+        },
+        {
+          "id": "sweet_06",
+          "name": "キャンディ",
+          "price": 108,
+          "color": "#f07030",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_daily",
+      "name": "日用品",
+      "category": "goods",
+      "dims": [
+        0.12,
+        0.12,
+        0.1
+      ],
+      "budget": 200,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('daily')",
+      "notes": "纸巾、牙膏、电池、口罩的小盒包装。 包装贴图对应图集 daily0..3。所有款式共用同一个网格，只换贴图。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "pick",
+          "label": "拿起 / 放回",
+          "type": "pick",
+          "note": "游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货"
+        }
+      ],
+      "variants": [
+        {
+          "id": "daily_01",
+          "name": "ティッシュ",
+          "price": 298,
+          "color": "#e8f0ff",
+          "status": "pending"
+        },
+        {
+          "id": "daily_02",
+          "name": "歯みがき",
+          "price": 248,
+          "color": "#3a8ae0",
+          "status": "pending"
+        },
+        {
+          "id": "daily_03",
+          "name": "電池",
+          "price": 398,
+          "color": "#f0c020",
+          "status": "pending"
+        },
+        {
+          "id": "daily_04",
+          "name": "マスク",
+          "price": 328,
+          "color": "#f8f8f8",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_ice",
+      "name": "冰淇淋（雪糕）",
+      "category": "goods",
+      "dims": [
+        0.06,
+        0.14,
+        0.03
+      ],
+      "budget": 200,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "goods.ts good('ice')",
+      "notes": "卧式冰柜里的雪糕，只用颜色区分口味（#e85a8a / #4ab0e8 / #f0c040 / #7ad070）。",
+      "variantLabel": "SKU",
+      "interactions": [
+        {
+          "id": "buy",
+          "label": "拿一支",
+          "type": "code",
+          "note": "游戏里：冰柜盖滑开后才能拿，¥160 加入购物袋"
+        }
+      ],
+      "variants": [
+        {
+          "id": "ice_01",
+          "name": "アイス（苺）",
+          "price": 160,
+          "color": "#e85a8a",
+          "status": "pending"
+        },
+        {
+          "id": "ice_02",
+          "name": "アイス（ソーダ）",
+          "price": 160,
+          "color": "#4ab0e8",
+          "status": "pending"
+        },
+        {
+          "id": "ice_03",
+          "name": "アイス（バニラ）",
+          "price": 160,
+          "color": "#f0c040",
+          "status": "pending"
+        },
+        {
+          "id": "ice_04",
+          "name": "アイス（抹茶）",
+          "price": 160,
+          "color": "#7ad070",
+          "status": "pending"
+        }
+      ]
+    },
+    {
+      "id": "goods_coffee_cup",
+      "name": "咖啡纸杯（ホット S）",
+      "category": "goods",
+      "dims": [
+        0.08,
+        0.1,
+        0.08
+      ],
+      "budget": 200,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "fixtures.ts 咖啡机 cup",
+      "notes": "白色纸杯，上大下小，红色杯套，杯口深褐色咖啡。咖啡机出杯时出现。¥100",
+      "interactions": []
+    },
+    {
+      "id": "goods_karaage",
+      "name": "炸鸡块（からあげ 5 個入）",
+      "category": "goods",
+      "dims": [
+        0.07,
+        0.03,
+        0.07
+      ],
+      "budget": 150,
+      "maxTexture": 512,
+      "status": "pending",
+      "count": 18,
+      "source": "fixtures.ts 热食柜",
+      "notes": "单颗炸鸡块，略扁的不规则球，两种炸色 #c87a30 / #e8a040。热食柜里两层各 9 颗。¥238 / 份",
+      "interactions": []
+    },
+    {
+      "id": "goods_oden_bowl",
+      "name": "关东煮（一碗）",
+      "category": "goods",
+      "dims": [
+        0.14,
+        0.07,
+        0.14
+      ],
+      "budget": 400,
+      "maxTexture": 512,
+      "status": "pending",
+      "source": "fixtures.ts 关东煮（游戏里没有碗的模型）",
+      "notes": "新增：外带纸碗，里面萝卜、鸡蛋、竹轮。游戏里现在只是文字提示，有模型后可以在锅前出现。¥210",
+      "interactions": []
+    },
+    {
+      "id": "gondola_shelf",
+      "name": "双面货架岛（7 m）",
+      "category": "fixture",
+      "dims": [
+        7,
+        1.48,
+        0.9
+      ],
+      "budget": 3000,
+      "count": 3,
+      "status": "pending",
+      "source": "fixtures.ts gondola()",
+      "notes": "两面各 4 层（层高 0.12 / 0.45 / 0.78 / 1.11 m），层板深 0.4；中间背板 #e6e6e2，顶板 #f4f4f0，底座 #2a2e36 带青绿色踢脚线 #24b0a0，端柱 #d8d8d4。每 1.4 m 一段价签条（图集 price）。商品不进这个模型。建议做成 1.4 m 一段的模块拼 5 段。",
+      "interactions": []
+    },
+    {
+      "id": "endcap_shelf",
+      "name": "端头促销架",
+      "category": "fixture",
+      "dims": [
+        0.9,
+        1.28,
+        0.45
+      ],
+      "budget": 600,
+      "count": 3,
+      "status": "pending",
+      "source": "fixtures.ts 端头促销架",
+      "notes": "底座 + 2 层板（0.45 / 0.8 m）+ 背板 + 顶上\"2個で10%OFF / SALE\"立牌（图集 sale）。",
+      "interactions": []
+    },
+    {
+      "id": "price_rail",
+      "name": "价签条（1.4 m 一段）",
+      "category": "fixture",
+      "dims": [
+        1.4,
+        0.035,
+        0.008
+      ],
+      "budget": 50,
+      "count": 120,
+      "maxTexture": 1024,
+      "status": "pending",
+      "source": "fixtures.ts prices",
+      "notes": "黄白相间的价格条（图集 price）。冷柜里用半段（0.5 宽贴图）。",
+      "interactions": []
+    },
+    {
+      "id": "category_sign",
+      "name": "吊挂分类牌",
+      "category": "fixture",
+      "dims": [
+        1.1,
+        0.75,
+        0.03
+      ],
+      "budget": 200,
+      "count": 4,
+      "status": "pending",
+      "source": "fixtures.ts hang()",
+      "notes": "1.1 × 0.21 两面印刷的牌子 + 两根吊杆（吊到天花板 y3.2）。牌底离地 2.45 m。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "cat_snack",
+          "name": "お菓子",
+          "status": "pending"
+        },
+        {
+          "id": "cat_bread",
+          "name": "パン・サンド",
+          "status": "pending"
+        },
+        {
+          "id": "cat_daily",
+          "name": "日用品",
+          "status": "pending"
+        },
+        {
+          "id": "cat_bento",
+          "name": "お弁当・おにぎり",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "id": "drink_cooler",
+      "name": "饮料冷柜（9 门）",
+      "category": "fixture",
+      "dims": [
+        9.72,
+        2.6,
+        0.95
+      ],
+      "budget": 6000,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 饮料冷柜",
+      "notes": "后墙一整排。柜体 #1e2026，内背板 #e8eef4；每格 1.08 m：隔板、竖向灯条（发光）、5 层层板（0.16 / 0.56 / 0.96 / 1.36 / 1.76）。顶部发光灯箱\"ドリンク\"（图集 cat0）。9 扇玻璃门转轴在左边，往外开 100°，门框 #24262c，竖把手 #b8bcc4。节点命名 cooler_door_01..09。",
+      "interactions": [
+        {
+          "id": "door",
+          "label": "冷柜门",
+          "type": "toggle",
+          "clip": "open",
+          "perNode": true,
+          "nodes": [
+            "cooler_door_01",
+            "cooler_door_02",
+            "cooler_door_03",
+            "cooler_door_04",
+            "cooler_door_05",
+            "cooler_door_06",
+            "cooler_door_07",
+            "cooler_door_08",
+            "cooler_door_09"
+          ],
+          "duration": 8,
+          "note": "游戏里：打开播 click，8 秒后自动关；门关着时拿不到里面的饮料"
+        }
+      ]
+    },
+    {
+      "id": "deli_case",
+      "name": "便当 / 饭团冷藏柜（开放式）",
+      "category": "fixture",
+      "dims": [
+        6.4,
+        2.32,
+        0.75
+      ],
+      "budget": 3000,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 便当冷藏柜",
+      "notes": "下层平台放便当（高 0.75），上面 3 层斜板（1.05 / 1.35 / 1.65，深 0.55 / 0.46 / 0.38）。顶棚灯条（发光）+ 4 块分类灯箱（图集 cat1 / cat2 / cat9）。前挡 #e0e0e0，柜身 #f0f0ec，腰线青绿 + 橙。",
+      "interactions": []
+    },
+    {
+      "id": "magazine_rack",
+      "name": "杂志架",
+      "category": "fixture",
+      "dims": [
+        5.6,
+        1.08,
+        0.5
+      ],
+      "budget": 800,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 杂志架",
+      "notes": "靠正面窗户，朝店里。底座高 0.35 + 3 阶后仰层板，每阶有 6 cm 高的挡条；背板高 1.08。",
+      "interactions": []
+    },
+    {
+      "id": "checkout_counter",
+      "name": "收银台",
+      "category": "fixture",
+      "dims": [
+        0.8,
+        1,
+        5.46
+      ],
+      "budget": 600,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts buildCounter()",
+      "notes": "世界里正面朝西（−X）：做的时候正面朝 +Z，长边沿 X，即 5.46 × 1.0 × 0.8，游戏里旋转摆放。白色柜体 #eeeeea，正面三色腰线（藏青 / 青绿 / 橙），木台面 #c8a070。",
+      "interactions": []
+    },
+    {
+      "id": "cash_register",
+      "name": "收银机",
+      "category": "fixture",
+      "dims": [
+        0.74,
+        0.4,
+        0.42
+      ],
+      "budget": 1200,
+      "count": 2,
+      "status": "pending",
+      "source": "fixtures.ts 收银机",
+      "notes": "底座 + 键盘 + 店员屏（朝后，后仰）+ 客显（朝前，图集 regScr，发光）+ 扫码器（红色扫描光，发光）+ 蓝色零钱托盘。",
+      "interactions": [
+        {
+          "id": "checkout",
+          "label": "结账",
+          "type": "code",
+          "nodes": [
+            "customer_display"
+          ],
+          "note": "游戏里：有商品时一件一声\"哔\"，然后收银音效 + 「ありがとうございました」；空手时「いらっしゃいませ〜」"
+        }
+      ]
+    },
+    {
+      "id": "regi_sign",
+      "name": "\"レジ\"吊牌",
+      "category": "fixture",
+      "dims": [
+        0.9,
+        0.7,
+        0.03
+      ],
+      "budget": 100,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts レジ吊牌",
+      "notes": "0.9 × 0.34 两面印刷（图集 regi，微发光）+ 吊杆。",
+      "interactions": []
+    },
+    {
+      "id": "hot_snack_case",
+      "name": "热食柜",
+      "category": "fixture",
+      "dims": [
+        0.5,
+        0.45,
+        0.62
+      ],
+      "budget": 800,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 热食柜",
+      "notes": "暖光玻璃箱：上下黑板、底部暖色发光板、顶部灯、中间金属层板；正面下方红色\"あったか〜い HOT\"条（图集 hot）。炸鸡块是单独资产 goods_karaage。玻璃单独一个对象，材质要透明。",
+      "interactions": [
+        {
+          "id": "buy",
+          "label": "买一份炸鸡块",
+          "type": "code",
+          "note": "游戏里：¥238 加入购物袋，「からあげ、お一つですね」"
+        }
+      ]
+    },
+    {
+      "id": "oden_pot",
+      "name": "关东煮锅",
+      "category": "fixture",
+      "dims": [
+        0.5,
+        0.2,
+        0.46
+      ],
+      "budget": 600,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 关东煮",
+      "notes": "不锈钢锅 #c8ccd4，汤面（图集 oden，9 格食材）+ 两根隔条，正面红色条。锅盖是单独节点 lid，向左滑开 0.22 m。锅上冒热气（游戏粒子）。",
+      "interactions": [
+        {
+          "id": "lid",
+          "label": "掀开锅盖",
+          "type": "toggle",
+          "clip": "lid_open",
+          "nodes": [
+            "lid"
+          ],
+          "note": "游戏里：滑开后可以盛一碗（¥210，播 plop，「からしはお付けしますか？」）"
+        }
+      ]
+    },
+    {
+      "id": "coffee_machine",
+      "name": "自助咖啡机",
+      "category": "fixture",
+      "dims": [
+        0.9,
+        0.62,
+        0.4
+      ],
+      "budget": 1200,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 咖啡机",
+      "notes": "机身 #1e1e22，正面菜单面板（图集 coffee），出杯台、出水嘴、绿色指示灯（发光）；左侧杯子塔（6 个叠放的空杯），右侧糖包盒。出杯位放一个节点 cup（可以直接用 goods_coffee_cup）。",
+      "interactions": [
+        {
+          "id": "brew",
+          "label": "出一杯咖啡",
+          "type": "trigger",
+          "clip": "brew",
+          "nodes": [
+            "cup"
+          ],
+          "duration": 3.2,
+          "note": "游戏里：杯子出现，3.2 秒出杯（pour 音效 + 热气），完成后杯子进购物袋 ¥100"
+        }
+      ]
+    },
+    {
+      "id": "cigarette_shelf",
+      "name": "烟柜 + 店员工作台",
+      "category": "fixture",
+      "dims": [
+        2.6,
+        2.45,
+        0.5
+      ],
+      "budget": 800,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 烟柜",
+      "notes": "下面工作台 2.6 × 0.9 × 0.5（#e8e8e4），上面烟柜 1.3 高、0.25 深，正面发光（图集 cigs），右上角挂钟（图集 clock）；台上放购物袋、小票打印机。",
+      "interactions": []
+    },
+    {
+      "id": "atm",
+      "name": "ATM",
+      "category": "fixture",
+      "dims": [
+        0.62,
+        1.77,
+        0.62
+      ],
+      "budget": 1200,
+      "count": 1,
+      "status": "sample",
+      "source": "fixtures.ts ATM",
+      "notes": "机身 #e8e8e4，正面面板（图集 atm），斜键盘台，顶部红色发光条。屏幕做两个节点：screen_idle（atmScr0）和 screen_balance（atmScr1），同一位置。",
+      "interactions": [
+        {
+          "id": "screen",
+          "label": "查询余额",
+          "type": "state",
+          "nodes": [
+            "screen_idle",
+            "screen_balance"
+          ],
+          "duration": 4,
+          "note": "游戏里：两声\"哔\"，余额画面显示 4 秒后回到待机画面"
+        }
+      ],
+      "file": "samples/atm.glb"
+    },
+    {
+      "id": "copier",
+      "name": "复印机",
+      "category": "fixture",
+      "dims": [
+        0.9,
+        1,
+        0.62
+      ],
+      "budget": 1000,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 复印机",
+      "notes": "机身 #f0f0ec，正面操作面板（图集 copier），顶盖 #5a5a60，右侧出纸托。出纸节点 paper（A4 0.21 × 0.297），动画里从机器里滑出 0.25 m。",
+      "interactions": [
+        {
+          "id": "print",
+          "label": "打印一张",
+          "type": "trigger",
+          "clip": "print",
+          "nodes": [
+            "paper"
+          ],
+          "note": "游戏里：1.5 秒滑出，停 4.5 秒后消失"
+        }
+      ]
+    },
+    {
+      "id": "parcel_locker",
+      "name": "快递柜（13 格）",
+      "category": "fixture",
+      "dims": [
+        0.96,
+        1.95,
+        0.52
+      ],
+      "budget": 2500,
+      "count": 1,
+      "status": "sample",
+      "source": "fixtures.ts 快递柜",
+      "notes": "3 列 × 5 行，中间一列第 3、4 行是操作屏（蓝色发光），顶部灯箱（图集 lockers）。每扇小门有把手和红 / 绿状态灯，转轴在左边，开 110°。门节点 locker_01..13（从左下开始按行编号，跳过操作屏）。",
+      "interactions": [
+        {
+          "id": "door",
+          "label": "快递柜门",
+          "type": "toggle",
+          "clip": "open",
+          "perNode": true,
+          "duration": 6,
+          "nodes": [
+            "locker_01",
+            "locker_02",
+            "locker_03",
+            "locker_04",
+            "locker_05",
+            "locker_06",
+            "locker_07",
+            "locker_08",
+            "locker_09",
+            "locker_10",
+            "locker_11",
+            "locker_12",
+            "locker_13"
+          ],
+          "note": "游戏里：播 click，6 秒后自动关"
+        }
+      ],
+      "file": "samples/parcel_locker.glb"
+    },
+    {
+      "id": "ice_freezer",
+      "name": "卧式冰柜",
+      "category": "fixture",
+      "dims": [
+        1.3,
+        1.05,
+        0.9
+      ],
+      "budget": 1200,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 冰柜",
+      "notes": "白色柜体 #f0f2f4，蓝色腰带 #2a6ac8，里面一层冰淇淋（图集 ice），后面立着\"アイス\"牌（图集 cat6）。两块玻璃滑盖（lid_left / lid_right），左盖往右滑到右盖上面。",
+      "interactions": [
+        {
+          "id": "lid",
+          "label": "滑开盖子",
+          "type": "toggle",
+          "clip": "lid_open",
+          "nodes": [
+            "lid_left"
+          ],
+          "note": "游戏里：开着时可以拿一支冰淇淋（¥160），拿完自动关上"
+        }
+      ]
+    },
+    {
+      "id": "staff_door",
+      "name": "员工门",
+      "category": "fixture",
+      "dims": [
+        1,
+        2.4,
+        0.06
+      ],
+      "budget": 400,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 员工门",
+      "notes": "门板 0.96 × 1.96（#8a9098），把手，\"STAFF ONLY\"贴纸（图集 staff），背面告示；门上方绿色\"非常口 EXIT\"灯（图集 exit，发光）。往店里开 92°。门板节点 door。",
+      "interactions": [
+        {
+          "id": "door",
+          "label": "开关员工门",
+          "type": "toggle",
+          "clip": "open",
+          "nodes": [
+            "door"
+          ],
+          "note": "游戏里：播 swing，门开着时可以穿过去到后院"
+        }
+      ]
+    },
+    {
+      "id": "floor_queue_sticker",
+      "name": "排队地贴",
+      "category": "fixture",
+      "dims": [
+        1,
+        0.002,
+        0.5
+      ],
+      "budget": 20,
+      "count": 2,
+      "status": "pending",
+      "source": "fixtures.ts 地面导视",
+      "notes": "\"こちらにお並びください\"脚印地贴（图集 queue）。一张 1.0 × 0.5，一张 0.6 × 0.3（缩放）。",
+      "interactions": []
+    },
+    {
+      "id": "stock_boxes",
+      "name": "员工区纸箱",
+      "category": "fixture",
+      "dims": [
+        0.5,
+        0.7,
+        0.42
+      ],
+      "budget": 200,
+      "count": 1,
+      "status": "pending",
+      "source": "fixtures.ts 员工区",
+      "notes": "两个叠放的纸箱 #c8a070 / #b8905a。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_shell",
+      "name": "便利店外壳（墙 / 吊顶 / 屋顶板）",
+      "dims": [
+        15.1,
+        3.4,
+        10.1
+      ],
+      "budget": 6000,
+      "count": 1,
+      "source": "store.ts:61",
+      "notes": "原点在店内地坪（世界 y 0.3）。内墙 #f0ece4，外墙 #dcd8d0，0.5 m 深色踢脚 #5a5e66；外墙三色腰线 y2.9 藏青 #1d3d8f / 2.82 青绿 #24b0a0 / 2.74 橙 #f28a24。后墙 x5.2..6.2 开员工门洞（高 2.3）。吊顶 #f4f2ee，1.2 m 分格线。门窗、灯条、招牌、女儿墙另列。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_roof_parapet",
+      "name": "屋顶女儿墙（L 形）",
+      "dims": [
+        15.1,
+        0.5,
+        10.06
+      ],
+      "budget": 300,
+      "count": 1,
+      "source": "store.ts:196",
+      "notes": "只有北、西两段，厚 0.15，#dcd8d0。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_window_bay",
+      "name": "店面玻璃窗单元",
+      "dims": [
+        1.6,
+        2.9,
+        0.14
+      ],
+      "budget": 300,
+      "count": 7,
+      "source": "store.ts:97",
+      "notes": "竖框 0.07（#3c4048）+ 玻璃（y0.25..2.25，带雨滴的透明材质）+ 下踢板 0.25 高（#2a2e36）+ 横框 + 气窗玻璃。宽 1.6 的 5 格，门右侧 1.2 的 2 格（做成可以 X 向缩放或两个款式）。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "w160",
+          "name": "1.6 m",
+          "status": "pending"
+        },
+        {
+          "id": "w120",
+          "name": "1.2 m",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_door_header",
+      "name": "自动门门楣 + 感应器",
+      "dims": [
+        2.2,
+        0.88,
+        0.24
+      ],
+      "budget": 300,
+      "count": 1,
+      "source": "store.ts:123",
+      "notes": "门楣 #3c4048，感应器 #222222，红色指示灯（发光）。节点 door_sensor。",
+      "interactions": [
+        {
+          "id": "sensor",
+          "label": "自动门感应器",
+          "type": "code",
+          "nodes": [
+            "door_sensor"
+          ],
+          "note": "游戏里：「叮咚～ いらっしゃいませ」"
+        }
+      ]
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "auto_door",
+      "name": "自动推拉门（两扇）",
+      "dims": [
+        2,
+        2.1,
+        0.1
+      ],
+      "budget": 600,
+      "count": 1,
+      "source": "store.ts:253",
+      "notes": "两扇 1.0 × 2.1 铝框玻璃门（door_left / door_right），前后错开 5 cm；\"自動ドア\"贴纸（图集 door）两面贴。打开时左扇往 −X、右扇往 +X 各滑 0.96 m。",
+      "interactions": [
+        {
+          "id": "open",
+          "label": "开门 / 关门",
+          "type": "toggle",
+          "clip": "door_open",
+          "nodes": [
+            "door_left",
+            "door_right"
+          ],
+          "note": "游戏里：人走近自动开（约 0.6 秒），离开后关（约 1.2 秒），播 doorSlide；从外面进店时\"叮——咚\"。每 25–55 秒会自己开一下"
+        }
+      ]
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "window_poster",
+      "name": "橱窗海报",
+      "dims": [
+        0.5,
+        0.75,
+        0.01
+      ],
+      "budget": 20,
+      "count": 5,
+      "source": "store.ts:133",
+      "notes": "贴在玻璃内侧，两面贴图。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "oden",
+          "name": "おでん 70円",
+          "status": "pending"
+        },
+        {
+          "id": "nikuman",
+          "name": "肉まん 新発売",
+          "status": "pending"
+        },
+        {
+          "id": "coffee",
+          "name": "HOT COFFEE S 100円",
+          "status": "pending"
+        },
+        {
+          "id": "karaage",
+          "name": "からあげ 5個入",
+          "status": "pending"
+        },
+        {
+          "id": "sale",
+          "name": "2個で10%OFF",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "open24_sticker",
+      "name": "OPEN 24 HOURS 贴纸",
+      "dims": [
+        0.36,
+        0.18,
+        0.01
+      ],
+      "budget": 20,
+      "count": 1,
+      "source": "store.ts:143",
+      "notes": "图集 h24，两面贴，微发光。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "ceiling_light_bar",
+      "name": "吸顶日光灯条",
+      "dims": [
+        1.3,
+        0.07,
+        0.34
+      ],
+      "budget": 100,
+      "count": 20,
+      "source": "store.ts:150",
+      "notes": "灯壳 #d0d0d0 + 下面的发光面 #fff8ec（glow 1.5）。原点在顶面（吸顶安装）。",
+      "origin": "custom",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "security_camera",
+      "name": "球形监控摄像头",
+      "dims": [
+        0.16,
+        0.12,
+        0.16
+      ],
+      "budget": 300,
+      "count": 2,
+      "source": "store.ts:157",
+      "notes": "吸顶倒装：白色底座 + 深色半球。原点在顶面。",
+      "origin": "custom",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "ceiling_vent",
+      "name": "吸顶空调出风口",
+      "dims": [
+        0.7,
+        0.08,
+        0.7
+      ],
+      "budget": 200,
+      "count": 2,
+      "source": "store.ts:164",
+      "notes": "面板 #e0e0e0 + 4 层逐级缩小的方环 #b8b8b8。原点在顶面。",
+      "origin": "custom",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_sign_front",
+      "name": "正面发光招牌",
+      "dims": [
+        15.34,
+        1.15,
+        0.36
+      ],
+      "budget": 600,
+      "count": 1,
+      "source": "store.ts:175",
+      "maxTexture": 2048,
+      "notes": "灯箱 #f4f4f0 + 发光面（图集 sign：YORU MART / ヨルマート + 月亮标志 + 三色条）+ 金属顶盖。发光面单独节点 sign_face。",
+      "interactions": [
+        {
+          "id": "breathe",
+          "label": "招牌亮度",
+          "type": "code",
+          "nodes": [
+            "sign_face"
+          ],
+          "note": "游戏里：亮度 0.97 + 0.03·sin(1.3t) 缓慢起伏"
+        }
+      ]
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_sign_side",
+      "name": "侧面发光招牌",
+      "dims": [
+        8,
+        1.1,
+        0.34
+      ],
+      "budget": 400,
+      "count": 1,
+      "source": "store.ts:179",
+      "notes": "东墙。同正面招牌，发光面节点 sign_face。",
+      "interactions": [
+        {
+          "id": "flicker",
+          "label": "接触不良闪烁",
+          "type": "code",
+          "nodes": [
+            "sign_face"
+          ],
+          "note": "游戏里：大部分时间稳定，偶尔暗到 0.35 闪几下（0.04–0.12 秒）"
+        }
+      ]
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "store_awning",
+      "name": "雨棚（含筒灯）",
+      "dims": [
+        15.24,
+        0.23,
+        1.24
+      ],
+      "budget": 600,
+      "count": 1,
+      "source": "store.ts:181",
+      "notes": "棚板 #e8e8e4，前沿藏青封板 + 铝条，底下 9 盏筒灯（发光 #fff4d8），间距 1.6 m。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "awning_drain_pipe",
+      "name": "雨棚落水管",
+      "dims": [
+        0.2,
+        2.68,
+        0.18
+      ],
+      "budget": 150,
+      "count": 1,
+      "source": "store.ts:190",
+      "notes": "#9aa0a8，底部出水口。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "rooftop_ac",
+      "name": "屋顶空调主机",
+      "dims": [
+        1.1,
+        0.94,
+        0.6
+      ],
+      "budget": 400,
+      "count": 3,
+      "source": "store.ts:198",
+      "notes": "#d8d8d4 机身，顶面风扇 + 十字护栏。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "rooftop_misc",
+      "name": "屋顶通风管 / 检修口 / 排气筒",
+      "dims": [
+        1,
+        0.78,
+        5
+      ],
+      "budget": 400,
+      "count": 1,
+      "source": "store.ts:209",
+      "notes": "三件分开做也行：方管 0.2 × 0.2 × 5（#9a9a9a）、检修口 1 × 0.15 × 1（#6a6e74）、排气筒 r0.18 高 0.7 + 顶帽。",
+      "interactions": []
+    },
+    {
+      "category": "building",
+      "status": "pending",
+      "id": "back_door_light",
+      "name": "后门壁灯",
+      "dims": [
+        0.3,
+        0.12,
+        0.2
+      ],
+      "budget": 100,
+      "count": 1,
+      "source": "buildings.ts:232",
+      "notes": "#f0f4ff 发光。",
+      "interactions": []
+    },
+    {
+      "id": "vending_machine",
+      "name": "自动贩卖机",
+      "category": "outdoor",
+      "dims": [
+        0.98,
+        1.89,
+        0.78
+      ],
+      "budget": 1500,
+      "count": 3,
+      "status": "pending",
+      "source": "props.ts 贩卖机 ×2 + buildings.ts 对街 ×1",
+      "notes": "机身 + 正面发光面板（图集 vend0 / vend1：一排排饮料样品、价格按钮、投币口）+ 顶盖 + 底部出货口。出货口里放一个罐子节点 can（默认隐藏，动画里显示）。对街那台比店门口的浅 5 cm，用同一个模型。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "red_hot",
+          "name": "红色（热饮）",
+          "color": "#d8202a",
+          "status": "sample",
+          "file": "samples/vending_machine__red_hot.glb"
+        },
+        {
+          "id": "blue_cold",
+          "name": "蓝色（冷饮）",
+          "color": "#1e64c8",
+          "status": "pending"
+        }
+      ],
+      "interactions": [
+        {
+          "id": "buy",
+          "label": "买一罐",
+          "type": "trigger",
+          "clip": "dispense",
+          "nodes": [
+            "can"
+          ],
+          "note": "游戏里：哔 → 0.5 秒后\"咣当\" → 罐子在出货口出现 1.6 秒；红色出 COFFEE、蓝色出 サイダー，¥130 直接算已付款"
+        }
+      ]
+    },
+    {
+      "id": "recycle_box",
+      "name": "空罐回收箱",
+      "category": "outdoor",
+      "dims": [
+        0.45,
+        0.8,
+        0.4
+      ],
+      "budget": 200,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts 回收箱",
+      "notes": "绿色 #2a8a4a，正面黑色投入口。",
+      "interactions": []
+    },
+    {
+      "id": "gacha_machine",
+      "name": "扭蛋机",
+      "category": "outdoor",
+      "dims": [
+        0.5,
+        1.29,
+        0.44
+      ],
+      "budget": 2000,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts 扭蛋机",
+      "notes": "红色机身 #d8202a，投币口、旋钮（节点 knob，金属色），上半部玻璃罩里 22 颗彩色扭蛋（#ff5a8a / #5ab0ff / #ffd040 / #7ad070 / 白），红色顶盖。",
+      "interactions": [
+        {
+          "id": "spin",
+          "label": "转一次",
+          "type": "trigger",
+          "clip": "spin",
+          "nodes": [
+            "knob"
+          ],
+          "note": "游戏里：咔哒 → 0.6 秒后\"咣当\"，随机抽到 6 种小奖品之一（只显示文字）"
+        }
+      ]
+    },
+    {
+      "id": "umbrella_stand",
+      "name": "伞架（含 5 把伞）",
+      "category": "outdoor",
+      "dims": [
+        0.5,
+        1.03,
+        0.3
+      ],
+      "budget": 1200,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts 伞架",
+      "notes": "金属架子 #8a8e96，上下两层框。5 把收拢的长柄伞（白 / 藏青 / 白 / 红 / 白），黑色弯钩伞柄。被借走的那把是节点 umbrella_03。",
+      "interactions": [
+        {
+          "id": "borrow",
+          "label": "借一把伞 / 放回去",
+          "type": "visibility",
+          "nodes": [
+            "umbrella_03"
+          ],
+          "note": "游戏里：切换玩家是否撑伞（手里出现透明伞，头顶有雨点溅开）"
+        }
+      ]
+    },
+    {
+      "id": "umbrella_open",
+      "name": "透明雨伞（撑开）",
+      "category": "outdoor",
+      "dims": [
+        1.1,
+        0.95,
+        1.1
+      ],
+      "budget": 1200,
+      "count": 1,
+      "status": "pending",
+      "source": "player.ts 雨伞",
+      "notes": "玩家手里的伞。伞杆 0.85 m + 弯钩，8 根伞骨，半透明伞面 #e8f2ff（材质透明，opacity 约 0.35）。原点在握把（伞杆底部）。",
+      "origin": "custom",
+      "interactions": []
+    },
+    {
+      "id": "door_mat",
+      "name": "门口地垫",
+      "category": "outdoor",
+      "dims": [
+        1.8,
+        0.01,
+        0.9
+      ],
+      "budget": 50,
+      "count": 2,
+      "status": "pending",
+      "source": "props.ts 地垫",
+      "notes": "深蓝\"WELCOME\"地垫（图集 mat）。店里那块 1.6 宽。",
+      "interactions": []
+    },
+    {
+      "id": "trash_station",
+      "name": "分类垃圾桶",
+      "category": "outdoor",
+      "dims": [
+        1.42,
+        1,
+        0.52
+      ],
+      "budget": 600,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts 垃圾桶",
+      "notes": "白色柜体，正面三色标签（図集 trash：燃えるゴミ / 缶・びん / ペットボトル）+ 三个投入口，金属顶板。",
+      "interactions": [
+        {
+          "id": "throw",
+          "label": "扔垃圾",
+          "type": "code",
+          "note": "游戏里：播 clunk，「分好类扔掉了」"
+        }
+      ]
+    },
+    {
+      "id": "guard_post",
+      "name": "店前护栏立柱",
+      "category": "outdoor",
+      "dims": [
+        0.08,
+        0.85,
+        0.08
+      ],
+      "budget": 100,
+      "count": 3,
+      "status": "pending",
+      "source": "props.ts 护栏",
+      "notes": "白色细立柱 #e8e8e4，停车场边缘；西端两根之间一根横管。",
+      "interactions": []
+    },
+    {
+      "id": "wheel_stop",
+      "name": "车挡",
+      "category": "outdoor",
+      "dims": [
+        1.6,
+        0.12,
+        0.16
+      ],
+      "budget": 100,
+      "count": 3,
+      "status": "pending",
+      "source": "props.ts 车挡",
+      "notes": "黄色 #f0c030，两端各有一段黑色 #2a2a2a。",
+      "interactions": []
+    },
+    {
+      "id": "ac_outdoor_unit",
+      "name": "空调外机（店铺东墙）",
+      "category": "outdoor",
+      "dims": [
+        0.85,
+        0.69,
+        0.3
+      ],
+      "budget": 400,
+      "count": 3,
+      "status": "pending",
+      "source": "props.ts 空调外机",
+      "notes": "机身 #e4e4e0，正面风扇格栅（图集 ac），底座 #8a8e96，侧面冷媒管。会冒一点白气（游戏粒子）。",
+      "interactions": []
+    },
+    {
+      "id": "post_box",
+      "name": "红色邮筒",
+      "category": "outdoor",
+      "dims": [
+        0.52,
+        1.22,
+        0.52
+      ],
+      "budget": 600,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts 邮筒",
+      "notes": "日本圆筒邮筒 #d8202a，半球顶，投信口，白色收件时间牌，黑色底座。",
+      "interactions": [
+        {
+          "id": "post",
+          "label": "投一封信",
+          "type": "code",
+          "note": "游戏里：播 plop，「信寄出去了。收集时间：平日 9:30 / 15:00」"
+        }
+      ]
+    },
+    {
+      "id": "bicycle",
+      "name": "自行车（ママチャリ）",
+      "category": "outdoor",
+      "dims": [
+        0.5,
+        1,
+        1.82
+      ],
+      "budget": 3000,
+      "count": 4,
+      "status": "pending",
+      "source": "props.ts buildBikes()",
+      "notes": "侧面朝 ±X，车头朝 +Z。低横梁女式车架、两轮（轮胎 + 辐条圈）、坐垫、车把、前车筐、后货架、挡泥板、车铃（节点 bell，黄色）。另有一根停车架横杆可以不做。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "sky",
+          "name": "浅蓝",
+          "color": "#5ab0d8",
+          "status": "pending"
+        },
+        {
+          "id": "white",
+          "name": "白",
+          "color": "#e8e8e4",
+          "status": "pending"
+        },
+        {
+          "id": "pink",
+          "name": "粉红",
+          "color": "#d84a6a",
+          "status": "pending"
+        },
+        {
+          "id": "black",
+          "name": "黑",
+          "color": "#3a3a40",
+          "status": "pending"
+        }
+      ],
+      "interactions": [
+        {
+          "id": "bell",
+          "label": "按车铃",
+          "type": "code",
+          "nodes": [
+            "bell"
+          ],
+          "note": "游戏里：叮叮两声"
+        }
+      ]
+    },
+    {
+      "id": "delivery_van",
+      "name": "送货面包车",
+      "category": "vehicle",
+      "dims": [
+        1.84,
+        1.9,
+        4.6
+      ],
+      "budget": 8000,
+      "count": 1,
+      "status": "pending",
+      "source": "props.ts buildVan()",
+      "notes": "白色厢式车 #f2f2ee，车头 +Z。深色挡风玻璃和侧窗，灰色腰线，前后保险杠，车牌（图集 plate），车侧店名贴纸（图集 sign 下半），后门藏青色贴面，4 个轮子，后视镜。车灯单独节点：headlights（暖白发光）、taillights（红色发光），默认隐藏。",
+      "interactions": [
+        {
+          "id": "lights",
+          "label": "开关车灯 / 按喇叭",
+          "type": "visibility",
+          "nodes": [
+            "headlights",
+            "taillights"
+          ],
+          "note": "游戏里：每次都按一下喇叭"
+        }
+      ]
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "street_lamp",
+      "name": "路灯",
+      "dims": [
+        0.3,
+        5.6,
+        1.78
+      ],
+      "budget": 800,
+      "count": 3,
+      "origin": "custom",
+      "source": "street.ts:41",
+      "notes": "原点在灯杆底部，灯臂伸向 +Z。杆 #8a9098（r0.07→0.09，高 5.2），底套，弯臂，灯头 #6a6e76；灯罩单独节点 lamp_glow（#fff2d0 发光）。",
+      "interactions": [
+        {
+          "id": "switch",
+          "label": "路灯开关",
+          "type": "visibility",
+          "nodes": [
+            "lamp_glow"
+          ],
+          "note": "游戏里：同时关掉对应的聚光灯；第 2 盏会接触不良闪烁"
+        }
+      ]
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "utility_pole",
+      "name": "电线杆",
+      "dims": [
+        1.6,
+        8.2,
+        0.36
+      ],
+      "budget": 2000,
+      "count": 6,
+      "source": "street.ts:99",
+      "notes": "水泥杆 #9a9a98，下半截黄黑防撞套 5 节，两根横担（1.6 / 1.2 m）+ 绝缘子，蓝色街区编号牌，8 根脚钉。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "pole_transformer",
+      "name": "杆上变压器",
+      "dims": [
+        0.64,
+        0.96,
+        0.64
+      ],
+      "budget": 400,
+      "count": 1,
+      "source": "street.ts:116",
+      "notes": "#8a9098 圆桶 + 顶帽；补一个抱箍连到杆上。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "power_wire",
+      "name": "电线（一档）",
+      "dims": [
+        16,
+        0.78,
+        0.03
+      ],
+      "budget": 300,
+      "count": 20,
+      "source": "street.ts:133",
+      "notes": "下垂的悬链，#1a1a1e。档距 5–16 m 不等，游戏里按档距缩放，或者直接在场景里用曲线生成。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "traffic_signal_pole",
+      "name": "车用信号灯杆（L 形双臂）",
+      "dims": [
+        4.12,
+        5.8,
+        4.32
+      ],
+      "budget": 600,
+      "count": 1,
+      "origin": "custom",
+      "source": "street.ts:166",
+      "notes": "原点在杆底。杆 + 两根 5.4 m 高的方臂（一根往 +Z 4.2 m，一根往 +X 4.0 m）。灯头另列。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "traffic_signal_head",
+      "name": "车用信号灯头（横式三灯）",
+      "dims": [
+        1.2,
+        0.44,
+        0.39
+      ],
+      "budget": 600,
+      "count": 2,
+      "source": "street.ts:175",
+      "notes": "灯箱 #5a6068 + 三个遮光帽；三个灯片分开做节点 lamp_green / lamp_yellow / lamp_red（左→右），亮的时候换成自发光色。",
+      "interactions": [
+        {
+          "id": "cycle",
+          "label": "红绿灯切换",
+          "type": "state",
+          "nodes": [
+            "lamp_green",
+            "lamp_yellow",
+            "lamp_red"
+          ],
+          "note": "游戏里：36 秒一个循环（绿 14 → 黄 3 → 红…），灯片换颜色，不是换模型。这里每点一下切到下一个灯"
+        }
+      ]
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "ped_signal",
+      "name": "行人信号灯（含按钮盒）",
+      "dims": [
+        0.34,
+        3,
+        0.31
+      ],
+      "budget": 600,
+      "count": 2,
+      "source": "street.ts:202",
+      "notes": "杆 + 灯箱（上红 ped_red、下绿 ped_green 两个灯片节点）+ 黄色按钮盒（红色按钮节点 push_button）。",
+      "interactions": [
+        {
+          "id": "button",
+          "label": "按过街按钮",
+          "type": "code",
+          "nodes": [
+            "push_button"
+          ],
+          "note": "游戏里：哔一声，「おまちください」，绿灯提前到 3 秒内"
+        },
+        {
+          "id": "lights",
+          "label": "红灯 / 绿灯",
+          "type": "state",
+          "nodes": [
+            "ped_red",
+            "ped_green"
+          ],
+          "note": "游戏里：车道 B 绿灯时行人绿灯，最后 4 秒闪烁"
+        }
+      ]
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "road_sign",
+      "name": "路牌",
+      "dims": [
+        0.6,
+        3,
+        0.1
+      ],
+      "budget": 300,
+      "count": 4,
+      "source": "street.ts:288",
+      "notes": "立柱 #9aa0a8 + 牌面（只贴正面）+ 背板。牌底高度：横断步道 / 限速 2.4，P 2.0，地名 2.7。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "crossing",
+          "name": "横断步道",
+          "status": "pending"
+        },
+        {
+          "id": "parking",
+          "name": "P 停车场",
+          "status": "pending"
+        },
+        {
+          "id": "placename",
+          "name": "地名牌（1.4 × 0.58）",
+          "status": "pending"
+        },
+        {
+          "id": "speed",
+          "name": "限速",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "pipe_rail",
+      "name": "白色管栏（一跨）",
+      "dims": [
+        1.8,
+        0.85,
+        0.07
+      ],
+      "budget": 200,
+      "count": 38,
+      "source": "street.ts:303",
+      "notes": "立柱 r0.035 + 两根横管（0.45 / 0.82 m），#e8e8e4。跨长 1.6–2.2 m，游戏里沿 X 缩放。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "bollard",
+      "name": "黄色防撞柱",
+      "dims": [
+        0.17,
+        0.8,
+        0.17
+      ],
+      "budget": 150,
+      "count": 4,
+      "source": "street.ts:321",
+      "notes": "#f0c030，0.55 m 处一圈黑环。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "notice_board",
+      "name": "町内会公告栏",
+      "dims": [
+        1.7,
+        1.92,
+        0.3
+      ],
+      "budget": 400,
+      "count": 1,
+      "source": "street.ts:332",
+      "notes": "两根木腿 #5a4030，绿色板 #3a6a4a，小雨檐，4 张告示（图集 notice0..3：夏まつり / 防犯 / 迷いねこ / ゴミ出し）。",
+      "interactions": [
+        {
+          "id": "read",
+          "label": "看公告",
+          "type": "code",
+          "note": "游戏里：显示四张告示的内容"
+        }
+      ]
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "beer_crate",
+      "name": "啤酒箱（含 4 个空瓶）",
+      "dims": [
+        0.45,
+        0.31,
+        0.35
+      ],
+      "budget": 300,
+      "count": 5,
+      "source": "street.ts:355",
+      "notes": "塑料格箱 + 4 个棕色空瓶 #6a3a1a。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "red",
+          "name": "红",
+          "color": "#d8402a",
+          "status": "pending"
+        },
+        {
+          "id": "yellow",
+          "name": "黄",
+          "color": "#d8a020",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "potted_plant",
+      "name": "盆栽",
+      "dims": [
+        0.48,
+        0.71,
+        0.48
+      ],
+      "budget": 600,
+      "count": 3,
+      "source": "street.ts:364",
+      "notes": "陶盆 #b8603a + 叶团。场景里按 0.8 / 1.0 / 1.2 缩放。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "ac_wall_unit",
+      "name": "小巷空调室外机",
+      "dims": [
+        0.8,
+        0.6,
+        0.35
+      ],
+      "budget": 300,
+      "count": 2,
+      "source": "street.ts:375",
+      "notes": "#e4e4e0，正面风扇。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "gas_meter",
+      "name": "煤气表 + 竖管",
+      "dims": [
+        0.51,
+        3.2,
+        0.2
+      ],
+      "budget": 200,
+      "count": 1,
+      "source": "street.ts:381",
+      "notes": "表 0.2 × 0.3 × 0.15，离地 1.2；竖管 r0.03 高 3.2，补一段连接管。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "alley_lantern",
+      "name": "小巷红灯笼",
+      "dims": [
+        0.38,
+        0.6,
+        0.38
+      ],
+      "budget": 300,
+      "count": 1,
+      "source": "street.ts:384",
+      "notes": "红色灯身（发光 #d8302a）+ 上下黑圈；补一个吊钩。",
+      "interactions": []
+    },
+    {
+      "category": "street",
+      "status": "pending",
+      "id": "white_cat",
+      "name": "小白猫 + 纸箱",
+      "dims": [
+        0.52,
+        0.73,
+        0.42
+      ],
+      "budget": 3000,
+      "count": 1,
+      "source": "street.ts:391",
+      "notes": "纸箱 #b8905a + 蹲坐的白猫 #f4f4f0（绿眼睛 #3ab05a，尾巴）。猫是节点 cat，可以做骨骼。",
+      "interactions": [
+        {
+          "id": "meow",
+          "label": "摸摸小白猫",
+          "type": "trigger",
+          "clip": "meow",
+          "nodes": [
+            "cat"
+          ],
+          "note": "游戏里：「にゃあ」…是公告栏上走丢的小白（しろ）"
+        },
+        {
+          "id": "idle",
+          "label": "待机呼吸",
+          "type": "loop",
+          "clip": "idle",
+          "nodes": [
+            "cat"
+          ],
+          "note": "游戏里：一直轻轻摇摆"
+        }
+      ]
+    },
+    {
+      "category": "vehicle",
+      "status": "pending",
+      "id": "car_sedan",
+      "name": "轿车",
+      "dims": [
+        1.74,
+        1.42,
+        4.02
+      ],
+      "budget": 6000,
+      "count": 2,
+      "source": "traffic.ts:24",
+      "notes": "车头 +Z。车身、车厢、车窗（#223040）、前挡风、前后保险杠、4 个轮子（节点 wheel_fl / wheel_fr / wheel_rl / wheel_rr，可以转）、前灯（发光 #fff8e0）、尾灯（发光 #ff2a20）。注意：现在的程序模型车轮偏到一边、前挡风倾斜方向反了，按正常车做。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "white",
+          "name": "白",
+          "color": "#e8e8e4",
+          "status": "pending"
+        },
+        {
+          "id": "red",
+          "name": "暗红",
+          "color": "#8a2a2a",
+          "status": "pending"
+        }
+      ],
+      "interactions": [
+        {
+          "id": "honk",
+          "label": "按喇叭",
+          "type": "code",
+          "note": "游戏里：车可见时按 E，喇叭响"
+        }
+      ]
+    },
+    {
+      "category": "vehicle",
+      "status": "pending",
+      "id": "car_taxi",
+      "name": "出租车",
+      "dims": [
+        1.74,
+        1.6,
+        4.02
+      ],
+      "budget": 6000,
+      "count": 1,
+      "source": "traffic.ts:48",
+      "notes": "同轿车车身，藏青 #2a3a5a + 金色腰线 #d8a020 + 车顶行灯（发光 #fff0a0）。",
+      "interactions": [
+        {
+          "id": "honk",
+          "label": "按喇叭",
+          "type": "code",
+          "note": "游戏里：喇叭响"
+        }
+      ]
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "window_unit",
+      "name": "楼房窗户",
+      "dims": [
+        1.2,
+        1.4,
+        0.12
+      ],
+      "budget": 100,
+      "count": 72,
+      "source": "buildings.ts:107",
+      "notes": "窗台 #c8c8c4 + 窗框 #6a6e76 + 窗面（图集 win0..5，亮的发光）。亮窗面单独节点 window_lit。场景里尺寸从 0.9 × 1.45 到 1.35 × 1.2 不等（缩放）。",
+      "interactions": [
+        {
+          "id": "light",
+          "label": "开灯 / 关灯",
+          "type": "visibility",
+          "nodes": [
+            "window_lit"
+          ],
+          "note": "游戏里：每 6–16 秒随机一扇窗开关灯"
+        }
+      ]
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "apartment",
+      "name": "3 层公寓「メゾン夜川」",
+      "dims": [
+        9,
+        11.5,
+        23.1
+      ],
+      "budget": 12000,
+      "count": 1,
+      "source": "buildings.ts:142",
+      "notes": "正面（外走廊）在世界里朝 +X，做的时候朝 +Z。主体 #d8c8b0，层高 2.9；外走廊 + 栏板 + 扶手，每层 5 扇门（5 种颜色）+ 门灯 + 小窗，洗衣机，室外钢楼梯 10 级；南面入口雨棚、信箱（图集 mailbox）、楼名牌（图集 aptName）；屋顶水箱。窗户用 window_unit。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "old_house",
+      "name": "两层老房子（瓦顶）",
+      "dims": [
+        17.2,
+        6.8,
+        5.6
+      ],
+      "budget": 8000,
+      "count": 1,
+      "source": "buildings.ts:198",
+      "notes": "主体 #b8a890，人字瓦顶 #3a4458（坡度约 25°）+ 瓦线 + 屋脊；后门 + 门檐、换气扇。现在的程序模型屋顶做反了（V 形），按正常人字顶做。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "cage_cart",
+      "name": "后院垃圾笼车",
+      "dims": [
+        2,
+        1.2,
+        1
+      ],
+      "budget": 1500,
+      "count": 1,
+      "source": "buildings.ts:224",
+      "notes": "镂空金属笼车 #8a9098，里面绿色垃圾袋。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "cardboard_stack",
+      "name": "折叠纸箱垛",
+      "dims": [
+        1.02,
+        0.16,
+        0.8
+      ],
+      "budget": 100,
+      "count": 1,
+      "source": "buildings.ts:227",
+      "notes": "4 张折好的纸箱 #c8a070。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "milk_crate",
+      "name": "牛奶周转箱",
+      "dims": [
+        0.5,
+        0.3,
+        0.36
+      ],
+      "budget": 400,
+      "count": 3,
+      "source": "buildings.ts:228",
+      "notes": "镂空塑料箱。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "blue",
+          "name": "蓝",
+          "color": "#2a6ac8",
+          "status": "pending"
+        },
+        {
+          "id": "red",
+          "name": "红",
+          "color": "#d8402a",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "shop_shutter",
+      "name": "卷帘门小店",
+      "dims": [
+        5.9,
+        5.6,
+        5.7
+      ],
+      "budget": 4000,
+      "count": 2,
+      "source": "buildings.ts:247",
+      "notes": "门面：雨檐 #5a5e66、招牌（图集 shopSigns）、拉下的卷帘门（图集 shutter）+ 卷帘盒、二楼两扇窗、楼顶天线。",
+      "variantLabel": "款式",
+      "variants": [
+        {
+          "id": "tabako",
+          "name": "たばこ",
+          "status": "pending"
+        },
+        {
+          "id": "fudosan",
+          "name": "ことぶき不動産",
+          "status": "pending"
+        }
+      ],
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "shop_barber",
+      "name": "理发店「山田理容」",
+      "dims": [
+        4.9,
+        3.6,
+        5.7
+      ],
+      "budget": 3000,
+      "count": 1,
+      "source": "buildings.ts:247",
+      "notes": "#c8b8a0，雨檐、招牌、卷帘（打烊）。旋转灯柱另列。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "barber_pole",
+      "name": "理发店转灯",
+      "dims": [
+        0.28,
+        1.09,
+        0.28
+      ],
+      "budget": 400,
+      "count": 1,
+      "source": "buildings.ts:263",
+      "notes": "红白蓝斜条灯柱（发光）+ 顶球；补一个墙上支架。条纹节点 stripes。",
+      "interactions": [
+        {
+          "id": "spin",
+          "label": "旋转",
+          "type": "loop",
+          "clip": "spin",
+          "nodes": [
+            "stripes"
+          ],
+          "note": "新增：游戏里现在不转，有动画后可以接上"
+        }
+      ]
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "shop_izakaya",
+      "name": "居酒屋「炉端 ほたる」",
+      "dims": [
+        5.9,
+        3.8,
+        5.7
+      ],
+      "budget": 5000,
+      "count": 1,
+      "source": "buildings.ts:267",
+      "notes": "#8a7a6a。木格子拉门（4 块暖光纸窗，发光 #ffe0a8）、暖帘（图集 noren）、招牌（图集 izaSign）、门口啤酒箱和菜单立牌（图集 menu）。灯笼另列。",
+      "interactions": [
+        {
+          "id": "enter",
+          "label": "进门看看",
+          "type": "code",
+          "note": "游戏里：叮咚，「いらっしゃい！」…今天满座了"
+        }
+      ]
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "izakaya_lantern",
+      "name": "居酒屋红灯笼（やきとり）",
+      "dims": [
+        0.42,
+        0.61,
+        0.42
+      ],
+      "budget": 400,
+      "count": 2,
+      "source": "buildings.ts:276",
+      "notes": "图集 lantern，发光；上下黑圈。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "shop_cleaning",
+      "name": "洗衣店「クリーニング」",
+      "dims": [
+        4.9,
+        5.6,
+        5.7
+      ],
+      "budget": 3000,
+      "count": 1,
+      "source": "buildings.ts:247",
+      "notes": "#b8b0a0，干洗店，卷帘拉下；二楼两扇窗、天线。",
+      "interactions": []
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "office_building",
+      "name": "写字楼（含航空障碍灯）",
+      "dims": [
+        25,
+        13.2,
+        2
+      ],
+      "budget": 6000,
+      "count": 1,
+      "source": "buildings.ts:306",
+      "notes": "正面在世界里朝 −X，只有 1.9 m 深的立面。两段（13 m / 10 m 高），窗户用 window_unit；一楼亮着的玻璃门厅；顶上红色障碍灯（节点 aviation_light）。",
+      "interactions": [
+        {
+          "id": "blink",
+          "label": "障碍灯闪烁",
+          "type": "visibility",
+          "nodes": [
+            "aviation_light"
+          ],
+          "note": "新增：游戏里现在常亮"
+        }
+      ]
+    },
+    {
+      "category": "neighbor",
+      "status": "pending",
+      "id": "office_annex",
+      "name": "东南角楼",
+      "dims": [
+        4.8,
+        9,
+        2
+      ],
+      "budget": 3000,
+      "count": 1,
+      "source": "buildings.ts:313",
+      "notes": "#9a9a98，6 扇窗。",
+      "interactions": []
+    },
+    {
+      "category": "outdoor",
+      "status": "pending",
+      "id": "plinth",
+      "name": "模型底座（地层剖面 + 木框 + 铭牌）",
+      "dims": [
+        41.2,
+        1.9,
+        41.2
+      ],
+      "budget": 600,
+      "count": 1,
+      "source": "ground.ts:253",
+      "notes": "收藏模型风格的底座：沥青 / 碎石 / 土三层剖面 + 深色木框；前面铜铭牌（图集 nameplate：夜川町 二丁目 · 雨夜 1/50）。路面、标线不建模（游戏里是贴图）。",
+      "interactions": []
+    }
+  ]
+}

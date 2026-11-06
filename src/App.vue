@@ -1,8 +1,12 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
 import { startApp, type App } from './app/boot';
-import { AuthError, CloudStore, clearAuth, loadAuth, pull, signIn, type CloudAuth } from './app/cloud';
+import { AuthError, CloudStore, OfflineStore, clearAuth, loadAuth, pull, signIn, type CloudAuth } from './app/cloud';
 import AuthGate from './ui/screens/AuthGate.vue';
+// 渲染实验面板只在开发环境按需加载：正式包里连这个组件的代码都没有
+const RenderLab = import.meta.env.DEV ? defineAsyncComponent(() => import('./ui/screens/RenderLab.vue')) : null;
+/** 渲染实验面板：开发环境 + ?render=1 */
+const renderLab = import.meta.env.DEV && new URLSearchParams(location.search).get('render') === '1';
 import Banner from './ui/hud/Banner.vue';
 import Bench from './ui/screens/Bench.vue';
 import BuildBar from './ui/hud/BuildBar.vue';
@@ -12,6 +16,7 @@ import Toast from './ui/hud/Toast.vue';
 import TrainingPanel from './ui/hud/TrainingPanel.vue';
 import ExtrasHud from './ui/hud/ExtrasHud.vue';
 import TabPanel from './ui/hud/TabPanel.vue';
+import TdmHud from './ui/hud/TdmHud.vue';
 import Lobby from './ui/screens/Lobby.vue';
 import MainMenu from './ui/screens/MainMenu.vue';
 import PauseMenu from './ui/screens/PauseMenu.vue';
@@ -57,6 +62,11 @@ const submit = (name: string, password: string, register: boolean): void => {
 };
 
 onMounted(() => {
+  // 开发：?offline=1 跳过登录（正式包里 import.meta.env.DEV 是 false，这段被删掉）
+  if (import.meta.env.DEV && new URLSearchParams(location.search).get('offline') === '1') {
+    if (canvasRef.value && fxRef.value) app = appRef.value = startApp(canvasRef.value, fxRef.value, { name: 'offline', token: '' }, new OfflineStore());
+    return;
+  }
   const a = loadAuth();
   if (a) void boot(a);
   else needLogin.value = true;
@@ -72,18 +82,20 @@ onBeforeUnmount(() => {
   <canvas ref="canvasRef" class="game-canvas"></canvas>
   <div ref="fxRef" class="fx-layer"></div>
   <Hud />
-  <BuildBar v-if="ui.screen === 'play'" />
+  <BuildBar v-if="ui.screen === 'play' && !ui.inTdm" />
   <Banner />
   <TrainingPanel />
-  <ExtrasHud />
-  <TabPanel />
+  <ExtrasHud v-if="!ui.inTdm" />
+  <TabPanel v-if="!ui.inTdm" />
+  <TdmHud />
   <MainMenu />
   <Lobby />
   <PauseMenu />
   <Bench />
   <Cards />
-  <Result />
+  <Result v-if="!ui.inTdm" />
   <Toast />
+  <component :is="RenderLab" v-if="RenderLab && renderLab && appRef" :render="appRef.render" />
   <AuthGate v-if="needLogin" :busy="authBusy" :error="authError" :submit="submit" />
   <Transition name="fade">
     <div v-if="!needLogin && (!appRef || !ui.worldReady)" class="loading" role="status" aria-live="polite">

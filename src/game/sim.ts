@@ -19,10 +19,14 @@ import { Navigator } from './nav/navigator';
 import { updateBuildMode, updateStructures, type BuildCursor } from './systems/building';
 import { updateBullets, updateProjectiles, updateStatus } from './systems/combat';
 import { newAirdrop, updateAirdrop, type AirdropState } from './systems/airdrop';
+import { newRisk, updateRisk, type RiskState } from './systems/events';
+import { newLoot, toxicTick, updateLoot, type LootState } from './systems/loot';
 import { newHazards, updateHazards, type HazardState } from './systems/hazards';
 import { updatePlayer } from './systems/player';
 import { newRunState, updateRun, type Phase, type RunState } from './systems/run';
 import { stepZombies } from './systems/zombie-ai';
+import { newTdm, updateTdm, type TdmState } from './systems/tdm';
+import type { WeaponKind as WK } from './data/weapons';
 import { resolveCircleVsGrid } from './world/collision';
 import { Grid, GRID_H, GRID_W, HALF_H, HALF_W } from './world/grid';
 import { MAP_BUILDERS, type MapId } from './world/maps';
@@ -80,6 +84,12 @@ export interface PlayerState {
   /** 后坐力把视线抬起来的量（弧度），开火时累加、松开扳机后回落；子弹和相机都会加上它 */
   kickPitch: number;
   kickYaw: number;
+  /** 升星特性：换弹后的加速剩余时间（冲锋枪 ★1）、持续开火时间（轻机枪 ★1）、
+   *  连续命中的目标和层数（步枪 ★3） */
+  burstT: number;
+  sustainT: number;
+  focusId: number;
+  focusN: number;
 }
 
 /** 每帧由输入层写入 */
@@ -106,6 +116,8 @@ export interface PlayerInput {
   cycle: number;
   /** 边沿触发：E 键交互（修理附近的建筑 / 发电机；靠近工坊时由应用层打开工坊） */
   use: boolean;
+  /** E 一直按着（风险事件「幸存者求救」的读条用） */
+  useHeld: boolean;
   /** 边沿触发：F 键开关建造模式 */
   toggleBuild: boolean;
   /** 按住：拆除光标处的建筑（右键 / X） */
@@ -170,6 +182,9 @@ export interface Mods {
   extraFrags: number;
 }
 
+/** 没有任何加成时的倍率（数值面板按它算"基础值"，卡牌探针也从它开始） */
+export const defaultMods = (): Mods => ({ damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1, fireRate: 1, regen: 0, chainBlast: 0, comboDamage: 0, headRefund: 0, closeDamage: 1, shoveCd: 1, extraFrags: 0 });
+
 export interface CoreState {
   x: number;
   z: number;
@@ -190,6 +205,32 @@ export interface DamageOpts {
   head?: boolean;
   /** 连锁爆炸造成的伤害（击杀不会再触发连锁） */
   chain?: boolean;
+  /** 玩家用哪把枪打的（算进这把枪的熟练度）；炮塔、地刺、爆炸物等不写 */
+  weapon?: WeaponKind;
+  /** 不是玩家的枪造成的伤害来自哪里（战斗复盘）；写了 weapon 就不用写 */
+  src?: DamageSrc;
+}
+
+/** 战斗复盘的伤害来源：枪按武器种类，其余按下面这些 */
+export type DamageSrc = 'turret' | 'spikes' | 'explosive' | 'grenade' | 'pulse' | 'chain' | 'fire' | 'other';
+export const DAMAGE_SRC: DamageSrc[] = ['turret', 'spikes', 'explosive', 'grenade', 'pulse', 'chain', 'fire', 'other'];
+
+/** 每夜的复盘记录 */
+export interface NightLog {
+  night: number;
+  kills: number;
+  /** 发电机这一夜的最低血量比例 */
+  coreLow: number;
+  /** 这一夜被拆的建筑 */
+  lost: number;
+  /** 这一夜玩家受到的伤害 */
+  hurt: number;
+  /** 首领 / 精英击杀 */
+  boss: number;
+  elite: number;
+  /** 夜间挑战：1 完成、0 没完成、-1 没有挑战 */
+  challenge: number;
+  mod: string;
 }
 
 export interface GameEvents {
@@ -223,6 +264,10 @@ export interface GameEvents {
   banner: { text: string; sub: string };
   cardsOffered: { ids: string[] };
   runEnded: { won: boolean; reason: string };
+  /** 风险事件「幸存者求救」的信号弹出现 / 消失 */
+  riskFlare: { x: number; z: number; on: boolean };
+  /** 搜刮点被搜完 */
+  lootTaken: { x: number; z: number; kind: string };
   scrapBox: { index: number; taken: boolean };
   playerDied: { x: number; z: number };
   /** silent = 读档时恢复已经炸掉的状态，不放特效 */
@@ -230,6 +275,13 @@ export interface GameEvents {
   grenadeThrown: { fire: boolean };
   /** 开始拉环抬手（还没出手） */
   grenadeWindup: { fire: boolean };
+  // ---- 团队死斗 ----
+  soldierShot: { id: number; kind: WK; x: number; y: number; z: number; yaw: number };
+  soldierHit: { id: number; amount: number; head: boolean; byPlayer: boolean; x: number; y: number; z: number };
+  soldierDied: { id: number; team: 0 | 1; byPlayer: boolean; head: boolean };
+  tdmHurt: { fromId: number };
+  tdmRespawn: { yaw: number };
+  tdmOver: { winner: -1 | 0 | 1; score: [number, number] };
   shove: { hits: number };
   pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
   spit: { x: number; z: number };
@@ -270,6 +322,24 @@ export interface GameStats {
   bestCombo: number;
   /** 按种类的击杀数 */
   killsBy: Record<ZombieKind, number>;
+  /** 每把枪的击杀 / 爆头击杀（武器熟练度） */
+  weaponKills: Record<WeaponKind, number>;
+  weaponHeads: Record<WeaponKind, number>;
+  /** 风险事件给的额外熟练度经验（军事广播） */
+  bonusXp: Record<WeaponKind, number>;
+  /** 战斗复盘：每把枪造成的伤害、开火时间（秒） */
+  weaponDamage: Record<WeaponKind, number>;
+  fireTime: Record<WeaponKind, number>;
+  /** 非枪械来源的伤害和击杀 */
+  srcDamage: Record<DamageSrc, number>;
+  srcKills: Record<DamageSrc, number>;
+  /** 建筑受到的总伤害、发电机受到的总伤害 */
+  structDamage: number;
+  coreDamage: number;
+  bossKills: number;
+  eliteKills: number;
+  /** 每夜一条（夜里实时更新最后一条） */
+  nights: NightLog[];
   /** 本局建过的建筑数 */
   built: number;
   /** 受到的总伤害 / 回复的总生命 */
@@ -306,6 +376,7 @@ export class Game {
     select: 0,
     cycle: 0,
     use: false,
+    useHeld: false,
     toggleBuild: false,
     sell: false,
     confirm: false,
@@ -314,7 +385,7 @@ export class Game {
     flashlight: false,
   };
   readonly loadout: Record<WeaponKind, WeaponSlot>;
-  readonly mods: Mods = { damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1, fireRate: 1, regen: 0, chainBlast: 0, comboDamage: 0, headRefund: 0, closeDamage: 1, shoveCd: 1, extraFrags: 0 };
+  readonly mods: Mods = defaultMods();
   readonly run: RunState = newRunState();
   /** 这一局的规则（难度、局外成长带来的解锁和上限）；默认是什么都不限制的沙盒 */
   config: RunConfig = sandboxConfig();
@@ -366,15 +437,33 @@ export class Game {
     headshotKills: 0,
     challenges: 0,
     bestCombo: 0,
-    killsBy: { walker: 0, runner: 0, bloater: 0, breaker: 0, colossus: 0, spitter: 0, screamer: 0 },
+    killsBy: { walker: 0, runner: 0, bloater: 0, breaker: 0, colossus: 0, spitter: 0, screamer: 0, crawler: 0, armored: 0 },
+    weaponKills: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    weaponHeads: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    bonusXp: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    weaponDamage: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    fireTime: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    srcDamage: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
+    srcKills: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
+    structDamage: 0,
+    coreDamage: 0,
+    bossKills: 0,
+    eliteKills: 0,
+    nights: [],
     built: 0,
     damageTaken: 0,
     healed: 0,
   };
   /** 爆炸物、危险区、手雷、推搡、电击脉冲（M12） */
   readonly hz: HazardState = newHazards();
+  /** 5v5 团队死斗（mapId = 'arena' 时开） */
+  readonly tdm: TdmState = newTdm();
   /** 白天的空投补给（M13） */
   readonly airdrop: AirdropState = newAirdrop();
+  /** 风险事件（M17） */
+  readonly ev: RiskState = newRisk();
+  /** 搜刮点（M18） */
+  readonly loot: LootState = newLoot();
   /** 连杀：数量和距离上一次击杀的时间 */
   combo = 0;
   /** 这一帧要结算的「连锁反应」爆炸（击杀时登记，下一帧统一炸，避免在伤害结算里递归） */
@@ -428,6 +517,10 @@ export class Game {
       reloadTimer: 0,
       fireTimer: 0,
       ramp: 0,
+      burstT: 0,
+      sustainT: 0,
+      focusId: -1,
+      focusN: 0,
       ads: 0,
       reloadTotal: 1,
       crouch: 0,
@@ -468,7 +561,8 @@ export class Game {
       }
     }
     // 手电筒：开着耗电，耗尽自动关；关着时充电
-    const wantLight = this.input.flashlight && this.config.extras && this.player.alive;
+    // 训练场、团队死斗（extras 关）以前按 T 完全没反应；手电只是照明，所有模式都能开
+    const wantLight = this.input.flashlight && this.player.alive;
     if (wantLight && this.battery > 0) {
       this.flashOn = true;
       this.battery = Math.max(0, this.battery - dt);
@@ -488,12 +582,18 @@ export class Game {
     pl.kickYaw *= back;
     updateProjectiles(this, dt);
     updateBullets(this, dt);
+    updateTdm(this, dt);
     this.nav.update(dt, this.player.x, this.player.z, this.player.alive);
     stepZombies(this, dt);
     updateStatus(this, dt);
     if (this.config.extras) {
       updateHazards(this, dt);
       updateAirdrop(this, dt);
+      updateRisk(this, dt, this.input.useHeld);
+      if (this.config.extras) {
+        updateLoot(this, dt, this.input.useHeld);
+        toxicTick(this, dt);
+      }
     }
     updateStructures(this, dt);
     updateRun(this, dt);
@@ -543,6 +643,12 @@ export class Game {
   /** 返回这次伤害是否击杀 */
   damageZombie(z: Zombie, amount: number, o: DamageOpts = {}): boolean {
     if (!z.alive) return false;
+    // 复盘：只记真正打掉的血（溢出的不算），这样各来源加起来 = 僵尸失去的总生命
+    const dealt = Math.min(Math.max(0, z.hp), amount);
+    if (!z.dummy) {
+      if (o.weapon) this.stats.weaponDamage[o.weapon] += dealt;
+      else this.stats.srcDamage[o.src ?? (o.chain ? 'chain' : 'other')] += dealt;
+    }
     z.hp -= amount;
     z.hitFlash = 0.09;
     if (o.kx || o.kz) {
@@ -552,6 +658,7 @@ export class Game {
     if (o.burn && o.burn > 0) {
       z.burnT = 3;
       z.burnDps = o.burn;
+      z.burnBy = o.weapon ?? '';
     }
     const head = !!o.head;
     if (head) this.stats.headshots++;
@@ -562,6 +669,23 @@ export class Game {
     this.stats.kills++;
     this.stats.killsBy[z.kind]++;
     if (head) this.stats.headshotKills++;
+    if (o.weapon && !z.dummy) {
+      this.stats.weaponKills[o.weapon]++;
+      if (head) this.stats.weaponHeads[o.weapon]++;
+      // 风险事件「军事广播」：这一夜的熟练度经验 ×2
+      if (this.ev.doubleXp && this.ev.stage === 1 && this.run.phase === 'night') this.stats.bonusXp[o.weapon] += head ? 2 : 1;
+    } else if (!z.dummy) this.stats.srcKills[o.src ?? (o.chain ? 'chain' : 'other')]++;
+    if (!z.dummy) {
+      const boss = z.id === this.run.bossId;
+      if (boss) this.stats.bossKills++;
+      if (z.elite) this.stats.eliteKills++;
+      const nl = this.stats.nights[this.stats.nights.length - 1];
+      if (nl && nl.night === this.run.night) {
+        nl.kills++;
+        if (boss) nl.boss++;
+        if (z.elite) nl.elite++;
+      }
+    }
     // 连杀：3 秒内的连续击杀累计倍率（M12，沙盒里关掉）
     let comboK = 1;
     if (this.config.extras) {
@@ -621,6 +745,9 @@ export class Game {
 
   damageCore(amount: number): void {
     if (!this.invulnerableCore) this.core.hp = Math.max(0, this.core.hp - amount);
+    this.stats.coreDamage += amount;
+    const nl = this.stats.nights[this.stats.nights.length - 1];
+    if (nl && nl.night === this.run.night) nl.coreLow = Math.min(nl.coreLow, this.core.hp / this.core.maxHp);
     this.events.emit('coreDamaged', { amount });
   }
 
@@ -630,6 +757,8 @@ export class Game {
     this.hurtT = 0;
     if (!this.invulnerablePlayer) {
       this.stats.damageTaken += Math.min(this.player.hp, dealt);
+      const nl = this.stats.nights[this.stats.nights.length - 1];
+      if (nl && nl.night === this.run.night) nl.hurt += Math.min(this.player.hp, dealt);
       this.player.hp = Math.max(0, this.player.hp - dealt);
       if (this.player.hp <= 0) {
         this.player.alive = false;
@@ -735,9 +864,12 @@ export class Game {
     const slot = this.loadout[kind];
     if (!slot.owned || slot.tier >= Math.min(MAX_TIER, this.config.tierCap[kind])) return false;
     const up = WEAPONS[kind].upgrades[slot.tier];
-    if (!up || this.scrap < up.cost) return false;
+    // 风险事件「黑市商人」：下一次升级免费
+    const free = this.ev.freeUpgrade > 0;
+    if (!up || (!free && this.scrap < up.cost)) return false;
     const before = this.statsOf(kind, slot.tier);
-    this.scrap -= up.cost;
+    if (free) this.ev.freeUpgrade = 0;
+    else this.scrap -= up.cost;
     slot.tier++;
     const after = this.statsOf(kind, slot.tier);
     slot.mag += Math.max(0, after.mag - before.mag);
@@ -771,7 +903,7 @@ export class Game {
     const maxHp = kind === 'spikes' ? def.hp : Math.round(def.hp * this.mods.structHp);
     const s: Structure = { id: this.nextId++, kind, def, cx, cy, hp: maxHp, maxHp, aim: Math.PI, cd: 0, sinceShot: 9, target: -1 };
     this.structures.set(s.id, s);
-    if (def.blocks) grid.placeBlocking(i, s.id, def.navCost);
+    if (def.blocks) grid.placeBlocking(i, s.id, def.navCost, kind === 'barricade');
     else grid.placeTrap(i, s.id);
     this.stats.built++;
     this.events.emit('structureAdded', s);
@@ -789,7 +921,7 @@ export class Game {
   restoreStructure(s: Structure): void {
     this.structures.set(s.id, s);
     const i = this.grid.idx(s.cx, s.cy);
-    if (s.def.blocks) this.grid.placeBlocking(i, s.id, s.def.navCost);
+    if (s.def.blocks) this.grid.placeBlocking(i, s.id, s.def.navCost, s.kind === 'barricade');
     else this.grid.placeTrap(i, s.id);
     this.events.emit('structureAdded', s);
   }
@@ -801,13 +933,18 @@ export class Game {
     const i = this.grid.idx(s.cx, s.cy);
     if (s.def.blocks) this.grid.clearBlocking(i);
     else this.grid.clearTrap(i);
-    if (destroyed) this.stats.structuresDestroyed++;
+    if (destroyed) {
+      this.stats.structuresDestroyed++;
+      const nl = this.stats.nights[this.stats.nights.length - 1];
+      if (nl && nl.night === this.run.night) nl.lost++;
+    }
     this.events.emit('structureRemoved', { structure: s, destroyed });
   }
 
   damageStructure(id: number, amount: number): void {
     const s = this.structures.get(id);
     if (!s) return;
+    this.stats.structDamage += Math.min(Math.max(0, s.hp), amount);
     s.hp -= amount;
     this.events.emit('structureDamaged', { structure: s, amount });
     if (s.hp <= 0) this.removeStructure(id, true);

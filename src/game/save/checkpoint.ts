@@ -1,4 +1,6 @@
 import type { RunConfig } from '../config';
+import { newRisk, type RiskState } from '../systems/events';
+import { newLoot, type LootState } from '../systems/loot';
 import { CARD_BY_ID } from '../data/cards';
 import { isDifficulty } from '../data/difficulty';
 import { STRUCTURES, STRUCTURE_ORDER, type StructureKind } from '../data/structures';
@@ -9,7 +11,7 @@ import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Structure } from '../entities/structure';
 import { Zombie } from '../entities/zombie';
-import type { Game, GameStats, Mods, PlayerInput, PlayerState, WeaponSlot } from '../sim';
+import type { Game, GameStats, Mods, NightLog, PlayerInput, PlayerState, WeaponSlot } from '../sim';
 import type { HazardState } from '../systems/hazards';
 import { wireChallenges, type RunState } from '../systems/run';
 import { SaveError, isObj, num } from './schema';
@@ -62,6 +64,8 @@ export interface RunCheckpoint {
   battery: number;
   flashOn: boolean;
   airdrop: { stage: number; t: number; x: number; z: number };
+  ev: RiskState;
+  loot: LootState;
 }
 
 const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -113,6 +117,8 @@ export function serialize(g: Game, savedAt = 0): RunCheckpoint {
     battery: g.battery,
     flashOn: g.flashOn,
     airdrop: g.airdrop,
+    ev: g.ev,
+    loot: g.loot,
   });
 }
 
@@ -154,6 +160,16 @@ function shaped<T>(template: T, v: unknown, path: string): T {
     out[k] = shaped(t, v[k], `${path}.${k}`);
   }
   return out as T;
+}
+
+/** 统计：nights 是对象数组（每夜一条复盘），shaped 只认字符串 / 数字数组，单独按模板逐条校验 */
+function parseStats(g: Game, v: unknown): GameStats {
+  if (!isObj(v)) throw new SaveError('stats 缺失');
+  const { nights: _n, ...rest } = g.stats;
+  const out = shaped(rest, v, 'stats') as Omit<GameStats, 'nights'>;
+  if (!Array.isArray(v.nights) || v.nights.length > 1000) throw new SaveError('stats.nights 不合法');
+  const tpl: NightLog = { night: 0, kills: 0, coreLow: 0, lost: 0, hurt: 0, boss: 0, elite: 0, challenge: 0, mod: '' };
+  return { ...out, nights: v.nights.map((x, i) => shaped(tpl, x, `stats.nights[${i}]`)) };
 }
 
 const range = (v: number, min: number, max: number, path: string): void => {
@@ -212,7 +228,7 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     player: shaped(g.player, v.player, 'player'),
     input: shaped(g.input, v.input, 'input'),
     mods: shaped(g.mods, v.mods, 'mods'),
-    stats: shaped(g.stats, v.stats, 'stats'),
+    stats: parseStats(g, v.stats),
     core: shaped({ hp: 0, maxHp: 0 }, v.core, 'core'),
     loadout: shaped(g.loadout, v.loadout, 'loadout'),
     cardCounts: {},
@@ -233,6 +249,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     battery: num(v, 'battery', 0, 60),
     flashOn: v.flashOn === true,
     airdrop: shaped({ stage: 0, t: 0, x: 0, z: 0 }, v.airdrop, 'airdrop'),
+    ev: shaped(newRisk(), v.ev, 'ev'),
+    loot: shaped(newLoot(), v.loot, 'loot'),
   };
 
   // ---- 枚举和范围 ----
@@ -316,6 +334,10 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   for (const raw of v.bullets) {
     const b = shaped(bTemplate, raw, 'bullet');
     if (!isWeapon(b.kind)) throw new SaveError('子弹武器种类不合法');
+    // 团队死斗加的字段：僵尸模式里子弹都是玩家打的（缺省 owner -1、team 0）
+    const r = raw as { owner?: unknown; team?: unknown };
+    b.owner = typeof r.owner === 'number' && Number.isInteger(r.owner) ? r.owner : -1;
+    b.team = r.team === 1 ? 1 : 0;
     out.bullets.push(b);
   }
   const prTemplate: Projectile = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, damage: 0, aoe: 0, split: 0, bomblet: false };
@@ -371,6 +393,9 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
   g.healT = cp.healT;
   g.battery = cp.battery;
   Object.assign(g.airdrop, cp.airdrop);
+  Object.assign(g.ev, cp.ev);
+  Object.assign(g.loot, cp.loot);
+  if (g.ev.id === 'survivor' && g.ev.stage === 1) g.events.emit('riskFlare', { x: g.ev.x, z: g.ev.z, on: true });
   if (g.airdrop.stage === 2) g.events.emit('airdrop', { stage: 'land', x: g.airdrop.x, z: g.airdrop.z });
   g.flashOn = cp.flashOn;
   if (g.config.extras) wireChallenges(g);
@@ -384,17 +409,17 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
 }
 
 /** 检查点的摘要（大厅显示 "继续"、放弃时结算勋章用）；读不出来返回 null */
-export function peekCheckpoint(raw: string | null): { night: number; phase: string; difficulty: string; chapter: MapId; savedAt: number; kills: number; headshotKills: number; scrap: number; hp: number; maxHp: number; ammo: Partial<Record<WeaponKind, number>> } | null {
+export function peekCheckpoint(raw: string | null): { night: number; phase: string; difficulty: string; chapter: MapId; savedAt: number; kills: number; headshotKills: number; scrap: number; hp: number; maxHp: number; ammo: Partial<Record<WeaponKind, number>>; weaponKills: Partial<Record<WeaponKind, number>>; weaponHeads: Partial<Record<WeaponKind, number>> } | null {
   if (!raw) return null;
   try {
-    const o = JSON.parse(raw) as { ammo?: unknown; run?: { night?: unknown; phase?: unknown }; config?: { difficulty?: unknown; chapter?: unknown }; savedAt?: unknown; scrap?: unknown; player?: { hp?: unknown; maxHp?: unknown }; stats?: { kills?: unknown; headshotKills?: unknown } };
+    const o = JSON.parse(raw) as { ammo?: unknown; run?: { night?: unknown; phase?: unknown }; config?: { difficulty?: unknown; chapter?: unknown }; savedAt?: unknown; scrap?: unknown; player?: { hp?: unknown; maxHp?: unknown }; stats?: { kills?: unknown; headshotKills?: unknown; weaponKills?: unknown; weaponHeads?: unknown } };
     const night = o.run?.night;
     const phase = o.run?.phase;
     const difficulty = o.config?.difficulty;
     if (typeof night !== 'number' || typeof phase !== 'string' || !isDifficulty(difficulty)) return null;
     const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? v : 0);
     const chapter = isMapId(o.config?.chapter) ? o.config.chapter : 'outpost';
-    return { night, phase, difficulty, chapter, ammo: parseAmmo(o.ammo), savedAt: n(o.savedAt), kills: n(o.stats?.kills), headshotKills: n(o.stats?.headshotKills), scrap: n(o.scrap), hp: n(o.player?.hp), maxHp: n(o.player?.maxHp) };
+    return { night, phase, difficulty, chapter, ammo: parseAmmo(o.ammo), weaponKills: parseAmmo(o.stats?.weaponKills), weaponHeads: parseAmmo(o.stats?.weaponHeads), savedAt: n(o.savedAt), kills: n(o.stats?.kills), headshotKills: n(o.stats?.headshotKills), scrap: n(o.scrap), hp: n(o.player?.hp), maxHp: n(o.player?.maxHp) };
   } catch {
     return null;
   }

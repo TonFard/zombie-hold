@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>黎明 · v1.2 开发方案</title>
+<style>
+  :root { --bg: #0b0f14; --panel: #121820; --line: rgba(255, 255, 255, 0.08); --text: #d8dee4; --dim: #8f9aa6; --gold: #f0b83a; --green: #6fcf8a; --red: #e0645a; --blue: #6fd0e8; --purple: #b48cf0; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.7 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+  header.top { padding: 40px 6vw 24px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #151c26, var(--bg)); }
+  header.top h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 2px; }
+  header.top p { margin: 0; color: var(--dim); }
+  nav.toc { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 6vw; background: rgba(11, 15, 20, 0.95); border-bottom: 1px solid var(--line); }
+  nav.toc a { color: var(--dim); text-decoration: none; padding: 4px 10px; border: 1px solid var(--line); font-size: 13px; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--gold); border-color: var(--gold); outline: none; }
+  main { padding: 10px 6vw 80px; max-width: 1400px; }
+  section { margin-top: 48px; }
+  h2 { font-size: 22px; margin: 0 0 4px; padding-left: 12px; border-left: 4px solid var(--gold); }
+  h2 small { font-size: 13px; color: var(--dim); font-weight: 400; margin-left: 10px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--blue); }
+  p { margin: 8px 0; }
+  .lead { color: var(--dim); margin: 6px 0 14px; }
+  .tag { display: inline-block; white-space: nowrap; padding: 1px 8px; font-size: 12px; border: 1px solid; margin-right: 6px; vertical-align: 2px; }
+  .now { color: var(--green); border-color: var(--green); }
+  .next { color: var(--gold); border-color: var(--gold); }
+  .have { color: var(--blue); border-color: var(--blue); }
+  .no { color: var(--red); border-color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; background: rgba(255, 255, 255, 0.02); }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 8px 12px; font-size: 13px; color: var(--dim); }
+  figcaption b { color: var(--text); }
+  figure.ref figcaption::before { content: "参考图"; color: var(--gold); margin-right: 8px; font-size: 12px; }
+  figure.game figcaption::before { content: "现在的游戏"; color: var(--blue); margin-right: 8px; font-size: 12px; }
+  figure.mock figcaption::before { content: "方案示意"; color: var(--green); margin-right: 8px; font-size: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 14px 18px; }
+  .verdict { margin: 10px 0; padding: 10px 14px; background: rgba(240, 184, 58, 0.06); border-left: 3px solid var(--gold); }
+  code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; background: rgba(255, 255, 255, 0.06); padding: 1px 5px; }
+  ul { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .road { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin: 14px 0; }
+  .road div { padding: 10px; background: var(--panel); border: 1px solid var(--line); border-top: 3px solid var(--dim); font-size: 13px; }
+  .road div b { display: block; font-size: 15px; margin-bottom: 4px; }
+  .road .on { border-top-color: var(--green); }
+  .road .nx { border-top-color: var(--gold); }
+  svg text { font-family: "Microsoft YaHei", sans-serif; }
+  .mockpanel { background: #0e131a; border: 1px solid var(--line); padding: 14px 18px; font-size: 14px; }
+  .mockpanel .row { display: grid; grid-template-columns: 110px 1fr 100px; gap: 10px; padding: 5px 0; border-bottom: 1px dashed var(--line); }
+  .mockpanel .k { color: var(--dim); }
+  .mockpanel .v { text-align: right; color: var(--green); font-variant-numeric: tabular-nums; }
+  .mockpanel .s span { margin-right: 10px; color: var(--dim); font-size: 13px; }
+  .mockpanel .s .p { color: var(--green); }
+  .mockpanel .s .m { color: var(--gold); }
+  .tabs { display: flex; gap: 4px; margin-bottom: 10px; }
+  .tabs span { padding: 3px 12px; border: 1px solid var(--line); font-size: 13px; color: var(--dim); }
+  .tabs .on { color: var(--gold); border-color: var(--gold); }
+  .stars { color: var(--gold); letter-spacing: 2px; }
+  footer { margin-top: 60px; color: var(--dim); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+  @media (max-width: 900px) { .road { grid-template-columns: repeat(2, 1fr); } }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>黎明 · v1.2 开发方案</h1>
+  <p>合并了《修改意见》和地图改造建议。除了武器配件槽，全部要做。文字版同步在 <code>docs/PLAN.md</code> 第 14 节。</p>
+</header>
+<nav class="toc" aria-label="目录">
+  <a href="#road">路线</a><a href="#m14">M14 贴地 / 声音</a><a href="#m15">M15 数值后台</a><a href="#m16">M16 升星</a><a href="#m17">M17 新内容</a><a href="#m18">M18 地图纵深</a><a href="#m19">M19 画面</a><a href="#m20">M20 界面</a><a href="#rules">规则</a>
+</nav>
+<main>
+
+<section id="road">
+  <h2>路线 <small>按依赖排序，每一步都要跑完测试、截图验收才进下一步</small></h2>
+  <div class="road">
+    <div class="on"><b>✓ 熟练度</b>手枪 5 局精通才开冲锋枪（已完成）</div>
+    <div class="on"><b>✓ M14</b>贴地修复、接触阴影、GTAO、声音</div>
+    <div class="on"><b>✓ M15</b>加成来源、Tab 三页、战斗复盘</div>
+    <div class="on"><b>✓ M16</b>枪机线、升星特性、平衡</div>
+    <div class="on"><b>✓ M17</b>爬行者、重装、风险事件</div>
+    <div class="on"><b>✓ M18</b>地图纵深：街区、道路叙事、危险区、远景</div>
+    <div class="on"><b>✓ M19 / M20</b>画面细节、界面</div>
+  </div>
+  <div class="verdict">
+    <b>从地图建议里吸收了什么</b>：
+    <ul>
+      <li><b>贴地 + 接触阴影 + GTAO 提到最前面</b>（原来分在 M14 和 M18）。顺序是先修落地点、再加阴影，不能用阴影掩盖位置错误。</li>
+      <li><b>新增 M18「地图纵深」</b>：四个街区各有资源和风险、道路上的事故现场、三个危险区（军事检查站 / 地下避难所 / 污染区）、远景。原来 M17 的「搜刮点」并进这里。</li>
+      <li>地图保持 80×80，先做精不扩大；白天只有 45–60 秒，危险区放在离据点 25–35 米内，跑一趟 10 秒左右。</li>
+    </ul>
+    <b>已经有、不用重做的</b>：9 种地面类型 + 贴图数组混合（沥青、混凝土、土、碎石、草…）、四个不同宽度的入口和南侧瓦砾缺口、可进入的房屋、<code>analyzeMap()</code> 连通检查、道具按种类 InstancedMesh。
+  </div>
+</section>
+
+<section id="m14">
+  <h2>M14 · 贴地、接触阴影、AO、声音 <small><span class="tag now">已完成</span>（等你回复没声音的细节）</small></h2>
+  <div class="grid3">
+    <figure class="game"><img src="../review/img/game_r_cont_stack.png" alt="叠放集装箱之间有缝" loading="lazy" /><figcaption><b>现在</b>：叠放集装箱之间有缝、底边浮起</figcaption></figure>
+    <figure class="ref"><img src="img/ao1.jpg" alt="轮胎接触地面的特写" loading="lazy" /><figcaption><b>目标</b>：轮胎压在地面上，接触处最暗</figcaption></figure>
+    <figure class="ref"><img src="img/ao3.jpg" alt="AO 开关对比" loading="lazy" /><figcaption><b>GTAO</b>：墙角、底部的环境光遮蔽（左关 / 右开）</figcaption></figure>
+  </div>
+  <h3>结果（左：改之前 / 右：改之后）</h3>
+  <div class="grid2">
+    <figure class="mock"><img src="img/m14_contact.jpg" alt="皮卡接触阴影前后对比" loading="lazy" /><figcaption><b>接触阴影</b>：车底和轮胎压在一块暗影上，不再像贴在亮地面上</figcaption></figure>
+    <figure class="mock"><img src="img/m14_ao.jpg" alt="GTAO 前后对比" loading="lazy" /><figcaption><b>GTAO</b>（高画质）：轮拱、车斗、墙脚变暗；本机显卡 4.0 → 6.0 ms/帧</figcaption></figure>
+    <figure class="mock"><img src="img/m14_settings.jpg" alt="设置页测试声音" loading="lazy" /><figcaption><b>测试声音</b>：按一下播枪声 + 界面音，并告诉你声音系统现在的状态</figcaption></figure>
+    <div class="card">
+      <b>查出来的</b>
+      <ul>
+        <li>车和集装箱的模型本身是贴地的（检查了每个网格）。我原以为皮卡底下的小网格是碎片，实际是车轮，所以没有改落地算法。</li>
+        <li>真正的缝在<b>叠放集装箱</b>：模型被等比限制压矮后，第二层还按平均高度放，中间空出一条缝。现在按实际高度摞。</li>
+        <li>音量曲线以前是平方，滑条 20% 实际只有 4%；改成 1.5 次方。手柄 / 触屏也能解锁声音，切回窗口、换耳机后自动恢复。</li>
+      </ul>
+    </div>
+  </div>
+  <h3>做什么</h3>
+  <table>
+    <thead><tr><th>项</th><th>做法</th><th>验收</th></tr></thead>
+    <tbody>
+      <tr><td>落地点</td><td>按网格面积算底面，而不是全局最低点：面积很小、比主体低很多的碎片（拖车钩、阴影片）不算。和检查脚本共用一个纯函数</td><td><code>check:props</code>：每个模型落地误差 &lt; 2% 高度</td></tr>
+      <tr><td>叠放集装箱</td><td>第二层放在第一层的实际高度上</td><td>截图：两层之间没缝</td></tr>
+      <tr><td>接触阴影</td><td>车、集装箱、发电机、路障底下一张径向渐变的暗色贴片（InstancedMesh，不写深度），所有画质都开</td><td>同机位前后截图</td></tr>
+      <tr><td>GTAO</td><td>three 自带 <code>GTAOPass</code> 插在 RenderPass 和 Bloom 之间；高画质开、中画质低分辨率、低画质关</td><td>同机位前后截图</td></tr>
+      <tr><td>声音</td><td>手柄 / 触屏也能解锁；切回窗口时恢复；换输出设备时重建；音量曲线和显示一致；设置页「测试声音」按钮 + 状态</td><td><code>audio-check</code> 通过；你实际听</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="m15">
+  <h2>M15 · 数值后台和战斗复盘 <small><span class="tag now">已完成</span></small></h2>
+  <div class="grid2">
+    <figure class="mock"><img src="img/m15_tab.jpg" alt="Tab 属性页" loading="lazy" /><figcaption><b>Tab · 属性</b>：每一项都是 基础 → 各来源（局外 / 卡牌 / 难度…）→ 最终，sim:stats 保证和实际一致</figcaption></figure>
+    <figure class="mock"><img src="img/m15_gun.jpg" alt="Tab 武器页" loading="lazy" /><figcaption><b>Tab · 武器</b>：身上两把枪的伤害、射速 RPM、弹匣、换弹、重量、后坐</figcaption></figure>
+    <figure class="mock"><img src="img/m15_replay.jpg" alt="结算复盘" loading="lazy" /><figcaption><b>结算 · 复盘</b>：伤害来源占比、每夜击杀和发电机最低血量、关键时刻、下一局建议</figcaption></figure>
+  </div>
+  <p class="lead">核心是「加成来源登记」：每个改数值的地方（卡牌、局外、武器台、难度、章节、词缀、重量、星级）都登记一条「来源 × 倍率」。Tab 面板只读这张表，所以显示的一定和实际一样，<code>sim:stats</code> 自动对账。</p>
+  <div class="grid2">
+    <div class="mockpanel" aria-label="Tab 属性页示意">
+      <div class="tabs"><span class="on">属性</span><span>武器</span><span>战况</span></div>
+      <div class="row"><span class="k">武器伤害</span><span class="s"><span>基础 23</span><span class="p">× 1.06 武器台</span><span class="p">× 1.10 火力卡</span></span><span class="v">26.8</span></div>
+      <div class="row"><span class="k">射速</span><span class="s"><span>3.0 发/秒</span><span class="p">× 1.70 双持</span><span class="p">× 1.04 射击训练</span></span><span class="v">318 RPM</span></div>
+      <div class="row"><span class="k">移动速度</span><span class="s"><span>100%</span><span class="p">× 1.03 负重训练</span><span class="m">× 0.94 重量 5 kg</span></span><span class="v">96.8%</span></div>
+      <div class="row"><span class="k">受到伤害</span><span class="s"><span>100%</span><span class="p">× 0.96 插板</span><span class="p">× 0.88 护甲卡</span></span><span class="v">84.5%</span></div>
+      <div class="row"><span class="k">零件收益</span><span class="s"><span>100%</span><span class="p">× 1.25 困难</span><span class="p">× 1.05 零件收益</span></span><span class="v">131%</span></div>
+      <p style="margin:10px 0 0;color:var(--dim);font-size:12px">点一行展开全部来源；绿 = 增益、黄 = 减益；被上下限截断的标「已触顶」</p>
+    </div>
+    <figure class="game"><img src="../review/img/game_r_tab.png" alt="现在的 Tab 面板" loading="lazy" /><figcaption><b>现在</b>：只有最终值，大部分是「—」</figcaption></figure>
+  </div>
+  <ul>
+    <li><b>武器页</b>：身上两把枪的五项属性（伤害、后坐、射速 RPM、重量、弹匣），每项从基础一路乘到最终；熟练度 / 星级；<b>实测 DPS vs 理论 DPS</b>。</li>
+    <li><b>战斗复盘</b>（结算页新页签）：每把枪击杀 / 伤害占比、炮塔 / 地刺 / 爆炸物 / 手雷各占多少、每夜时间线（发电机最低血量、被拆的建筑、首领）、自动挑出关键事件和一句建议。</li>
+  </ul>
+</section>
+
+<section id="m16">
+  <h2>M16 · 武器第二层：枪机、升星、平衡 <small><span class="tag now">已完成</span></small></h2>
+  <figure class="mock" style="margin-bottom:12px"><img src="img/m16_bench.jpg" alt="武器台升星" loading="lazy" /><figcaption><b>武器台</b>：精通之后的升星进度和三颗星的特性；第五条强化线「枪机」</figcaption></figure>
+  <div class="verdict">实际做出来和下表不同的 4 条（原效果在现有机制里不存在）：步枪 ★ 改成「爆头 +20%」、榴弹 ★★ 改成「射程和弹速 +20%」、霰弹 ★ 改成「3 米内再 +20%」、手枪 ★★★ 改成「双持换弹再快 25%」。平衡后：霰弹枪从开始用到精通 12 → 7 局，每把枪都在 4–8 局。</div>
+  <p class="lead">你要的五项强化：伤害、后坐、连射、重量、填弹。现在武器台有四条线，补上「枪机」（射速 +4% / 级）就齐了。升星放在熟练度精通之后，每颗星给一个<b>特性</b>而不是纯数值，后期不会数值爆炸。</p>
+  <table>
+    <thead><tr><th>武器</th><th class="stars">★</th><th class="stars">★★</th><th class="stars">★★★</th></tr></thead>
+    <tbody>
+      <tr><td>手枪</td><td>爆头击杀返还 1 发</td><td>换弹 −25%</td><td>双持左右独立换弹</td></tr>
+      <tr><td>冲锋枪</td><td>换弹后 2 秒射速 +15%</td><td>移动中散布 −30%</td><td>连杀 ≥ 5 伤害 +10%</td></tr>
+      <tr><td>霰弹枪</td><td>3 米内多 2 颗弹丸</td><td>击退 +50%</td><td>击杀让周围僵尸硬直</td></tr>
+      <tr><td>突击步枪</td><td>穿透后不衰减</td><td>举镜 −30%</td><td>连续命中逐发 +3%</td></tr>
+      <tr><td>狙击步枪</td><td>首领弱点 +25%</td><td>爆头击杀返还 2 发</td><td>穿透 +1</td></tr>
+      <tr><td>轻机枪</td><td>持续开火 3 秒后散布 −40%</td><td>压制减速 +15%</td><td>最后 20 发伤害 +20%</td></tr>
+      <tr><td>榴弹</td><td>爆炸半径 +15%</td><td>自伤 −50%</td><td>集束子弹 +30%</td></tr>
+    </tbody>
+  </table>
+  <p>星级颜色：普通白、<span style="color:var(--blue)">★ 蓝</span>、<span style="color:var(--purple)">★★ 紫</span>、<span style="color:var(--gold)">★★★ 金</span>。平衡：霰弹枪近距离 +15%、精通门槛 480 → 380；轻机枪 1000 → 800、榴弹 1100 → 850 零件。</p>
+</section>
+
+<section id="m17">
+  <h2>M17 · 新僵尸和风险事件 <small><span class="tag now">已完成</span></small></h2>
+  <div class="grid2" style="margin-bottom:12px">
+    <figure class="mock"><img src="img/m17_zombies.jpg" alt="爬行者和重装感染者" loading="lazy" /><figcaption><b>游戏里</b>：左边四肢着地的爬行者，右边胸前挂钢板的重装感染者</figcaption></figure>
+    <figure class="mock"><img src="img/m17_risk.jpg" alt="工坊里的风险事件" loading="lazy" /><figcaption><b>工坊</b>：今天的事件，写清代价和奖励，可以不接</figcaption></figure>
+  </div>
+  <div class="grid3">
+    <figure class="ref"><img src="../review/img/zombie_crawler.jpg" alt="爬行者参考" loading="lazy" /><figcaption><b>爬行者</b>：从路障下面钻过、优先咬人，站着平射打不到</figcaption></figure>
+    <figure class="ref"><img src="../review/img/zombie_armored.jpg" alt="重装感染者参考" loading="lazy" /><figcaption><b>重装感染者</b>：正面子弹 −60%，打头 / 绕后 / 榴弹正常</figcaption></figure>
+    <div class="card">
+      <b>风险事件</b>（白天 25% 出现，在工作台选接不接）
+      <ul>
+        <li>军事广播：多一只精英 → 今夜熟练度 ×2</li>
+        <li>燃料告急：发电机不回血 → 补给 +80</li>
+        <li>幸存者求救：去边缘护送 40 秒 → 多一张卡</li>
+        <li>尸潮迁徙：某入口 ×2 → 勋章 ×1.3</li>
+        <li>黑市商人：150 零件 → 一次免费升级</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="m18">
+  <h2>M18 · 地图纵深 <small><span class="tag now">第一章已完成</span></small></h2>
+  <div class="grid3" style="margin-bottom:12px">
+    <figure class="mock"><img src="img/m18_north.jpg" alt="北路追尾和远景" loading="lazy" /><figcaption><b>北路</b>：连环追尾 + 散落的碎片；墙外的城市剪影和倒塌电塔</figcaption></figure>
+    <figure class="mock"><img src="img/m18_toxic.jpg" alt="污染区" loading="lazy" /><figcaption><b>污染区</b>：一圈油桶围着的污水，站在里面持续掉血；光柱标出搜刮点</figcaption></figure>
+    <figure class="mock"><img src="img/map_after.png" alt="改造后的第一章俯视图" loading="lazy" /><figcaption><b>改造后的俯视图</b>（网格生成）：对比上面的「现在」，路上多了事故现场，外围多了三处危险区</figcaption></figure>
+  </div>
+  <p class="lead">地图不扩大，让 80×80 里每块区域都有「去那里的理由」。下面左图是从游戏网格直接画出来的现在的第一章，右图是改造后的规划。</p>
+  <div class="grid2">
+    <figure class="game"><img src="img/map_now.png" alt="第一章俯视图（由地图网格生成）" loading="lazy" /><figcaption><b>现在的第一章</b>（由网格生成）：红 = 刷怪点、蓝 = 发电机、黄 = 零件箱、红块 = 车、蓝块 = 集装箱</figcaption></figure>
+    <figure class="mock">
+      <svg viewBox="0 0 640 640" role="img" aria-label="改造后的第一章规划图" style="display:block;width:100%;height:auto;background:#1a2016">
+        <rect x="0" y="0" width="640" height="640" fill="#2a3324" />
+        <rect x="8" y="8" width="624" height="624" fill="none" stroke="#111" stroke-width="16" />
+        <rect x="300" y="0" width="36" height="640" fill="#34363a" /><rect x="0" y="302" width="640" height="34" fill="#34363a" />
+        <rect x="208" y="208" width="224" height="224" fill="#7c7a74" stroke="#111" stroke-width="8" />
+        <circle cx="320" cy="320" r="14" fill="#6fd0e8" />
+        <text x="320" y="352" fill="#e8eef2" font-size="15" text-anchor="middle">中央据点</text>
+        <text x="320" y="370" fill="#bfc6cc" font-size="11" text-anchor="middle">发电机基座 · 探照灯 · 掩体</text>
+        <rect x="30" y="34" width="190" height="170" fill="#5c4a3a" opacity="0.9" />
+        <text x="125" y="110" fill="#fff" font-size="15" text-anchor="middle">居民区</text>
+        <text x="125" y="128" fill="#e0d6c8" font-size="11" text-anchor="middle">室内搜刮 · 医疗物资</text>
+        <rect x="446" y="30" width="160" height="170" fill="#6b6b66" />
+        <text x="526" y="110" fill="#fff" font-size="15" text-anchor="middle">加油站</text>
+        <text x="526" y="128" fill="#e8e4d8" font-size="11" text-anchor="middle">燃料 · 爆炸物 · 油污</text>
+        <rect x="440" y="440" width="176" height="168" fill="#5e5a55" />
+        <text x="528" y="520" fill="#fff" font-size="15" text-anchor="middle">仓库</text>
+        <text x="528" y="538" fill="#e8e4d8" font-size="11" text-anchor="middle">大量零件 · 货架</text>
+        <rect x="30" y="446" width="226" height="146" fill="#2c2d30" />
+        <text x="143" y="515" fill="#fff" font-size="15" text-anchor="middle">停车场</text>
+        <text x="143" y="533" fill="#d0d0d0" font-size="11" text-anchor="middle">事故现场 · 机械零件</text>
+        <g fill="#e0645a" opacity="0.95">
+          <path d="M318 150 l14 -10 l10 18 l-18 6 z" /><path d="M120 300 l20 4 l-4 22 l-18 -6 z" /><path d="M410 470 l24 2 l-2 14 l-24 -2 z" />
+        </g>
+        <text x="350" y="150" fill="#ffb4a8" font-size="11">连环追尾</text>
+        <text x="66" y="296" fill="#ffb4a8" font-size="11">侧翻货车</text>
+        <text x="380" y="500" fill="#ffb4a8" font-size="11">撞断的路灯</text>
+        <g stroke="#f0b83a" stroke-width="3" fill="rgba(240,184,58,0.12)">
+          <rect x="250" y="40" width="44" height="40" /><rect x="580" y="250" width="40" height="44" /><rect x="268" y="580" width="40" height="40" />
+        </g>
+        <text x="200" y="58" fill="#f0b83a" font-size="12">A 军事检查站</text>
+        <text x="520" y="242" fill="#f0b83a" font-size="12">B 地下避难所</text>
+        <text x="314" y="604" fill="#f0b83a" font-size="12">C 污染区</text>
+        <g fill="#e0645a"><circle cx="204" cy="36" r="8" /><circle cx="436" cy="36" r="8" /><circle cx="36" cy="322" r="8" /><circle cx="604" cy="322" r="8" /><circle cx="148" cy="604" r="8" /><circle cx="500" cy="604" r="8" /></g>
+        <g font-size="11" fill="#cfd6dc">
+          <text x="320" y="224" text-anchor="middle">北门 · 铁门</text>
+          <text x="452" y="314">东门 · 窄道</text>
+          <text x="140" y="290" text-anchor="middle">西门 · 半毁墙</text>
+          <text x="320" y="450" text-anchor="middle">南门 · 瓦砾</text>
+        </g>
+        <rect x="0" y="0" width="640" height="10" fill="#4a5560" opacity="0.6" /><text x="320" y="24" fill="#9fb0bf" font-size="11" text-anchor="middle">远景：城市剪影 · 倒塌电塔 · 烟柱（不参与碰撞）</text>
+      </svg>
+      <figcaption><b>改造后</b>：四个街区各有资源，道路上有事故现场，外围三个危险区（黄框），远景营造纵深</figcaption>
+    </figure>
+  </div>
+
+  <h3>1. 四个街区：各有资源和风险，不只是换模型</h3>
+  <div class="grid2">
+    <figure class="ref"><img src="img/district1.jpg" alt="加油站参考" loading="lazy" /><figcaption><b>加油站</b>：雨棚结构、破损加油机、加油管、地面油污、便利店货架、倒塌招牌</figcaption></figure>
+    <figure class="ref"><img src="img/district3.jpg" alt="仓库参考" loading="lazy" /><figcaption><b>仓库</b>：货架、托盘、打开的集装箱内部、室内照明</figcaption></figure>
+    <figure class="ref"><img src="img/district2.jpg" alt="居民区参考" loading="lazy" /><figcaption><b>居民区</b>：院子、破门窗、长草、废弃车</figcaption></figure>
+    <figure class="ref"><img src="img/core_base.jpg" alt="据点参考" loading="lazy" /><figcaption><b>中央据点</b>：发电机基座、线缆、铁丝网、探照灯、沙袋掩体</figcaption></figure>
+  </div>
+  <table>
+    <thead><tr><th>街区</th><th>资源（搜刮点给什么）</th><th>风险</th></tr></thead>
+    <tbody>
+      <tr><td>居民区（西北）</td><td>补给、医疗包（立刻回血 40）</td><td>室内狭窄，被堵门</td></tr>
+      <tr><td>加油站（东北）</td><td>手雷、燃烧弹；油罐可以引爆</td><td>爆炸物多，打偏了会炸到自己</td></tr>
+      <tr><td>仓库（东南）</td><td>大量零件</td><td>离据点最远，守卫最多</td></tr>
+      <tr><td>停车场（西南）</td><td>熟练度经验（给手上那把枪）</td><td>车辆迷宫，视线差</td></tr>
+    </tbody>
+  </table>
+
+  <h3>2. 道路：环境叙事，不随机撒</h3>
+  <div class="grid2">
+    <figure class="ref"><img src="img/road.jpg" alt="道路事故现场参考" loading="lazy" /><figcaption>一条路上的事故：警车、隔离墩、散落的杂物，形成半阻塞</figcaption></figure>
+    <figure class="ref"><img src="img/ground_mat2.jpg" alt="破损沥青参考" loading="lazy" /><figcaption>沥青裂缝里长草：用贴花 + 实例化草丛，不加新几何</figcaption></figure>
+  </div>
+  <ul>
+    <li>每条路 1 个固定场景：北路连环追尾、西路侧翻货车（货物散落）、东路撞断的路灯 + 行李箱、南路警方路障。</li>
+    <li>场景里的车和隔离墩<b>参与碰撞和寻路</b>（会改变僵尸走法，所以要跑 <code>sim:nav</code>）；碎玻璃、行李箱、垃圾<b>只是装饰</b>，不进网格。</li>
+  </ul>
+
+  <h3>3. 三个危险区：可选、高风险、高收益</h3>
+  <div class="grid3">
+    <figure class="ref"><img src="img/danger_checkpoint.jpg" alt="军事检查站参考" loading="lazy" /><figcaption><b>A 军事检查站</b>（北路外侧）：沙袋、铁丝网、废弃军车；给星级经验，守卫里有重装感染者</figcaption></figure>
+    <figure class="ref"><img src="img/danger_bunker.jpg" alt="地下避难所参考" loading="lazy" /><figcaption><b>B 地下避难所</b>（东路外侧）：铁门入口、窄通道；搜刮时间 5 秒（别处 3 秒），给医疗包 + 稀有卡牌</figcaption></figure>
+    <figure class="ref"><img src="img/danger_toxic.jpg" alt="污染区参考" loading="lazy" /><figcaption><b>C 污染区</b>（南路外侧）：化学桶、绿色污水（站在里面持续掉血）；给大量补给</figcaption></figure>
+  </div>
+  <p>距离控制：三处都在离据点 25–35 米内（白天只有 45–60 秒）；每局只开放其中一处（随机，横幅预告），不是一次全开。</p>
+
+  <h3>4. 远景和氛围</h3>
+  <div class="grid3">
+    <figure class="ref"><img src="img/vista.jpg" alt="远景参考" loading="lazy" /><figcaption>远处城市剪影 + 雾，让 80×80 不像封闭方框</figcaption></figure>
+    <figure class="ref"><img src="img/fx_smoke.jpg" alt="烟和光束参考" loading="lazy" /><figcaption>室内光束里的灰尘、燃烧车辆的烟</figcaption></figure>
+    <figure class="ref"><img src="img/fx_light.jpg" alt="夜间路灯雾气参考" loading="lazy" /><figcaption>夜晚冷色环境光 + 暖色路灯，路灯偶尔闪烁</figcaption></figure>
+  </div>
+  <ul>
+    <li>远景：断崖外一圈低模剪影（城市、电塔、山），不参与碰撞和寻路，一次绘制。</li>
+    <li>粒子：烟、灰尘、火花用对象池，有距离上限；低画质关。</li>
+  </ul>
+</section>
+
+<section id="m19">
+  <h2>M19 · 画面细节 <small><span class="tag now">已完成</span></small></h2>
+  <div class="grid3" style="margin-bottom:12px">
+    <figure class="mock"><img src="img/m19_grade.jpg" alt="调色前后" loading="lazy" /><figcaption><b>调色</b>：上白天、下夜晚；左关右开（白天褪色偏暖，夜晚压蓝）</figcaption></figure>
+    <figure class="mock"><img src="img/m19_decals.jpg" alt="地面贴花" loading="lazy" /><figcaption><b>地面贴花</b>：车旁的油污、沥青裂缝（夜里积水反光）</figcaption></figure>
+    <figure class="mock"><img src="img/m19_lab.jpg" alt="渲染实验面板" loading="lazy" /><figcaption><b>?render=1</b>：实时开关每一项，看帧时间和绘制次数</figcaption></figure>
+  </div>
+  <div class="verdict">性能（本机显卡、高画质、70 只僵尸）：<b>7.9 ms / 帧、641 次绘制</b>（目标 &lt; 16 ms、&lt; 700）。尸潮超过 40 只时僵尸不投影、GTAO 临时关闭，人少了自动恢复。</div>
+  <p class="lead">先做 <code>?render=1</code> 渲染实验场景（一辆车、一个集装箱、一段路、一栋小屋、一只僵尸，可以实时切开关），每项在这里调好再进正式地图。</p>
+  <div class="grid3">
+    <figure class="ref"><img src="img/ground_mat1.jpg" alt="积水参考" loading="lazy" /><figcaption><b>积水 / 油污</b>：贴花，低粗糙度反射天空</figcaption></figure>
+    <figure class="ref"><img src="img/ground_mat3.jpg" alt="碎石血迹参考" loading="lazy" /><figcaption><b>碎石 / 血迹 / 弹孔</b>：战斗中的贴花用环形缓冲（最多 64 个）</figcaption></figure>
+    <figure class="ref"><img src="img/style1.jpg" alt="调色参考" loading="lazy" /><figcaption><b>调色 LUT</b>：白天偏暖的末日色调，夜晚一张偏冷</figcaption></figure>
+  </div>
+  <table>
+    <thead><tr><th>项</th><th>高</th><th>中</th><th>低</th></tr></thead>
+    <tbody>
+      <tr><td>阴影</td><td>2048 PCFSoft</td><td>1024 PCFSoft</td><td>1024 PCF</td></tr>
+      <tr><td>GTAO</td><td>半分辨率</td><td>四分之一</td><td>关</td></tr>
+      <tr><td>接触阴影 / LUT</td><td>开</td><td>开</td><td>开</td></tr>
+      <tr><td>贴花</td><td>全部</td><td>一半</td><td>只有战斗贴花</td></tr>
+      <tr><td>粒子 / 远景</td><td>开</td><td>减半</td><td>只有远景</td></tr>
+      <tr><td>僵尸投影</td><td>&lt; 40 只时开</td><td>关</td><td>关</td></tr>
+    </tbody>
+  </table>
+  <p>夜晚独立 HDRI（Poly Haven，偏冷）；验收：GPU 模式 70 只僵尸、高画质帧时间 &lt; 16 ms、绘制调用 &lt; 700。</p>
+</section>
+
+<section id="m20">
+  <h2>M20 · 界面 <small><span class="tag now">已完成</span></small></h2>
+  <figure class="mock" style="margin-bottom:12px"><img src="img/m20_bench.jpg" alt="武器台：图标、3D 预览、强化前后对比" loading="lazy" /><figcaption><b>武器台</b>：左边列表的武器图标、右上可以拖动旋转的 3D 枪模；悬停「弹药改装」时伤害 24 → 25、DPS 111 → 117</figcaption></figure>
+  <div class="grid3">
+    <figure class="ref"><img src="../review/img/workshop.jpg" alt="武器改装界面参考" loading="lazy" /><figcaption>武器台加 3D 枪模型预览（TACZ 模型），可以拖动旋转</figcaption></figure>
+    <figure class="ref"><img src="../review/img/ui_workshop.jpg" alt="工坊界面参考" loading="lazy" /><figcaption>悬停强化线时，五项属性条显示「现在 → 买了之后」</figcaption></figure>
+    <div class="card">
+      <ul>
+        <li>分类音量：主音量 + 武器 / 僵尸 / 环境 / 界面</li>
+        <li>武器图标：TACZ 模型离线渲染剪影，武器台、工坊、HUD、结算页用</li>
+        <li>星级颜色描边</li>
+        <li>配色统一：金 <code>#f0b83a</code>、红 <code>#e0645a</code>、蓝 <code>#6fd0e8</code></li>
+        <li>只用键盘能完成所有操作</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="rules">
+  <h2>规则 <small>每一步都遵守</small></h2>
+  <table>
+    <tbody>
+      <tr><td>逻辑和画面分开</td><td>视觉模型、碰撞、寻路、阴影各管各的。装饰物（碎玻璃、杂草、贴花）不进网格，不改变僵尸走法。</td></tr>
+      <tr><td>每步验收</td><td><code>vue-tsc</code>、所有 <code>sim:*</code>、<code>check:balance</code>、新加的 <code>check:props</code> / <code>sim:stats</code> 通过；关键机位截图对比。</td></tr>
+      <tr><td>性能</td><td>重复模型用 InstancedMesh；粒子和贴花用对象池；不在帧循环里新建材质 / 几何体。</td></tr>
+      <tr><td>数值</td><td>新加成必须走来源登记，否则 <code>sim:stats</code> 对账失败；动到成长就重跑 <code>sim:progress</code>。</td></tr>
+      <tr><td>存档</td><td>动到存档结构就 <code>SAVE_EPOCH</code> +1。</td></tr>
+      <tr><td>不做</td><td>武器配件槽、扩大地图、背包网格、换引擎。</td></tr>
+    </tbody>
+  </table>
+  <h3>需要你回答的</h3>
+  <ul>
+    <li>没声音：exe 还是浏览器？完全没声还是部分？音量多少？（M14 先加了通用的保险措施）</li>
+    <li>升星特性表、风险事件可拒绝、霰弹枪 / 后期枪的平衡调整：不同意的话告诉我，默认按上面做。</li>
+  </ul>
+</section>
+
+<footer>参考图来自你提供的 ChatGPT 对话，只用于对照风格；「现在的游戏」是当前代码的截图；第一章俯视图由 <code>scripts/tools/map-png.ts</code> 从地图网格生成。</footer>
+</main>
+</body>
+</html>

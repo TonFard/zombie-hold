@@ -22,6 +22,8 @@ const ZOMBIE_STYLE = [
   { c: '#e05cff', r: 6 }, // colossus
   { c: '#9aff3a', r: 3.2 }, // spitter
   { c: '#ff6af0', r: 3.2 }, // screamer
+  { c: '#4aa8ff', r: 3.4 }, // 团队死斗：队友
+  { c: '#ff4a3a', r: 3.4 }, // 团队死斗：开过枪的敌人
 ];
 const STRUCT_COLOR = ['#c9a24a', '#6fd0e8', '#b0623a'];
 
@@ -121,6 +123,35 @@ function draw(): void {
     ctx.beginPath();
     ctx.arc(cx + x, cy + y, 2.2, 0, Math.PI * 2);
     ctx.fill();
+  }
+
+  // 搜刮点（M18）：普通点是黄色空心菱形，危险区是红色三角；超出范围时危险区贴边提示
+  const lt = radar.loot;
+  for (let i = 0; i < lt.length; i += 3) {
+    const danger = lt[i + 2] === 1;
+    let p = proj(lt[i] as number, lt[i + 1] as number);
+    if (Math.hypot(p[0], p[1]) > R - 5) {
+      if (!danger) continue;
+      const e = clampEdge(p, 7);
+      p = [e[0], e[1]];
+    }
+    ctx.save();
+    ctx.translate(cx + p[0], cy + p[1]);
+    if (danger) {
+      ctx.fillStyle = '#e8553f';
+      ctx.beginPath();
+      ctx.moveTo(0, -5);
+      ctx.lineTo(4.5, 3.5);
+      ctx.lineTo(-4.5, 3.5);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.rotate(Math.PI / 4);
+      ctx.strokeStyle = '#f0b83a';
+      ctx.lineWidth = 1.4;
+      ctx.strokeRect(-3, -3, 6, 6);
+    }
+    ctx.restore();
   }
 
   // 工坊

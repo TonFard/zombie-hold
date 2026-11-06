@@ -24,4 +24,7 @@ export interface Bullet {
   refund: number;
   /** 已经打过的僵尸 id，穿透时不会重复命中 */
   hit: number[];
+  /** 团队死斗：谁开的（士兵 id，-1 = 玩家；缺省也是玩家）和哪一队（缺省 0） */
+  owner?: number;
+  team?: 0 | 1;
 }

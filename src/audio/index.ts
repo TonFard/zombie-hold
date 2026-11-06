@@ -3,7 +3,7 @@ import type { WeaponKind } from '../game/data/weapons';
 import type { Game, GameEvents } from '../game/sim';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import { Ambience } from './ambience';
-import { AudioEngine } from './engine';
+import { AudioEngine, type Channel } from './engine';
 import { Sfx } from './sfx';
 
 export interface AudioSystem {
@@ -15,7 +15,13 @@ export interface AudioSystem {
   sample(url: string, gain: number): void;
   /** 在用户手势里调用：创建 / 恢复 AudioContext 并启动环境声 */
   unlock(): void;
+  /** 切回窗口 / 换输出设备后调用：恢复挂起的上下文，报废了就重建 */
+  revive(): void;
+  /** 设置页「测试声音」：一声枪响 + 一声界面音 */
+  test(): void;
   setVolume(v: number): void;
+  /** 分类音量（M20） */
+  setChannel(ch: Channel, v: number): void;
   /** 每帧调用：更新听者位置、环境声的威胁度 */
   update(dt: number): void;
   dispose(): void;
@@ -112,6 +118,7 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
       }
     },
     sample(url, gain) {
+      engine.channel = 'weapons';
       engine.sample(url, gain, engine.flat(0.9) ?? undefined);
     },
     unlock() {
@@ -119,8 +126,18 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
       engine.unlock();
       ambience.start();
     },
+    revive() {
+      engine.revive();
+    },
+    test() {
+      sfx.uiBuy();
+      window.setTimeout(() => sfx.shot('pistol'), 250);
+    },
     setVolume(v) {
       engine.setVolume(v);
+    },
+    setChannel(ch, v) {
+      engine.setChannel(ch, v);
     },
     update(dt) {
       engine.lx = game.player.x;

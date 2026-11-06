@@ -139,6 +139,7 @@ export class RigActor {
   readonly meshes: SkinnedMesh[] = [];
   private readonly mats: Material[] = [];
   private flashing = false;
+  private casting = true;
 
   /** 静止姿势下的肩 / 肘 / 腕，相对于 chest 骨（IK 用） */
   readonly shoulderLocal: [Vector3, Vector3];
@@ -188,6 +189,16 @@ export class RigActor {
   }
 
   /** 受击闪白 */
+  /** 投不投影（M19）：尸潮多的时候僵尸不投影，省掉阴影那一遍的绘制 */
+  setCastShadow(on: boolean): void {
+    if (on === this.casting) return;
+    this.casting = on;
+    // 发光部分本来就不投影：只动前两个（哑光、金属）
+    this.meshes.forEach((m, k) => {
+      if (k < 2) m.castShadow = on;
+    });
+  }
+
   setFlash(on: boolean): void {
     if (on === this.flashing) return;
     this.flashing = on;

@@ -29,7 +29,10 @@ function think(g: Game, z: Zombie): void {
   const pd = Math.hypot(pdx, pdz);
 
   const aggro = def.aggro * g.aggroScale * (g.flashOn ? FLASHLIGHT.aggro : 1);
-  if (player.alive && aggro > 0) {
+  if (def.crawl && player.alive && g.aggroScale > 0) {
+    // 爬行者：只追人，不打发电机
+    z.goal = 'player';
+  } else if (player.alive && aggro > 0) {
     if (z.goal === 'core' && pd < aggro) z.goal = 'player';
     else if (z.goal === 'player' && pd > aggro * 1.5) z.goal = 'core';
   } else {
@@ -74,7 +77,7 @@ function think(g: Game, z: Zombie): void {
   // 视线捷径：看得见目标就直接走过去，不绕格子
   if (z.noSepTimer <= 0) {
     if (z.goal === 'player') {
-      if (pd < 14 && grid.sweptClear(z.x, z.z, player.x, player.z, z.radius * 0.8)) {
+      if (pd < 14 && (def.crawl ? crawlClear(g, z.x, z.z, player.x, player.z) : grid.sweptClear(z.x, z.z, player.x, player.z, z.radius * 0.8))) {
         setWp(z, player.x, player.z);
         return;
       }
@@ -93,7 +96,8 @@ function think(g: Game, z: Zombie): void {
     }
   }
 
-  const field = g.nav.field(z.goal, z.def.large, ci);
+  const field = def.crawl && z.goal === 'player' ? g.nav.crawlField() : g.nav.field(z.goal, z.def.large, ci);
+  if (def.crawl) g.nav.prefix = -1;
   // 大体型单位贴墙站在被膨胀的格子里时，从相邻的可通行格开始走
   const borrowed = g.nav.prefix;
   const startCell = borrowed >= 0 ? borrowed : ci;
@@ -110,7 +114,7 @@ function think(g: Game, z: Zombie): void {
   let len = 0;
   let structCell = -1;
   for (let k = 0; k < LOOK && u >= 0; k++) {
-    if ((grid.structure[u] as number) >= 0) {
+    if ((grid.structure[u] as number) >= 0 && !(def.crawl && grid.crawl[u] === 1)) {
       structCell = u;
       break;
     }
@@ -156,6 +160,18 @@ function think(g: Game, z: Zombie): void {
   }
 }
 
+/** 爬行者的视线：沿直线逐格走，只有墙、炮塔挡它，路障可以钻 */
+function crawlClear(g: Game, x0: number, z0: number, x1: number, z1: number): boolean {
+  const grid = g.grid;
+  const d = Math.hypot(x1 - x0, z1 - z0);
+  const n = Math.max(1, Math.ceil(d / 0.4));
+  for (let k = 1; k < n; k++) {
+    const t = k / n;
+    if (grid.blocksCrawler(grid.cellX(x0 + (x1 - x0) * t), grid.cellY(z0 + (z1 - z0) * t))) return false;
+  }
+  return true;
+}
+
 function move(g: Game, z: Zombie, i: number, dt: number): void {
   const { grid } = g;
   const prevState = z.state;
@@ -178,7 +194,9 @@ function move(g: Game, z: Zombie, i: number, dt: number): void {
       const dz = z.wpZ - z.z;
       const dl = Math.hypot(dx, dz);
       if (dl > 1e-4) {
-        const slow = (grid.slow[grid.indexAt(z.x, z.z)] ? 0.6 : 1) * (z.slowT > 0 ? 1 - z.slowK : 1) * (z.hasteT > 0 ? 1 + z.hasteK : 1) * g.run.modSpeed;
+        const here = grid.indexAt(z.x, z.z);
+        const under = z.def.crawl && grid.crawl[here] === 1 ? z.def.crawl.slow : 1;
+        const slow = (grid.slow[here] ? 0.6 : 1) * (z.slowT > 0 ? 1 - z.slowK : 1) * (z.hasteT > 0 ? 1 + z.hasteK : 1) * g.run.modSpeed * under;
         const sp = z.speed * slow * Math.min(1, dl / 0.15 + 0.3);
         dvx = (dx / dl) * sp;
         dvz = (dz / dl) * sp;
@@ -553,7 +571,7 @@ export function stepZombies(g: Game, dt: number): void {
   for (let i = 0; i < n; i++) {
     const z = zs[i]!;
     if (!z.alive) continue;
-    resolveCircleVsGrid(grid, z, z.radius);
+    resolveCircleVsGrid(grid, z, z.radius, false, !!z.def.crawl);
     track(g, z, i, dt);
   }
 }

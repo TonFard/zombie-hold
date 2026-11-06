@@ -1,6 +1,8 @@
 import { GRID_H, GRID_W, type Grid } from '../world/grid';
 
 export const INF = 1e9;
+/** 爬行者钻过一格路障的额外代价：比绕两三格近就钻 */
+const CRAWL_COST = 2;
 const SQRT2 = 1.41421356;
 
 const DX = [1, -1, 0, 0, 1, 1, -1, -1];
@@ -27,6 +29,8 @@ export class FlowField {
     readonly large: boolean,
     /** 目标是不是发电机（影响大体型地图是否豁免发电机的膨胀） */
     private readonly toCore: boolean,
+    /** 爬行者用：路障格不算建筑，从底下钻过去（代价按 CRAWL_COST 算，不按路障的拆除代价） */
+    private readonly crawler = false,
   ) {
     const cap = GRID_W * GRID_H * 8 + 16;
     this.heapK = new Float32Array(cap);
@@ -111,8 +115,9 @@ export class FlowField {
       if (d > (dist[u] as number)) continue;
       const ux = u % GRID_W;
       const uy = (u / GRID_W) | 0;
-      // 其他格走进 u 要付的额外代价
-      const enter = extra[u] as number;
+      // 其他格走进 u 要付的额外代价。爬行者钻路障：换成很小的代价，不是"要拆掉它"的代价
+      const crawlU = this.crawler && grid.crawl[u] === 1;
+      const enter = crawlU ? CRAWL_COST : (extra[u] as number);
       for (let k = 0; k < 8; k++) {
         const vx = ux + (DX[k] as number);
         const vy = uy + (DY[k] as number);
@@ -123,7 +128,9 @@ export class FlowField {
           // 斜向：两侧正交格都不能阻挡
           const ax = vy * GRID_W + ux;
           const bx = uy * GRID_W + vx;
-          if (mask[ax] || mask[bx] || (structure[ax] as number) >= 0 || (structure[bx] as number) >= 0) continue;
+          const blockA = (structure[ax] as number) >= 0 && !(this.crawler && grid.crawl[ax] === 1);
+          const blockB = (structure[bx] as number) >= 0 && !(this.crawler && grid.crawl[bx] === 1);
+          if (mask[ax] || mask[bx] || blockA || blockB) continue;
         }
         const nd = d + (k >= 4 ? SQRT2 : 1) + enter;
         if (nd < (dist[v] as number)) {

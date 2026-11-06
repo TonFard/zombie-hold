@@ -341,7 +341,7 @@ await MeshoptSimplifier.ready;
 const ids = args.textures ? [] : args.only ? [args.only] : Object.keys(cfg.assets);
 const manifestPath = path.join(outDir, 'manifest.json');
 const prev = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
-const manifest = { enabled: !!cfg.enabled, hdri: prev.hdri ?? null, assets: args.only || args.textures ? prev.assets ?? {} : {}, textures: prev.textures ?? {} };
+const manifest = { enabled: !!cfg.enabled, hdri: prev.hdri ?? null, hdriNight: prev.hdriNight ?? null, assets: args.only || args.textures ? prev.assets ?? {} : {}, textures: prev.textures ?? {} };
 const credits = args.only || args.textures ? prev.credits ?? {} : {};
 fs.mkdirSync(outDir, { recursive: true });
 let failed = 0;
@@ -378,6 +378,19 @@ if (!args.only) {
       manifest.hdri = 'env.hdr';
       credits.hdri = { name: cfg.hdri, author: 'Poly Haven', license: 'CC0', url: `https://polyhaven.com/a/${cfg.hdri}` };
       console.log(`  HDRI ${cfg.hdri} (${res})`);
+    }
+  }
+  // 夜晚 HDRI（M19）：偏冷的夜空，夜里换成它做环境反射
+  if (cfg.hdriNight) {
+    const files = await getJson(`https://api.polyhaven.com/files/${cfg.hdriNight}`);
+    const hdr = files.hdri?.[res]?.hdr;
+    if (hdr) {
+      const cached = path.join(cacheDir, 'hdri', `${cfg.hdriNight}_${res}.hdr`);
+      await download(hdr.url, cached);
+      fs.copyFileSync(cached, path.join(outDir, 'env_night.hdr'));
+      manifest.hdriNight = 'env_night.hdr';
+      credits.hdriNight = { name: cfg.hdriNight, author: 'Poly Haven', license: 'CC0', url: `https://polyhaven.com/a/${cfg.hdriNight}` };
+      console.log(`  夜晚 HDRI ${cfg.hdriNight} (${res})`);
     }
   }
 }

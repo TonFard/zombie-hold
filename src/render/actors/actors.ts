@@ -33,6 +33,8 @@ const ELITE_MAT = new MeshBasicMaterial({ color: new Color(3, 2.1, 0.5), transpa
 
 export class Actors {
   private readonly zombies = new Map<number, ZActor>();
+  /** 僵尸投影：只在高画质开（view.setQuality 设） */
+  shadows = true;
   private readonly corpses: Corpse[] = [];
   private time = 0;
   private readonly off: Array<() => void> = [];
@@ -96,6 +98,10 @@ export class Actors {
     const { game } = this;
 
     // ---- 活着的僵尸 ----
+    // 投影（M19）：场上超过 40 只、或者画质不是高的时候，僵尸都不投影（阴影那一遍的绘制调用接近减半）
+    let living = 0;
+    for (const z of game.zombies) if (z.alive) living++;
+    const cast = this.shadows && living <= 40;
     for (const z of game.zombies) {
       if (!z.alive) continue;
       const za = this.ensure(z);
@@ -111,6 +117,7 @@ export class Actors {
       else if (z.state === 'attack' && z.attackTimer < 0.47 * T) attack = (0.47 * T - z.attackTimer) / T;
 
       const a = za.actor;
+      a.setCastShadow(cast);
       a.group.position.set(z.x, 0, z.z);
       a.group.rotation.y = z.yaw;
       poseZombie(a, {

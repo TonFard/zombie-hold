@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>黎明 · 修改意见（对照 ChatGPT 建议 + 实测）</title>
+<style>
+  :root {
+    --bg: #0b0f14;
+    --panel: #121820;
+    --line: rgba(255, 255, 255, 0.08);
+    --text: #d8dee4;
+    --dim: #8f9aa6;
+    --gold: #f0b83a;
+    --green: #6fcf8a;
+    --red: #e0645a;
+    --blue: #6fd0e8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.7 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+  header.top { padding: 40px 6vw 24px; border-bottom: 1px solid var(--line); background: linear-gradient(180deg, #151c26, var(--bg)); }
+  header.top h1 { margin: 0 0 6px; font-size: 28px; letter-spacing: 2px; }
+  header.top p { margin: 0; color: var(--dim); }
+  nav.toc { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 6vw; background: rgba(11, 15, 20, 0.95); border-bottom: 1px solid var(--line); }
+  nav.toc a { color: var(--dim); text-decoration: none; padding: 4px 10px; border: 1px solid var(--line); font-size: 13px; }
+  nav.toc a:hover, nav.toc a:focus-visible { color: var(--gold); border-color: var(--gold); outline: none; }
+  main { padding: 10px 6vw 80px; max-width: 1400px; }
+  section { margin-top: 44px; }
+  h2 { font-size: 22px; margin: 0 0 4px; padding-left: 12px; border-left: 4px solid var(--gold); }
+  h2 small { font-size: 13px; color: var(--dim); font-weight: 400; margin-left: 10px; }
+  h3 { font-size: 16px; margin: 22px 0 8px; color: var(--blue); }
+  p { margin: 8px 0; }
+  .lead { color: var(--dim); margin: 6px 0 14px; }
+  .tag { display: inline-block; white-space: nowrap; padding: 1px 8px; font-size: 12px; border: 1px solid; margin-right: 6px; vertical-align: 2px; }
+  .do { color: var(--green); border-color: var(--green); }
+  .done { color: var(--blue); border-color: var(--blue); }
+  .later { color: var(--gold); border-color: var(--gold); }
+  .no { color: var(--red); border-color: var(--red); }
+  table { width: 100%; border-collapse: collapse; margin: 10px 0; font-size: 14px; }
+  th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; background: rgba(255, 255, 255, 0.02); }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 14px; }
+  .grid3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+  figure { margin: 0; background: var(--panel); border: 1px solid var(--line); }
+  figure img { display: block; width: 100%; height: auto; }
+  figcaption { padding: 8px 12px; font-size: 13px; color: var(--dim); }
+  figcaption b { color: var(--text); }
+  figure.ref figcaption::before { content: "参考图"; color: var(--gold); margin-right: 8px; font-size: 12px; }
+  figure.game figcaption::before { content: "游戏实测"; color: var(--blue); margin-right: 8px; font-size: 12px; }
+  .card { background: var(--panel); border: 1px solid var(--line); padding: 14px 18px; }
+  .verdict { margin: 8px 0; padding: 10px 14px; background: rgba(240, 184, 58, 0.06); border-left: 3px solid var(--gold); }
+  code, pre { font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px; }
+  code { background: rgba(255, 255, 255, 0.06); padding: 1px 5px; }
+  pre { background: #0e131a; border: 1px solid var(--line); padding: 12px 14px; overflow-x: auto; line-height: 1.5; }
+  ul { margin: 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  .mock { background: #0e131a; border: 1px solid var(--line); padding: 14px 18px; font-size: 14px; }
+  .mock .row { display: grid; grid-template-columns: 120px 1fr 90px; gap: 10px; padding: 4px 0; border-bottom: 1px dashed var(--line); }
+  .mock .row:last-child { border-bottom: 0; }
+  .mock .k { color: var(--dim); }
+  .mock .v { text-align: right; font-variant-numeric: tabular-nums; color: var(--green); }
+  .mock .src { color: var(--dim); font-size: 13px; }
+  .mock .src span { display: inline-block; margin-right: 10px; }
+  .mock .src .p { color: var(--green); }
+  .mock .src .m { color: var(--gold); }
+  .mock .bar { height: 6px; background: rgba(255, 255, 255, 0.06); margin-top: 4px; display: flex; }
+  .mock .bar i { display: block; height: 100%; }
+  .legend { font-size: 12px; color: var(--dim); margin-top: 8px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; margin: 0 4px 0 12px; vertical-align: -1px; }
+  footer { margin-top: 60px; color: var(--dim); font-size: 13px; border-top: 1px solid var(--line); padding-top: 16px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>黎明 · 修改意见</h1>
+  <p>对照 ChatGPT 那份建议逐条看过、在游戏里实测（截图都是当前代码跑出来的），标出哪些已经有了、哪些值得做、哪些先别做。</p>
+</header>
+<nav class="toc" aria-label="目录">
+  <a href="#decision">决定</a>
+  <a href="#sum">结论</a>
+  <a href="#prog">成长重做（已完成）</a>
+  <a href="#ground">悬空</a>
+  <a href="#sound">没有声音</a>
+  <a href="#tab">Tab 数值后台</a>
+  <a href="#weapon">强化 / 升星</a>
+  <a href="#render">3D 渲染</a>
+  <a href="#ui">UI 风格</a>
+  <a href="#content">新内容建议</a>
+  <a href="#plan">排期</a>
+</nav>
+<main>
+
+<section id="decision">
+  <h2>决定（2026-11） <small>除了武器配件槽，其余全部要做</small></h2>
+  <p class="lead">实施方案写在 <code>docs/PLAN.md</code> 第 14 节，按依赖排成 6 个里程碑：</p>
+  <table>
+    <thead><tr><th>里程碑</th><th>内容</th></tr></thead>
+    <tbody>
+      <tr><td>M14</td><td>修 bug：悬空落地（按网格面积落地、叠放集装箱、<code>check:props</code>）、没有声音（解锁 / 恢复 / 换设备 / 音量曲线 / 测试按钮 / exe 自检）</td></tr>
+      <tr><td>M15</td><td>数值透明：加成来源登记（Ledger）、Tab 三页数值后台（基础 → 各来源 × 倍率 → 最终，含实测 DPS）、战斗复盘页</td></tr>
+      <tr><td>M16</td><td>武器台「枪机」射速线、升星 ★1–★3 特性、霰弹枪和后期枪的平衡</td></tr>
+      <tr><td>M17</td><td>爬行者、重装感染者、5 种风险事件、每章搜刮点</td></tr>
+      <tr><td>M18</td><td>渲染实验场景、接触阴影、GTAO、夜晚 HDRI、阴影分级、地面贴花、调色 LUT</td></tr>
+      <tr><td>M19</td><td>分类音量、武器图标、武器台 3D 预览、强化前后对比、配色统一</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="sum">
+  <h2>一句话结论</h2>
+  <p class="lead">ChatGPT 的方向大体对，但它只看了 GitHub 上的文档，很多建议游戏里已经有了，有几条和现有设计冲突。下面每条都标了状态：</p>
+  <p>
+    <span class="tag done">已有</span>代码里已经实现
+    <span class="tag do">建议做 / 已排期</span>要做，见 PLAN.md 第 14 节
+    <span class="tag no">不做</span>和现有设计冲突、收益太低，或你决定不做
+  </p>
+  <table>
+    <thead><tr><th>ChatGPT 的建议</th><th>状态</th><th>实际情况</th></tr></thead>
+    <tbody>
+      <tr><td>车辆、集装箱悬空 · 统一落地检测</td><td><span class="tag do">建议做</span></td><td>实测第一章大部分车是贴地的；模型检查发现 <code>car_truck</code>、<code>container_rust</code> 等几个模型底下有零碎网格，落地点算低了。要做的是加一个自动检查，不是全部重摆。</td></tr>
+      <tr><td>没有声音 · 排查 AudioContext</td><td><span class="tag do">建议做</span></td><td>浏览器和打包好的 exe 里，AudioContext 都能正常进入 running 状态，所以问题不在它说的初始化。需要你那边的复现信息（见下文）。</td></tr>
+      <tr><td>Tab 面板：基础 + 加成 + 百分比来源</td><td><span class="tag do">建议做</span></td><td>现在的 Tab 只有最终值，而且大部分是「—」，确实没法排查。值得重做，公式要按游戏实际的乘法链来写。</td></tr>
+      <tr><td>武器五项属性：伤害、后坐、连射、重量、填弹</td><td><span class="tag done">已有</span></td><td>大厅武器台已有伤害、后坐、轻量化、扩容四条线，重量真的影响移速；缺的是「连射」这条线。</td></tr>
+      <tr><td>强化 +0~+10 · 升星 1~5 星</td><td><span class="tag do">已排期</span></td><td>局内工坊 8 级 + 武器台 3×4 级 + 这次加的熟练度 5 级，已经有三层。再加两层只会更乱，建议把「升星」做成熟练度满级后的额外几星。</td></tr>
+      <tr><td>武器击杀数解锁特性（熟练度）</td><td><span class="tag done">已有</span></td><td>这次已经做了：用哪把枪杀怪就涨哪把的熟练度，决定等级上限、武器台等级和下一把枪的解锁。</td></tr>
+      <tr><td>PBR / HDRI / 阴影 / ACES / Bloom / 雾</td><td><span class="tag done">已有</span></td><td>都已经开着：ACES 色调映射、PCF 阴影、PMREM 处理的 HDRI、UnrealBloom、指数雾、Poly Haven PBR 模型。缺的是 AO、接触阴影和地面贴花。</td></tr>
+      <tr><td>爬行者 / 吐酸者 / 尖啸者 / 重装</td><td><span class="tag done">已有一半</span></td><td>吐酸者、尖啸者已经有了（它看的文档是旧的）。爬行者和重装感染者可以加。</td></tr>
+      <tr><td>随机事件：停电、迁徙、空投、精英…</td><td><span class="tag done">已有一半</span></td><td>已有夜晚词缀（血月、浓雾、停电、尸群、精英夜）、白天空投、夜间挑战。可以补「风险换收益」的事件。</td></tr>
+      <tr><td>武器配件槽</td><td><span class="tag no">不做</span></td><td>你决定不做：和武器台强化线作用重叠。</td></tr>
+      <tr><td>战斗复盘页</td><td><span class="tag do">建议做</span></td><td>数据大部分已经在统计里（击杀分类、受伤、建造），这次又加了每把枪的击杀。工作量小、对平衡排查帮助大。</td></tr>
+      <tr><td>换 UE / Unity</td><td><span class="tag no">不建议</span></td><td>它自己也说不需要换。同意。</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="prog">
+  <h2>成长重做 <small>你最关心的：手枪玩四五局才轮到冲锋枪 · 已完成</small></h2>
+  <p class="lead">原来的问题：一局普通玩家能拿 20–90 勋章，冲锋枪解锁只要 40 勋章、列兵就能买，第一局结束就能换枪，手枪没有存在意义。</p>
+  <h3>新规则：武器熟练度</h3>
+  <ul>
+    <li>用哪把枪打死僵尸，就涨哪把枪的经验：击杀 +1，爆头击杀再 +1。炮塔、地刺的击杀不算。</li>
+    <li>熟练度 0–5 级，决定这把枪能升多高：局内工坊上限 5 → 6（2 级）→ 7（4 级）→ 8（精通）；武器台每条线 1 / 2 / 3 级分别要熟练度 1 / 3 / 5。</li>
+    <li>解锁下一把枪：<b>上一把精通</b>，再花勋章。勋章再多也跳不过去。原来用勋章买的「等级上限」全部删掉。</li>
+    <li>手枪熟练度 3 解锁双持，精通解锁「随身武器」（开局直接拿新枪，不用每局攒零件买）。</li>
+    <li>结算页显示这局每把枪涨了多少；武器台和军械库显示熟练度进度和还差多少。存档纪元 +1，更新后进度会重置。</li>
+  </ul>
+  <div class="grid2">
+    <figure class="game"><img src="img/game_r_bench.png" alt="武器台：手枪熟练度 0/5，五级奖励一览" loading="lazy" /><figcaption><b>武器台</b>：熟练度进度条、每一级的奖励、强化线需要的熟练度</figcaption></figure>
+    <figure class="game"><img src="img/game_r_armory.png" alt="军械库：解锁冲锋枪需要手枪熟练度 5" loading="lazy" /><figcaption><b>军械库</b>：「解锁冲锋枪 · 需要 M9 手枪熟练度 5（现在 0）」</figcaption></figure>
+  </div>
+  <h3>模拟结果 <small style="color:var(--dim);font-weight:400">npm run sim:progress -- --runs 60（机器人按真实规则连打 60 局，每局结束结算、去大厅花钱；机器人不会爆头，按人类 15% 爆头率补经验）</small></h3>
+  <table>
+    <thead><tr><th>武器</th><th class="num">开始用</th><th class="num">精通</th><th class="num">练了几局</th><th class="num">主用时每局经验</th><th class="num">精通门槛</th></tr></thead>
+    <tbody>
+      <tr><td>M9 手枪</td><td class="num">第 1 局</td><td class="num">第 5 局</td><td class="num">5</td><td class="num">114</td><td class="num">500</td></tr>
+      <tr><td>冲锋枪</td><td class="num">第 6 局</td><td class="num">第 9 局</td><td class="num">4</td><td class="num">187</td><td class="num">680</td></tr>
+      <tr><td>霰弹枪</td><td class="num">第 10 局</td><td class="num">第 21 局</td><td class="num">12</td><td class="num">46</td><td class="num">480</td></tr>
+      <tr><td>突击步枪</td><td class="num">第 30 局</td><td class="num">第 34 局</td><td class="num">5</td><td class="num">308</td><td class="num">1300</td></tr>
+      <tr><td>狙击步枪</td><td class="num">第 37 局</td><td class="num">第 42 局</td><td class="num">6</td><td class="num">76</td><td class="num">500</td></tr>
+      <tr><td>轻机枪</td><td class="num">第 50 局</td><td class="num">第 56 局</td><td class="num">7</td><td class="num">133</td><td class="num">880</td></tr>
+      <tr><td>榴弹发射器</td><td class="num">—</td><td class="num">—</td><td class="num">60 局内没到</td><td class="num">—</td><td class="num">680</td></tr>
+    </tbody>
+  </table>
+  <h3>带什么枪收益最高 <small style="color:var(--dim);font-weight:400">同一套局外加成，每把枪熟练度 2，各打 3 局</small></h3>
+  <table>
+    <thead><tr><th>只带这把</th><th class="num">平均撑几夜</th><th class="num">每局勋章</th><th class="num">这把枪击杀</th><th class="num">工坊价</th><th>结论</th></tr></thead>
+    <tbody>
+      <tr><td>突击步枪</td><td class="num">5.0</td><td class="num">74</td><td class="num">278</td><td class="num">600</td><td>最强，穿透从一开始就有</td></tr>
+      <tr><td>手枪</td><td class="num">4.0</td><td class="num">48</td><td class="num">168</td><td class="num">0</td><td>零成本，前期性价比最高</td></tr>
+      <tr><td>冲锋枪</td><td class="num">4.0</td><td class="num">46</td><td class="num">139</td><td class="num">350</td><td>和手枪差不多：350 零件买它，前几夜反而少了炮塔</td></tr>
+      <tr><td>轻机枪 / 榴弹</td><td class="num">3.0</td><td class="num">30</td><td class="num">70–90</td><td class="num">1000+</td><td>太贵，第 3–4 夜才买得起</td></tr>
+      <tr><td>霰弹枪 / 狙击</td><td class="num">2.3–2.7</td><td class="num">23–28</td><td class="num">52–54</td><td class="num">450 / 800</td><td>机器人用不好（站桩、不瞄头），人类会好一些</td></tr>
+    </tbody>
+  </table>
+  <div class="verdict">
+    <b>还需要你拍板的两个平衡问题</b>（这次没改，因为会动到枪本身的数值）：
+    <ul>
+      <li><b>霰弹枪太难练</b>：机器人每局只有 46 经验，要 12 局才精通，卡在冲锋枪和步枪之间。建议霰弹枪近距离伤害 +15%，或把精通门槛再降到 380。</li>
+      <li><b>后期枪工坊价太贵</b>：轻机枪 1000、榴弹 1100 零件，前三夜都买不起。有了「随身武器」后能直接带进局，问题小一些，但没买随身武器的人会觉得解锁了也用不上。</li>
+      <li>勋章节奏：机器人 60 局累计 2110 勋章，整张表 6390，大约 180 局买满。机器人最远只到第 9 夜、没通关过，真人通关一次就是 270+ 勋章，按你上次「太简单」的反馈，这个总价我先不动。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="ground">
+  <h2>悬空的车和集装箱 <small><span class="tag do">建议做</span></small></h2>
+  <p class="lead">我在第一章把每个停车位、集装箱都截了图：大部分是贴地的。真正有问题的是少数几个模型自身的「落地点」算错了。</p>
+  <div class="grid3">
+    <figure class="game"><img src="img/game_cars.png" alt="停车场的车，轮胎贴地" loading="lazy" /><figcaption><b>停车场</b>：轿车轮胎贴地，阴影正常</figcaption></figure>
+    <figure class="game"><img src="img/game_car_lone.png" alt="另一辆车" loading="lazy" /><figcaption><b>路边的车</b>：同样是贴地的</figcaption></figure>
+    <figure class="game"><img src="img/game_r_cont_stack.png" alt="两层集装箱" loading="lazy" /><figcaption><b>叠放的集装箱</b>：两层之间有一条缝，底层底边有一圈浮起</figcaption></figure>
+  </div>
+  <h3>原因</h3>
+  <p>代码按模型的<b>最低点</b>落地（<code>realProps.ts loadModel</code>：<code>-box.min.y</code>）。如果一个模型底下还挂着别的网格（阴影片、拖车钩、底盘碎片），最低点就比轮胎低，整辆车被抬起来。我写了个检查脚本 <code>node scripts/tools/prop-ground.mjs</code>，逐个模型列出「最低点」和「其余网格的最低点」：</p>
+  <table>
+    <thead><tr><th>模型</th><th class="num">模型高度</th><th class="num">最低点</th><th class="num">其余网格最低</th><th>判断</th></tr></thead>
+    <tbody>
+      <tr><td>car_truck（皮卡）</td><td class="num">12.00</td><td class="num">0.00</td><td class="num">1.79</td><td>车身离地 15%，最可能就是你看到的悬空</td></tr>
+      <tr><td>container_rust（锈集装箱）</td><td class="num">5.93</td><td class="num">−1.00</td><td class="num">−0.70</td><td>底下有 5% 的零件，箱体浮起</td></tr>
+      <tr><td>car_sedan2 / car_crashed</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>各浮起约 5%，肉眼不明显</td></tr>
+      <tr><td>wooden_crate_01 等带脚的箱子</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td>脚本误报：箱子本来就有支脚</td></tr>
+    </tbody>
+  </table>
+  <h3>怎么修</h3>
+  <ul>
+    <li>和树一样，给这几个模型配一个「落地百分位」（代码里已有 <code>GROUND_PCT</code>，树就是这么修的）；或者按「面积最大的几个网格的底」落地，而不是全局最低点。</li>
+    <li>叠放集装箱：第二层的 y 用上一层模型的实际高度，不用 <code>h / layers</code> 平均分。</li>
+    <li>把 <code>prop-ground.mjs</code> 改成按网格面积判断（去掉带脚箱子的误报），加进 <code>props:import</code>，以后导入新模型自动报警。ChatGPT 说的「红色异常框调试模式」可以不做，脚本报出来就够了。</li>
+  </ul>
+  <div class="grid2">
+    <figure class="ref"><img src="img/ground_cars.jpg" alt="参考：废弃停车场" loading="lazy" /><figcaption>它给的落地参考：轮胎压进地面、车底有接触阴影</figcaption></figure>
+    <figure class="ref"><img src="img/ground_containers.jpg" alt="参考：集装箱堆场" loading="lazy" /><figcaption>集装箱底边有一圈暗的接触阴影，这是「贴地感」的关键</figcaption></figure>
+  </div>
+  <p>注意：参考图看起来「贴地」，很大一部分是<b>接触阴影 / AO</b>的功劳，我们现在没有（见渲染一节）。所以修完落地点后，再加一层 AO 效果会好很多。</p>
+</section>
+
+<section id="sound">
+  <h2>没有声音 <small><span class="tag do">建议做 · 需要你的复现信息</span></small></h2>
+  <p class="lead">ChatGPT 列的排查顺序是通用的，我按它的思路实际测了：</p>
+  <table>
+    <thead><tr><th>检查项</th><th>浏览器（vite dev）</th><th>打包 exe（release/win-unpacked/Dawn.exe）</th></tr></thead>
+    <tbody>
+      <tr><td>AudioContext 能创建</td><td>✓</td><td>✓（Electron 45.2.2 / Chrome 156）</td></tr>
+      <tr><td>第一次点击 / 按键后 unlock</td><td>✓ 点击前 <code>ready:false</code>，点击后 <code>state:"running"</code></td><td>✓ 新建的上下文直接是 running</td></tr>
+      <tr><td>主音量</td><td>0.8（存档默认值）</td><td>—</td></tr>
+      <tr><td>离线渲染一段正弦波</td><td>—</td><td>峰值 1.0，合成器能出数值</td></tr>
+      <tr><td>TACZ 枪声文件</td><td>—</td><td>能读到 manifest；手枪的 gun.json 里没有 ogg 路径 → 枪声走程序合成</td></tr>
+    </tbody>
+  </table>
+  <p>结论：音频引擎本身是好的，exe 里也能正常出声。可能的原因要靠你那边的信息缩小范围：</p>
+  <ul>
+    <li><b>Windows 音量合成器</b>里「黎明 / Dawn」被单独静音了（Electron 应用会单独出现一项）。</li>
+    <li>进游戏前从来没有点过鼠标或按过键：现在 unlock 只挂在 <code>pointerdown</code> / <code>keydown</code> 上，如果直接用手柄或者触屏，就永远不会解锁。</li>
+    <li>存档里音量被拖到了 0：设置页的音量是平方曲线（0.2 实际只有 4%），听起来像没声音。</li>
+    <li>耳机 / 输出设备在游戏开着时切换：AudioContext 不会自动跟着换设备。</li>
+  </ul>
+  <div class="verdict">请告诉我：是浏览器版还是 exe 版？完全没声音还是只有部分（比如有 UI 声没枪声）？设置里音量是多少？我会针对性修。同时建议加两处保险：设置页加一个「测试声音」按钮；窗口重新获得焦点时如果上下文是 suspended 就再 resume 一次。</div>
+</section>
+
+<section id="tab">
+  <h2>Tab 数值后台 <small><span class="tag do">建议做</span></small></h2>
+  <div class="grid2">
+    <figure class="game"><img src="img/game_r_tab.png" alt="现在的 Tab 面板：属性一列大部分是破折号" loading="lazy" /><figcaption><b>现在的 Tab</b>：属性只显示最终值，没有加成的项一律「—」，看不出基础是多少、哪来的加成</figcaption></figure>
+    <figure class="ref"><img src="img/stats_panel1.jpg" alt="参考：王者荣耀属性详情面板" loading="lazy" /><figcaption>王者荣耀的属性详情：基础值 + 额外值分开写</figcaption></figure>
+  </div>
+  <h3>注意 ChatGPT 公式的问题</h3>
+  <p>它给的统一公式是 <code>(基础 + 固定加成) × (1 + Σ百分比)</code>，而且它自己的例子都算错了（写 138、实际是 150）。我们游戏<b>不是这样算的</b>：卡牌、局外、武器台、难度都是各自<b>相乘</b>（例如伤害 = 武器等级伤害 × 武器台 × 卡牌伤害 × 暴击 × 爆头 × 距离衰减）。面板必须照实际算法显示，否则排查时显示值和实际伤害对不上，反而误导。</p>
+  <h3>建议的样子</h3>
+  <div class="grid2">
+    <div class="mock" aria-label="Tab 面板示意">
+      <div class="row"><span class="k">武器伤害</span><span class="src"><span>基础 23（手枪 1 级）</span><span class="p">× 1.06 武器台</span><span class="p">× 1.10 卡牌·火力</span></span><span class="v">26.8</span></div>
+      <div class="row"><span class="k">射速</span><span class="src"><span>基础 3.0 发/秒</span><span class="p">× 1.70 双持</span><span class="p">× 1.04 射击训练</span></span><span class="v">5.3 · 318 RPM</span></div>
+      <div class="row"><span class="k">移动速度</span><span class="src"><span>基础 100%</span><span class="p">× 1.03 负重训练</span><span class="m">× 0.94 重量 5.0 kg</span></span><span class="v">96.8%</span></div>
+      <div class="row"><span class="k">受到伤害</span><span class="src"><span>基础 100%</span><span class="p">× 0.96 防弹插板</span><span class="p">× 0.88 卡牌·护甲</span></span><span class="v">84.5%</span></div>
+      <div class="row"><span class="k">零件收益</span><span class="src"><span>基础 100%</span><span class="p">× 1.25 困难</span><span class="p">× 1.05 零件收益</span></span><span class="v">131%</span></div>
+      <div class="bar" aria-hidden="true"><i style="width:62%;background:#8f9aa6"></i><i style="width:10%;background:#6fd0e8"></i><i style="width:18%;background:#6fcf8a"></i></div>
+      <div class="legend"><i style="background:#8f9aa6"></i>基础<i style="background:#6fd0e8"></i>局外（武器台 / 训练）<i style="background:#6fcf8a"></i>本局（卡牌 / 词缀）</div>
+    </div>
+    <div class="card">
+      <b>做法</b>
+      <ul>
+        <li>每个加成源在修改 <code>g.mods</code> 时顺便登记一条「来源 · 倍率」（卡牌、局外、难度、章节、词缀、武器台、重量），Tab 只读这张表，不再自己重算。</li>
+        <li>每行显示 <b>基础值 → 各来源（乘号）→ 最终值</b>，绿色是增益、黄色是减益；有上限的（射速、移速下限 0.76）标出「已触顶」。</li>
+        <li>加一行「实测」：本局这把枪实际造成的伤害 / 开火时间，和理论 DPS 对比，平衡问题一眼能看出来。</li>
+        <li>射速同时显示 RPM（ChatGPT 这条建议是对的）。</li>
+        <li>sim 里加一个检查：Tab 显示的最终值和 <code>statsOf()</code> 实际返回的一致，防止面板和逻辑脱节。</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="weapon">
+  <h2>武器强化与升星 <small><span class="tag done">大部分已有</span> <span class="tag do">升星已排期</span></small></h2>
+  <p class="lead">你要的五项属性：伤害、后坐力、连射性、重量、填弹数。现在的武器台已经有四项（弹药改装 = 伤害、制退器 = 后坐、轻量化 = 重量、扩容 = 填弹），每条 3 级、花补给、永久生效；重量真的会减移速和举镜速度。</p>
+  <table>
+    <thead><tr><th>你要的</th><th>现在</th><th>建议</th></tr></thead>
+    <tbody>
+      <tr><td>伤害</td><td>弹药改装 +6% / 级</td><td>保留</td></tr>
+      <tr><td>后坐力</td><td>制退器 −12% / 级</td><td>保留</td></tr>
+      <tr><td>连射性</td><td><b>没有</b></td><td><span class="tag do">建议做</span>加「枪机」线：射速 +4% / 级，显示 RPM</td></tr>
+      <tr><td>重量</td><td>轻量化 −12% / 级</td><td>保留</td></tr>
+      <tr><td>填弹数</td><td>扩容 +12% / 级</td><td>保留</td></tr>
+      <tr><td>升星</td><td>没有</td><td>做成熟练度精通之后的「★1–★3」：继续用这把枪杀怪，每星给一个<b>特性</b>（例：手枪 ★1 爆头击杀返还 1 发、冲锋枪 ★1 换弹后 2 秒射速 +15%），不加纯数值，避免后期数值爆炸</td></tr>
+      <tr><td>杀敌数特性</td><td>这次已做熟练度</td><td>熟练度负责「解锁」，升星负责「特性」，两者都看同一个击杀数，玩家只需要记一件事：用哪把就练哪把</td></tr>
+    </tbody>
+  </table>
+  <div class="grid3">
+    <figure class="ref"><img src="img/workshop.jpg" alt="参考：武器改装界面" loading="lazy" /><figcaption>改装界面：左边大图、右边属性对比。我们的武器台可以加一个 3D 枪模型预览（TACZ 模型已经有了）</figcaption></figure>
+    <figure class="ref"><img src="img/gun_rifle.jpg" alt="参考：步枪改装台" loading="lazy" /><figcaption>属性条要同时显示「改装前 → 改装后」和变化百分比</figcaption></figure>
+    <figure class="ref"><img src="img/attachments.jpg" alt="参考：配件槽" loading="lazy" /><figcaption>配件槽：不做（和武器台强化线重叠）</figcaption></figure>
+  </div>
+</section>
+
+<section id="render">
+  <h2>3D 渲染：参考图那种效果怎么做 <small>大部分管线已经有了，缺的是细节层</small></h2>
+  <p class="lead">ChatGPT 给的 Three.js 配置（ACES、PCF 阴影、HDRI、雾）我们的 <code>view.ts</code> / <code>lighting.ts</code> 里都已经是这样配的。参考图比我们好看，差距主要在下面几处：</p>
+  <div class="grid3">
+    <figure class="ref"><img src="img/render1.jpg" alt="参考：写实废墟场景" loading="lazy" /><figcaption>参考场景：注意地面上的杂物、裂缝、积水和物体底部的暗边</figcaption></figure>
+    <figure class="ref"><img src="img/shadow1.jpg" alt="参考：接触阴影" loading="lazy" /><figcaption>接触阴影：轮胎和地面交界处最暗，这是我们最缺的</figcaption></figure>
+    <figure class="ref"><img src="img/ground_detail1.jpg" alt="参考：地面细节" loading="lazy" /><figcaption>地面细节：贴花（油污、轮胎印、血迹）+ 碎石散布</figcaption></figure>
+  </div>
+  <table>
+    <thead><tr><th>环节</th><th>现在</th><th>建议</th></tr></thead>
+    <tbody>
+      <tr><td>PBR 材质</td><td><span class="tag done">已有</span>Poly Haven / Sketchfab 模型自带全套贴图</td><td>—</td></tr>
+      <tr><td>HDRI 环境光</td><td><span class="tag done">已有</span>PMREM 处理，换掉了 scene.environment</td><td>夜晚换一张偏冷的 HDRI，现在白天和夜晚共用一张</td></tr>
+      <tr><td>色调映射 / 雾 / Bloom</td><td><span class="tag done">已有</span>ACES + 指数雾 + UnrealBloom</td><td>—</td></tr>
+      <tr><td>阴影</td><td><span class="tag done">已有</span>PCF，太阳投影</td><td>中高画质改 PCFSoft 或 VSM，边缘柔一些</td></tr>
+      <tr><td>环境光遮蔽 AO</td><td><b>没有</b></td><td><span class="tag do">建议做</span>后期加 GTAO（three 自带 <code>GTAOPass</code>），高画质开、低画质关。效果最明显的一步</td></tr>
+      <tr><td>接触阴影</td><td><b>没有</b></td><td><span class="tag do">建议做</span>车、集装箱底下放一张模糊的暗色贴片（成本几乎为零，低画质也能开）</td></tr>
+      <tr><td>地面贴花</td><td>少量</td><td><span class="tag do">已排期</span>DecalGeometry 撒油污、轮胎印；战斗中的弹孔、血迹也用它</td></tr>
+      <tr><td>调色</td><td>没有统一调色</td><td><span class="tag do">已排期</span>加一张 LUT，统一末日偏冷色调</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2">
+    <figure class="ref"><img src="img/post1.jpg" alt="参考：后期处理前后对比" loading="lazy" /><figcaption>后期对比：AO + 调色带来的层次感</figcaption></figure>
+    <figure class="ref"><img src="img/hdri1.jpg" alt="参考：HDRI 光照" loading="lazy" /><figcaption>HDRI：阴天、黄昏、夜晚各一张，按时间混合</figcaption></figure>
+  </div>
+  <p>它建议的「渲染实验场景」（一辆车、一个集装箱、一段路，能实时切开关）我同意，用现有的 <code>?props=1</code> 预览加几个开关就行，不需要新建工程。性能上它提醒的「僵尸不要投高质量阴影」也对，现在僵尸是投影的，尸潮多时可以在低画质关掉。</p>
+</section>
+
+<section id="ui">
+  <h2>UI 风格 <small><span class="tag do">已排期</span></small></h2>
+  <p class="lead">它建议的配色（深灰底、军绿 / 橙黄强调、暗红危险、半透明面板）和我们现在基本一致。现在缺的是「物品感」：图标、稀有度颜色、3D 武器展示。</p>
+  <div class="grid3">
+    <figure class="ref"><img src="img/ui_supply.jpg" alt="参考：生存物资界面" loading="lazy" /><figcaption>物资界面：图标 + 数量，比纯文字列表好扫</figcaption></figure>
+    <figure class="ref"><img src="img/ui_workshop.jpg" alt="参考：武器工坊界面" loading="lazy" /><figcaption>工坊：武器大图在左、操作在中、属性在右</figcaption></figure>
+    <figure class="ref"><img src="img/ui_inventory.jpg" alt="参考：背包界面" loading="lazy" /><figcaption>背包网格：我们没有背包系统，不需要</figcaption></figure>
+  </div>
+  <ul>
+    <li>武器台左侧的武器列表加枪的剪影图标（可以用 TACZ 模型离线渲染一张）。</li>
+    <li>熟练度精通的枪名字用金色，和普通区分（这次已经加了金色的「熟练 5」）。</li>
+    <li>Tab 拆成「属性 / 武器 / 战况」三页，现在三栏挤在一屏。</li>
+    <li>稀有度颜色（蓝紫金）先不做：我们没有掉落装备，颜色没有对应的东西。</li>
+  </ul>
+</section>
+
+<section id="content">
+  <h2>新内容建议 <small>按性价比排</small></h2>
+  <table>
+    <thead><tr><th>内容</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody>
+      <tr><td>战斗复盘页</td><td><span class="tag do">建议做</span></td><td>结算页加：每把枪击杀 / 伤害占比、炮塔击杀、建筑承伤、每夜时间线（第几夜发电机掉血最多）。玩家知道自己为什么输。</td></tr>
+      <tr><td>爬行者</td><td><span class="tag do">建议做</span></td><td>矮、快，从路障下钻过、优先咬人。逼玩家看脚下，配合现有的地刺。</td></tr>
+      <tr><td>重装感染者</td><td><span class="tag do">建议做</span></td><td>正面减伤 60%，背后和头正常。让狙击 / 绕后有意义，正好补狙击「用不上」的问题。</td></tr>
+      <tr><td>风险事件</td><td><span class="tag do">已排期</span></td><td>例如「军事广播：守住空投 60 秒换一把高级枪的熟练度经验 ×2」。现有词缀都是纯负面 + 零件补偿，可以加选择。</td></tr>
+      <tr><td>地图搜刮点</td><td><span class="tag do">已排期</span></td><td>白天去地图边缘的危险区开箱子，给补给 / 熟练度经验。让白天不只是待在发电机旁边建东西。</td></tr>
+      <tr><td>分类音量（武器 / 僵尸 / 环境 / UI）</td><td><span class="tag do">已排期</span></td><td>引擎里加 4 个子总线就行，和「没声音」的排查一起做。</td></tr>
+    </tbody>
+  </table>
+  <div class="grid2">
+    <figure class="ref"><img src="img/zombie_crawler.jpg" alt="参考：爬行者" loading="lazy" /><figcaption>爬行者</figcaption></figure>
+    <figure class="ref"><img src="img/endstats.jpg" alt="参考：结算统计页" loading="lazy" /><figcaption>结算统计页</figcaption></figure>
+  </div>
+</section>
+
+<section id="plan">
+  <h2>建议排期</h2>
+  <table>
+    <thead><tr><th>批次</th><th>内容</th><th>状态</th></tr></thead>
+    <tbody>
+      <tr><td>这次</td><td>武器熟练度、解锁链、等级上限按熟练度、结算显示、成长模拟 <code>sim:progress</code></td><td><span class="tag done">已完成</span>全部模拟和类型检查通过</td></tr>
+      <tr><td>下一批</td><td>落地修复（皮卡、锈集装箱、叠放）+ 落地检查脚本；接触阴影；没声音的保险措施（等你的复现信息）</td><td><span class="tag do">待做</span></td></tr>
+      <tr><td>再下一批</td><td>Tab 数值后台（来源登记 + 乘法链显示 + 实测 DPS）；武器台「枪机」射速线；战斗复盘页</td><td><span class="tag do">待做</span></td></tr>
+      <tr><td>之后</td><td>GTAO、夜晚 HDRI；爬行者、重装感染者；升星特性</td><td><span class="tag do">再定</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  游戏截图：当前代码，第一章，<code>?autostart=1&amp;offline=1</code>，软件渲染（比实际显卡画面略暗、没有抗锯齿）。参考图：来自 ChatGPT 对话里引用的网络图片，只用来对照风格。<br />
+  数据来源：<code>npm run sim:progress -- --runs 60</code>、<code>node scripts/tools/prop-ground.mjs</code>、exe 内的音频探针。
+</footer>
+</main>
+</body>
+</html>

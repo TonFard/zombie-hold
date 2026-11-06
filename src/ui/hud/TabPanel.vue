@@ -4,28 +4,35 @@ import { hud } from '../hud';
 import { ui } from '../store';
 
 const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hud-accent)' : 'var(--hud-danger)');
+const PAGES = ['属性', '武器', '战况'];
+/** 来源种类的短标签（不同颜色区分是哪一类加成） */
+const KIND: Record<string, string> = { meta: '局外', card: '卡牌', difficulty: '难度', chapter: '章节', mod: '词缀', bench: '武器台', weight: '重量', dual: '双持', tier: '工坊', base: '' };
 </script>
 
 <template>
   <div v-if="hud.tab.open && (ui.screen === 'play' || ui.screen === 'training')" class="tab" role="dialog" aria-label="本局面板">
     <header>
       <b>第 {{ hud.night }} {{ hud.phase === 'night' ? '夜' : '天' }}</b>
-      <span>松开 <kbd>Tab</kbd> 关闭</span>
+      <nav class="pages" aria-label="面板分页">
+        <span v-for="(p, i) in PAGES" :key="p" :class="{ on: hud.tab.page === i }">{{ p }}</span>
+      </nav>
+      <span><kbd>Q</kbd> / <kbd>E</kbd> 翻页 · 松开 <kbd>Tab</kbd> 关闭</span>
     </header>
 
-    <div class="cols">
-      <!-- 属性 -->
-      <section>
-        <h3>属性</h3>
-        <dl class="kv">
-          <template v-for="r in hud.tab.stats" :key="r.k">
-            <dt>{{ r.k }}</dt>
-            <dd :class="{ up: r.up, down: r.down }">{{ r.v }}</dd>
-          </template>
-        </dl>
+    <!-- 属性：基础值 × 各来源 = 最终值 -->
+    <div v-if="hud.tab.page === 0" class="cols two">
+      <section class="ledger">
+        <h3>属性 <small>基础 → 各项加成（相乘）→ 最终</small></h3>
+        <div v-for="r in hud.tab.rows" :key="r.id" class="lrow">
+          <span class="ln">{{ r.name }}</span>
+          <span class="lb">{{ r.base }}</span>
+          <span class="lp">
+            <i v-for="p in r.parts" :key="p.name" :class="[p.kind, p.good ? 'g' : 'b']"><em>{{ KIND[p.kind] }}</em>{{ p.name.replace(/^局外·/, '') }} <b>{{ p.text }}</b></i>
+            <i v-if="!r.parts.length" class="none">—</i>
+          </span>
+          <span class="lf" :class="r.trend">{{ r.final }}<small v-if="r.capped"> 已触顶</small></span>
+        </div>
       </section>
-
-      <!-- 加成 -->
       <section>
         <h3>本局卡牌</h3>
         <ul v-if="hud.buffs.length" class="cards">
@@ -37,13 +44,34 @@ const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hu
           </li>
         </ul>
         <p v-else class="empty">每个黎明三选一</p>
-        <template v-if="hud.metaLines.length">
-          <h3 class="sub">局外成长</h3>
-          <div class="tags"><span v-for="l in hud.metaLines" :key="l">{{ l }}</span></div>
-        </template>
+        <h3 class="sub">生命</h3>
+        <dl class="kv">
+          <template v-for="r in hud.tab.stats.slice(0, 2)" :key="r.k">
+            <dt>{{ r.k }}</dt>
+            <dd>{{ r.v }}</dd>
+          </template>
+        </dl>
       </section>
+    </div>
 
-      <!-- 战况 / 击杀 / 建筑 -->
+    <!-- 武器：身上每把枪的五项属性 -->
+    <div v-else-if="hud.tab.page === 1" class="cols guns">
+      <section v-for="g in hud.tab.guns" :key="g.kind">
+        <h3>{{ g.name }} <small>{{ g.tier }} 级{{ g.hand ? ' · 手上' : ' · 背着' }} · 本局击杀 {{ g.kills }} · DPS {{ g.dps }}</small></h3>
+        <div v-for="r in g.rows" :key="r.id" class="lrow">
+          <span class="ln">{{ r.name }}</span>
+          <span class="lb">{{ r.base }}</span>
+          <span class="lp">
+            <i v-for="p in r.parts" :key="p.name" :class="[p.kind, p.good ? 'g' : 'b']"><em>{{ KIND[p.kind] }}</em>{{ p.name.replace(/^(局外|武器台)·/, '') }} <b>{{ p.text }}</b></i>
+            <i v-if="!r.parts.length" class="none">—</i>
+          </span>
+          <span class="lf" :class="r.trend">{{ r.final }}</span>
+        </div>
+      </section>
+    </div>
+
+    <!-- 战况 / 击杀 / 建筑 -->
+    <div v-else class="cols">
       <section>
         <h3>战况</h3>
         <dl class="kv">
@@ -52,7 +80,9 @@ const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hu
             <dd>{{ r.v }}</dd>
           </template>
         </dl>
-        <h3 class="sub">击杀</h3>
+      </section>
+      <section>
+        <h3>击杀</h3>
         <dl v-if="hud.tab.kills.length" class="kv">
           <template v-for="r in hud.tab.kills" :key="r.name">
             <dt>{{ r.name }}</dt>
@@ -60,7 +90,13 @@ const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hu
           </template>
         </dl>
         <p v-else class="empty">—</p>
-        <h3 class="sub">建筑</h3>
+        <template v-if="hud.metaLines.length">
+          <h3 class="sub">局外成长</h3>
+          <div class="tags"><span v-for="l in hud.metaLines" :key="l">{{ l }}</span></div>
+        </template>
+      </section>
+      <section>
+        <h3>建筑</h3>
         <ul v-if="hud.tab.structs.length" class="structs">
           <li v-for="s in hud.tab.structs" :key="s.name">
             <span class="sn">{{ s.name }} <em>×{{ s.n }}</em></span>
@@ -77,6 +113,112 @@ const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hu
 </template>
 
 <style scoped>
+.pages {
+  display: flex;
+  gap: 4px;
+}
+.pages span {
+  padding: 2px 12px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--hud-muted);
+  border: 1px solid var(--hud-line);
+}
+.pages span.on {
+  color: var(--hud-accent);
+  border-color: var(--hud-accent);
+}
+.cols.two {
+  grid-template-columns: 1.9fr 1fr;
+}
+.cols.guns {
+  grid-template-columns: 1fr 1fr;
+}
+h3 small {
+  margin-left: 8px;
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--hud-muted);
+}
+.lrow {
+  display: grid;
+  grid-template-columns: 72px 62px 1fr 78px;
+  gap: 8px;
+  align-items: baseline;
+  padding: 4px 0;
+  border-bottom: 1px dashed var(--hud-line);
+  font-size: 13px;
+}
+.ln {
+  color: var(--hud-muted);
+}
+.lb,
+.lf {
+  font-family: var(--hud-num);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.lb {
+  color: var(--hud-muted);
+}
+.lf.up {
+  color: var(--hud-ok);
+}
+.lf.down {
+  color: var(--hud-danger);
+}
+.lf small {
+  font-size: 10px;
+  color: var(--hud-accent);
+}
+.lp {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  font-size: 12px;
+}
+.lp i {
+  font-style: normal;
+  white-space: nowrap;
+}
+.lp i em {
+  font-style: normal;
+  font-size: 10px;
+  margin-right: 3px;
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  opacity: 0.7;
+}
+.lp i b {
+  font-family: var(--hud-num);
+}
+.lp i.g b {
+  color: var(--hud-ok);
+}
+.lp i.b b {
+  color: var(--hud-accent);
+}
+.lp i.none {
+  color: var(--hud-muted);
+}
+.lp .card em {
+  color: #d08af0;
+}
+.lp .meta em {
+  color: var(--hud-cyan);
+}
+.lp .difficulty em,
+.lp .chapter em,
+.lp .mod em {
+  color: var(--hud-accent);
+}
+.lp .weight em,
+.lp .bench em,
+.lp .tier em,
+.lp .dual em {
+  color: #a8b4c0;
+}
 .tab {
   position: fixed;
   left: 50%;
@@ -182,7 +324,7 @@ h3.sub {
   --c: #d08af0;
 }
 .cards li.curse {
-  --c: #e8553f;
+  --c: var(--t-red);
 }
 .ch {
   display: flex;
@@ -204,7 +346,7 @@ h3.sub {
   margin-top: 3px;
   font-size: 11px;
   line-height: 1.5;
-  color: #9aa6b2;
+  color: var(--hud-muted);
 }
 .tags {
   display: flex;

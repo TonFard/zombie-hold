@@ -42,6 +42,7 @@ export function buildOutpost(seed = 20260207): MapData {
   b.markSolid(GRID_W - 2, 2, GRID_W, GRID_H - 2);
 
   // ---------- 内院：4 个入口，宽度各不相同 ----------
+  // 围墙高度 3.2 米（旧值 2.4 太矮，玩家视线 1.62 米，只高出 0.78 米，体感像栏杆不像围墙）
   b.walls(
     26,
     26,
@@ -53,7 +54,7 @@ export function buildOutpost(seed = 20260207): MapData {
       { side: 'W', at: 38, w: 4 },
       { side: 'S', at: 34, w: 8, frame: false }, // 南墙塌了一段
     ],
-    2.4,
+    3.2,
     'compound',
   );
   // 南墙缺口：瓦砾（可走但慢）和两块塌落的墙体
@@ -250,6 +251,77 @@ export function buildOutpost(seed = 20260207): MapData {
     }
   }
 
+  // ================= M18：地图纵深 =================
+  // 全部放在原来的地图之后：原来的道具、枯树、停车场都已经摆好，这里只往空地上加东西。
+  // 每个道具都写了固定 variant，不从地图的随机数里取——否则会让前面的随机摆放全部错位
+  // 入口差异化（M18）：北门是主路线（两侧沙袋工事）；东门窄道（门外一圈隔离墩，炮塔好守）；
+  // 西门半毁（墙外散落的塌块）；南门是瓦砾缺口（上面已有）
+  b.prop('sandbag', 34, 23, 36, 24, { variant: 0 });
+  b.prop('sandbag', 44, 23, 46, 24, { variant: 1 });
+  b.prop('barrier', 56, 37, 57, 38, { h: 0.9, variant: 0 });
+  b.prop('barrier', 56, 42, 57, 43, { h: 0.9, variant: 0 });
+  b.prop('chunk', 23, 37, 24, 38, { h: 1.2, variant: 0 });
+  b.prop('chunk', 23, 42, 24, 43, { h: 0.8, variant: 0 });
+  b.prop('rubble', 21, 36, 26, 44, { solid: false, variant: 2 });
+
+  // ---------- 道路：环境叙事（M18）----------
+  // 每条路一个固定的事故现场。车和隔离墩是实体（会改变僵尸走法，sim:nav 要能过）；
+  // 行李箱、碎玻璃、轮胎这些用不挡路的瓦砾 / 托盘表示，不进网格
+  const scene = (kind: 'car' | 'barrier' | 'pallet' | 'barrel', x0: number, y0: number, x1: number, y1: number, o: { h?: number; variant?: number; solid?: boolean } = {}) => {
+    if (b.isFree(x0, y0, x1, y1)) b.prop(kind, x0, y0, x1, y1, o);
+  };
+  // 北路（38–42 列，往北）：连环追尾，两辆车斜着堵了大半条路，留一条 1 格的缝
+  scene('car', 38, 8, 40, 12, { variant: 1 });
+  scene('car', 40, 10, 42, 14, { variant: 2 });
+  b.prop('rubble', 37, 13, 43, 15, { solid: false, variant: 2 });
+  // 西路（38–42 行，往西）：侧翻的货车，货物（托盘）散了一地
+  scene('car', 10, 39, 14, 41, { variant: 3 });
+  scene('pallet', 15, 38, 16, 39, { h: 0.6, variant: 0 });
+  scene('pallet', 16, 41, 17, 42, { h: 0.5, variant: 0 });
+  b.prop('rubble', 14, 37, 19, 43, { solid: false, variant: 0 });
+  // 东路（38–42 行，往东）：车撞断了路灯，行李箱散在路上。车只占北半边，南半边留给大体型单位
+  scene('car', 63, 38, 67, 40, { variant: 0 });
+  b.prop('rubble', 62, 40, 68, 43, { solid: false, variant: 1 });
+  // 南路（38–42 列，往南）：警方路障——两排隔离墩中间留一个口
+  scene('barrier', 37, 66, 40, 67, { h: 0.9, variant: 0 });
+  scene('barrier', 41, 66, 43, 67, { h: 0.9, variant: 0 });
+  scene('barrel', 36, 68, 37, 69, { variant: 0 });
+
+  // ---------- 搜刮点（M18）：街区各一个，三个危险区每局只开一处 ----------
+  const lootAt = (kind: NonNullable<MapData['loot']>[number]['kind'], name: string, cx: number, cy: number, r?: number) => {
+    const c = b.nearestOpen(cx, cy);
+    return { kind, name, cx: c.cx, cy: c.cy, x: c.cx - HALF_W + 0.5, z: c.cy - HALF_H + 0.5, ...(r ? { r } : {}) };
+  };
+  // 危险区的布景：检查站（沙袋 + 隔离墩 + 军车）、避难所（集装箱当入口 + 托盘）、污染区（一圈油桶）。
+  // 位置都选在空地上（离发电机 25–35 米），实体只放在边上，中间留出搜刮的位置
+  const dz = (x0: number, y0: number, f: (x: number, y: number) => void) => f(x0, y0);
+  // 检查站：西北荒地（离西刷怪点 13 格、北左 25 格）
+  dz(7, 27, (x, y) => {
+    b.prop('sandbag', x, y, x + 3, y + 1, { variant: 0 });
+    b.prop('sandbag', x + 4, y, x + 7, y + 1, { variant: 1 });
+    b.prop('barrier', x, y + 4, x + 2, y + 5, { h: 0.9, variant: 0 });
+    if (b.isFree(x + 5, y + 2, x + 7, y + 6)) b.prop('car', x + 5, y + 2, x + 7, y + 6, { variant: 3 });
+    b.prop('crate', x + 1, y + 2, x + 2, y + 3, { h: 0.9, variant: 0 });
+  });
+  // 地下避难所：北路东侧的空地（离北右刷怪点 11 格）
+  dz(51, 15, (x, y) => {
+    if (b.isFree(x + 1, y + 4, x + 7, y + 6)) b.prop('container', x + 1, y + 4, x + 7, y + 6, { variant: 1 });
+    b.prop('pallet', x, y, x + 1, y + 1, { h: 0.9, variant: 0 });
+    b.prop('crate', x + 5, y, x + 6, y + 1, { h: 0.9, variant: 0 });
+  });
+  dz(27, 67, (x, y) => {
+    for (const [ox, oy] of [[0, 0], [6, 0], [0, 4], [6, 4], [3, 0]] as const) b.prop('barrel', x + ox, y + oy, x + ox + 1, y + oy + 1, { variant: 2 });
+  });
+  const loot = [
+    lootAt('homes', '居民区', 18, 24),
+    lootAt('gas', '加油站', 61, 13),
+    lootAt('depot', '仓库', 64, 56),
+    lootAt('cars', '停车场', 18, 66),
+    lootAt('checkpoint', '军事检查站', 10, 29),
+    lootAt('bunker', '地下避难所', 54, 17),
+    lootAt('toxic', '污染区', 30, 69, 2.6),
+  ];
+
   const cwx0 = 39 - HALF_W;
   const cwz0 = 38 - HALF_H;
   return {
@@ -265,6 +337,7 @@ export function buildOutpost(seed = 20260207): MapData {
     playerStart: { x: 0.5, z: 3.5 },
     houses: b.houses,
     outpostMarks: true,
+    loot,
   };
 }
 

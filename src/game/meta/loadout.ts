@@ -6,6 +6,7 @@ import { STRUCTURE_ORDER } from '../data/structures';
 import { AMMO_LIMITED, MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind } from '../data/weapons';
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { benchMods } from '../data/bench';
+import { starLevels } from '../data/stars';
 import type { MapId } from '../world/maps';
 import type { Game } from '../sim';
 
@@ -18,12 +19,14 @@ export interface Deploy {
   chapter?: MapId;
   /** 工作台等级（存档里的 meta.bench）；缺省没有强化 */
   bench?: Record<string, number>;
+  /** 熟练度经验（存档里的 meta.mastery）：算星级；缺省没有星 */
+  mastery?: Partial<Record<WeaponKind, number>>;
   /** 带进这一局的子弹（库存整份带上） */
   ammo?: Partial<Record<WeaponKind, number>>;
 }
 
 /** 按局外加成和难度生成这一局的规则 */
-export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpost', bench: Record<string, number> = {}): RunConfig {
+export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpost', bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}): RunConfig {
   const def = DIFFICULTIES[d];
   const ch = CHAPTER_BY_ID[chapter];
   return {
@@ -47,6 +50,7 @@ export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpo
     ammo: AMMO_LIMITED,
     weaponMods: benchMods(bench),
     dual: b.dual,
+    stars: starLevels(mastery),
   };
 }
 
@@ -55,12 +59,13 @@ export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpo
  * 开局零件在这里加，startRun 再加上固定的 START_SCRAP。
  */
 export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
-  g.config = configFor(b, dep.difficulty, dep.chapter, dep.bench);
+  g.config = configFor(b, dep.difficulty, dep.chapter, dep.bench, dep.mastery);
   for (const k of WEAPON_ORDER) if (k !== 'pistol') g.ammo[k] = Math.max(0, Math.floor(dep.ammo?.[k] ?? 0));
   g.mods.turret *= b.turretDamage;
   g.mods.structHp *= b.structHp;
   // 难度、章节越高零件收入越多（叠在局外的零件收益上）
-  g.mods.scrap *= b.scrapGain * DIFFICULTIES[dep.difficulty].scrap * CHAPTER_BY_ID[dep.chapter ?? 'outpost'].scrap;
+  const scrapEnv = DIFFICULTIES[dep.difficulty].scrap * CHAPTER_BY_ID[dep.chapter ?? 'outpost'].scrap;
+  g.mods.scrap *= b.scrapGain * scrapEnv;
   g.mods.armor *= b.armor;
   g.mods.regen += b.regen;
   g.mods.speed *= b.speed;
@@ -71,7 +76,7 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
   g.core.hp = g.core.maxHp;
   g.scrap += b.startScrap;
   g.scrapEarned += b.startScrap;
-  g.config.meta = { maxHp: b.maxHp, coreHp: b.coreHp, structHp: b.structHp, turretDamage: b.turretDamage, scrapGain: b.scrapGain, armor: b.armor, regen: b.regen, speed: b.speed, fireRate: b.fireRate };
+  g.config.meta = { maxHp: b.maxHp, coreHp: b.coreHp, structHp: b.structHp, turretDamage: b.turretDamage, scrapGain: b.scrapGain, armor: b.armor, regen: b.regen, speed: b.speed, fireRate: b.fireRate, scrapEnv };
   const side = dep.sidearm;
   if (sidearmOk(b, side)) {
     const slot = g.loadout[side];
@@ -155,9 +160,9 @@ export function sidearmOk(b: MetaBonuses, k: string | null): k is WeaponKind {
 }
 
 /** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限 */
-export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, number> = {}): void {
+export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}): void {
   // 训练场：子弹无限，工作台强化照样生效（试枪用）
-  g.config = { ...configFor(b, 'normal', 'outpost', bench), training: true, ammo: false };
+  g.config = { ...configFor(b, 'normal', 'outpost', bench, mastery), training: true, ammo: false };
   for (const k of WEAPON_ORDER) {
     if (!b.weapons.has(k)) continue;
     const slot = g.loadout[k];
@@ -175,7 +180,7 @@ export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, num
  */
 export function applyDaily(g: Game, d: Daily): void {
   const base = configFor(baseBonuses(), 'normal');
-  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4, ammo: false, weaponMods: noMods(), dual: false };
+  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4, ammo: false, weaponMods: noMods(), dual: false, stars: starLevels({}) };
   if (d.weapon !== 'pistol') {
     const slot = g.loadout[d.weapon];
     slot.owned = true;

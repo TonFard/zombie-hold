@@ -66,12 +66,27 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
     const el = (e.target as Element | null)?.closest('button');
     if (el && !el.matches('.buy, .up, .card, [data-silent]')) audio.sfx.uiClick();
   };
-  window.addEventListener('pointerdown', onGesture);
-  window.addEventListener('keydown', onGesture);
+  // 手柄、触屏也算手势（以前只认鼠标 / 键盘：只用手柄玩就一直没声音）
+  const gestures = ['pointerdown', 'keydown', 'touchstart', 'gamepadconnected'] as const;
+  for (const g of gestures) window.addEventListener(g, onGesture);
+  // 切回窗口 / 窗口重新可见：浏览器可能把上下文挂起了
+  const onBack = (): void => {
+    if (document.visibilityState === 'visible') audio.revive();
+  };
+  window.addEventListener('focus', onBack);
+  document.addEventListener('visibilitychange', onBack);
+  // 换了耳机 / 音箱：有的系统会让旧上下文挂起或报废
+  const media = navigator.mediaDevices;
+  const onDevice = (): void => audio.revive();
+  media?.addEventListener?.('devicechange', onDevice);
   document.addEventListener('click', onUiClick);
   off.push(
-    () => window.removeEventListener('pointerdown', onGesture),
-    () => window.removeEventListener('keydown', onGesture),
+    () => {
+      for (const g of gestures) window.removeEventListener(g, onGesture);
+    },
+    () => window.removeEventListener('focus', onBack),
+    () => document.removeEventListener('visibilitychange', onBack),
+    () => media?.removeEventListener?.('devicechange', onDevice),
     () => document.removeEventListener('click', onUiClick),
   );
   return () => {

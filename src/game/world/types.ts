@@ -98,4 +98,18 @@ export interface MapData {
   houses: House[];
   /** 地面上画据点那套道路标线和停车位（只有第一章的地图是按那些坐标摆的） */
   outpostMarks?: boolean;
+  /** 搜刮点（M18）：街区的普通点和危险区；没有就是没有 */
+  loot?: LootPoint[];
+}
+
+/** 一个搜刮点：格子坐标、世界坐标、种类（决定奖励）；污染区带一个污水半径 */
+export interface LootPoint {
+  kind: 'homes' | 'gas' | 'depot' | 'cars' | 'checkpoint' | 'bunker' | 'toxic';
+  name: string;
+  cx: number;
+  cy: number;
+  x: number;
+  z: number;
+  /** 污染区：污水的半径（米） */
+  r?: number;
 }

@@ -8,6 +8,7 @@ import {
   type Material,
   Matrix4,
   Mesh,
+  MeshBasicMaterial,
   type MeshStandardMaterial,
   PMREMGenerator,
   Quaternion,
@@ -34,6 +35,8 @@ import { rectOf } from './props/kit';
 export interface PropsManifest {
   enabled: boolean;
   hdri: string | null;
+  /** 夜晚的 HDRI（M19）：偏冷的夜空，夜里换成它做环境反射 */
+  hdriNight?: string | null;
   assets: Record<string, { file: string; tris: number }>;
   textures: Record<string, string>;
 }
@@ -80,8 +83,22 @@ function groundY(root: Object3D, pct: number, fallback: number): number {
   return ys[Math.floor(pct * (ys.length - 1))] as number;
 }
 
-/** 需要按百分位落地的模型（带根须的树） */
-const GROUND_PCT: Record<string, number> = { tree_dead: 0.03, tree_winter: 0.03 };
+/**
+ * 需要按百分位落地的模型：bounding box 最低点不一定是视觉上的"地面"。
+ * 树：带根须，最低点比树干底部低一两米，用 3% 百分位。
+ * 车：排气管 / 传动轴 / 悬挂零件低于轮底几厘米，0.5% 跳过这些离群点。
+ * 集装箱：底部 twist-lock / 角件低于箱体底面，0.3% 就够。
+ */
+const GROUND_PCT: Record<string, number> = {
+  tree_dead: 0.03,
+  tree_winter: 0.03,
+  car_sedan1: 0.005,
+  car_sedan2: 0.005,
+  car_crashed: 0.005,
+  car_truck: 0.005,
+  container_rust: 0.003,
+  container_blue: 0.003,
+};
 
 async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Model> {
   const gltf = await loader.loadAsync(`${BASE}${file}`);
@@ -107,6 +124,15 @@ async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Mod
         if (/glass/i.test(sm.name)) {
           // 真正的玻璃（灯罩、炉门）：保留半透明，但不写深度，免得实例之间排序来回闪
           sm.depthWrite = false;
+          // 路灯的玻璃罩：点光源就在罩子里面（距离几厘米），镜面高光按 1/d² 爆到上千倍亮，
+          // 某几帧正好对上相机就被光晕放大成一大片白光——这就是"路灯在闪"。
+          // 灯罩改成不受光的暖色发光体：永远是同一个亮度，不会再随角度、距离一帧一帧跳
+          if (/street_lamp/i.test(sm.name)) {
+            const glow = new MeshBasicMaterial({ color: 0xffd9a0, transparent: true, opacity: 0.55, depthWrite: false, side: sm.side, toneMapped: false });
+            glow.name = sm.name;
+            if (Array.isArray(m.material)) m.material = m.material.map((x) => (x === mat ? glow : x));
+            else m.material = glow;
+          }
         } else {
           // 有的模型（蓝色集装箱）整套材质都标成了 BLEND，渲染出来是半透明的：改回不透明
           sm.transparent = false;
@@ -140,9 +166,9 @@ type Size = (id: string) => Vector3 | null;
  * 把模型装进道具的矩形：长边对长边，高度对道具高度。
  * keep = 等比缩放的上限（避免模型被拉得太变形）：各轴缩放比不超过最小那个的 keep 倍。
  */
-function fit(p: Prop, id: string, size: Size, put: Put, o: { h?: number; keep?: number; inset?: number; flip?: boolean; ry?: number; y?: number } = {}): void {
+function fit(p: Prop, id: string, size: Size, put: Put, o: { h?: number; keep?: number; inset?: number; flip?: boolean; ry?: number; y?: number } = {}): number {
   const s0 = size(id);
-  if (!s0) return;
+  if (!s0) return 0;
   const r = rectOf(p);
   const inset = o.inset ?? 0.1;
   const h = o.h ?? p.h ?? s0.y;
@@ -155,6 +181,8 @@ function fit(p: Prop, id: string, size: Size, put: Put, o: { h?: number; keep?: 
   sy = Math.min(sy, lo * keep);
   sz = Math.min(sz, lo * keep);
   put(id, { x: r.cx, y: o.y ?? 0, z: r.cz, ry: (r.horiz ? 0 : Math.PI / 2) + (o.flip ? Math.PI : 0) + (o.ry ?? 0), sx, sy, sz });
+  // 实际摆出来的高度（keep 会把 sy 压小，比要求的 h 矮）：叠放时下一层放在这个高度上
+  return s0.y * sy;
 }
 
 /** 按地图道具算出每个模型的摆放 */
@@ -255,7 +283,12 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
       }
       case 'car': {
         const id = pickHas(['car_sedan1', 'car_sedan2', 'car_crashed', 'car_truck'], p.variant) as string;
-        fit(p, id, size, put, { h: id === 'car_truck' ? 1.75 : 1.45, keep: 1.15, inset: 0.15, flip: rng.chance(0.5), ry: rng.range(-0.05, 0.05) });
+        // 按车长等比缩放到真实尺寸（轿车 4.6 米、皮卡 5.3 米）。以前按格子的宽（2 格）去装：
+        // 这些模型的"宽"包括打开的车门和后视镜（宽 / 长 0.6–0.7，真车只有 0.45），一装进 2 米宽就整辆缩到 3.1–3.4 米长，比人还矮小。
+        // 现在车身两头各伸出格子 0.3 米左右、开着的车门伸出去一点，碰撞仍按格子
+        const s0 = size(id) as Vector3;
+        const s = (id === 'car_truck' ? 5.3 : 4.6) / s0.x;
+        put(id, { x: r.cx, y: 0, z: r.cz, ry: (r.horiz ? 0 : Math.PI / 2) + (rng.chance(0.5) ? Math.PI : 0) + rng.range(-0.05, 0.05), sx: s, sy: s, sz: s });
         break;
       }
       case 'container': {
@@ -263,9 +296,14 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
         const h = p.h ?? 2.4;
         // 高于 4 米 = 叠两层：第二层换个颜色、轻微错位
         const layers = h > 4 ? 2 : 1;
+        // 每一层放在下面各层的实际高度上：以前用 k × h / layers，可 fit 的等比限制会让模型比 h / layers 矮，
+        // 两层之间就空出一条缝（第一章东南角的双层集装箱）
+        let y = 0;
         for (let k = 0; k < layers; k++) {
           const lid = k === 0 ? id : (pickHas(['container_blue', 'container_rust'], p.variant) as string);
-          fit(p, lid, size, put, { h: h / layers, keep: 1.2, inset: 0.08, y: (k * h) / layers, flip: k % 2 === 1, ry: k ? rng.range(-0.03, 0.03) : 0 });
+          // keep 放到 4：集装箱是长方体，拉伸不显变形。以前 keep 1.2 时锈色模型（比例 12.85×5.93×6.70）
+          // 被压成 4.4 米长、2.0 米高，叠在上面的蓝色是 5.8 米长，上层两头各悬空 0.7 米。现在两层都填满格子
+          y += fit(p, lid, size, put, { h: h / layers, keep: 4, inset: 0.08, y, flip: k % 2 === 1, ry: k ? rng.range(-0.02, 0.02) : 0 });
         }
         break;
       }
@@ -438,6 +476,8 @@ function cliffBackdrop(group: Group, mat: Material, disposables: Array<{ dispose
 export interface RealProps {
   group: Group;
   envMap: Texture | null;
+  /** 夜晚的环境反射（没有就是 null，夜里继续用白天那张） */
+  envNight: Texture | null;
   /** 换成写实模型的道具种类：程序模型不再建 */
   replaced: Set<PropKind>;
   /** 岩壁也换了：程序的尖锥岩石不再建 */
@@ -513,24 +553,28 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
     }
   }
 
-  // 户外 HDRI 做环境反射：写实材质在 RoomEnvironment 下发灰
-  let envMap: Texture | null = null;
-  if (manifest.hdri) {
+  // 户外 HDRI 做环境反射：写实材质在 RoomEnvironment 下发灰。夜里换一张偏冷的夜空（M19）
+  const loadEnv = async (file: string | null | undefined): Promise<Texture | null> => {
+    if (!file) return null;
     try {
-      const hdr = await new HDRLoader().loadAsync(`${BASE}${manifest.hdri}`);
+      const hdr = await new HDRLoader().loadAsync(`${BASE}${file}`);
       hdr.mapping = EquirectangularReflectionMapping;
       const pmrem = new PMREMGenerator(renderer);
-      envMap = pmrem.fromEquirectangular(hdr).texture;
+      const t = pmrem.fromEquirectangular(hdr).texture;
       pmrem.dispose();
       hdr.dispose();
-      disposables.push(envMap);
+      disposables.push(t);
+      return t;
     } catch (e) {
-      console.warn('HDRI 加载失败', e);
+      console.warn('HDRI 加载失败', file, e);
+      return null;
     }
-  }
+  };
+  const [envMap, envNight] = await Promise.all([loadEnv(manifest.hdri), loadEnv(manifest.hdriNight)]);
   return {
     group,
     envMap,
+    envNight,
     replaced,
     cliffs: hasCliffs,
     fallback,

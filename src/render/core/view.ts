@@ -1,9 +1,14 @@
+import { lootAvailable } from '../../game/systems/loot';
 import {
   ACESFilmicToneMapping,
-  type Group,
+  CanvasTexture,
+  type Texture,
+  Group,
   PCFShadowMap,
   PMREMGenerator,
   Scene,
+  Sprite,
+  SpriteMaterial,
   SRGBColorSpace,
   WebGLRenderer,
 } from 'three';
@@ -23,7 +28,11 @@ import { buildMapView, type MapView } from '../world/mapMesh';
 import { PostFX } from './postfx';
 import { StructureViews } from '../world/structureViews';
 import { ExtrasView } from '../world/extrasView';
+import { SoldierViews } from '../actors/soldiers';
 import { buildRealProps, loadPropsManifest, type RealProps } from '../world/realProps';
+import { buildContactShadows, type ContactShadows } from '../world/contactShadows';
+import { buildVista, type Vista } from '../world/vista';
+import { buildMapDecals, type MapDecals } from '../world/mapDecals';
 import { bakeLight, type BakedLight } from '../world/bakedLight';
 import { buildRealSurfaces, hasStructs, realWallStyles, STRUCT_KINDS, type RealSurfaces } from '../world/realSurfaces';
 
@@ -42,8 +51,12 @@ export class GameView {
   readonly fx: Effects;
   readonly structures: StructureViews;
   readonly extras: ExtrasView;
+  readonly soldiers: SoldierViews;
   private readonly map: MapView;
   private realProps: RealProps | null = null;
+  private contact: ContactShadows | null = null;
+  private vista: Vista | null = null;
+  private mapDecals: MapDecals | null = null;
   private realSurfaces: RealSurfaces | null = null;
   /** 烘焙的环境光遮蔽 + 室内遮光（所有档位都开，每像素一次贴图采样） */
   private readonly baked: BakedLight;
@@ -65,6 +78,10 @@ export class GameView {
   private time = 0;
   /** 昼夜过渡：当前值朝目标值缓慢靠近 */
   private nightCur = 0;
+  /** 白天 / 夜晚的环境反射（M19）：过了一半就换夜晚那张，强度本来就由 lighting 按昼夜调 */
+  private envDay: Texture | null = null;
+  private envNight: Texture | null = null;
+  private gradeOn = new URLSearchParams(window.location.search).get('grade') !== '0';
   private nightTarget = 0;
   private readonly offEvents: Array<() => void> = [];
   private readonly onResize = () => this.resize();
@@ -108,6 +125,21 @@ export class GameView {
     const bakedOn = new URLSearchParams(window.location.search).get('baked') !== '0';
     if (!bakedOn) this.baked.patch = () => {};
     this.baked.patchTree(this.map.group);
+    // 地面贴花（M19）：油污、积水、轮胎印、裂缝，固定种子（?decals=0 关掉）
+    if (new URLSearchParams(window.location.search).get('decals') !== '0') {
+      this.mapDecals = buildMapDecals(game.map);
+      this.scene.add(this.mapDecals.group);
+    }
+    // 远景（M18）：断崖外的城市 / 山 / 电塔剪影，一次绘制（?vista=0 关掉）
+    if (new URLSearchParams(window.location.search).get('vista') !== '0') {
+      this.vista = buildVista();
+      this.scene.add(this.vista.group);
+    }
+    // 接触阴影：所有画质都开（?contact=0 关掉，对比截图用）
+    if (new URLSearchParams(window.location.search).get('contact') !== '0') {
+      this.contact = buildContactShadows(game.map);
+      if (this.contact) this.scene.add(this.contact.group);
+    }
     // 写实道具异步加载，好了再把对应的程序道具撤掉。加载期间界面盖着加载画面（onWorldReady），
     // 不会先看到旧的程序地图再跳成新的
     void loadPropsManifest().then(async (m) => {
@@ -140,6 +172,8 @@ export class GameView {
         for (const r of surf.roofs) this.scene.add(r);
       }
       if (real.envMap) this.scene.environment = real.envMap;
+      this.envDay = real.envMap;
+      this.envNight = real.envNight;
       this.realReady = true;
       // 新模型和材质的着色器先编译好，不然第一眼看到它们的那一帧会卡一下
       try {
@@ -164,6 +198,7 @@ export class GameView {
       h: canvas.clientHeight || window.innerHeight,
     }));
     this.structures = new StructureViews(this.scene, game, this.fx);
+    this.soldiers = new SoldierViews(this.scene, game);
     this.extras = new ExtrasView(this.scene, game, this.fx, this.rig, this.lighting);
     // 零件箱被捡走就隐藏，新的一天刷新时再显示
     this.offEvents.push(
@@ -171,6 +206,7 @@ export class GameView {
         const g = this.map.scrapBoxes[e.index];
         if (g) g.visible = !e.taken;
       }),
+      game.events.on('lootTaken', (e) => this.fx.chips(e.x, e.z, [1, 0.8, 0.3], 14, 0.9)),
       game.events.on('phase', ({ phase }) => this.setNight(phase === 'night' ? 1 : phase === 'cards' ? 0.5 : phase === 'training' ? 0 : 0.1)),
     );
     this.resize();
@@ -181,12 +217,45 @@ export class GameView {
 
   /**
    * 画质档位：
-   * 高 = 最高 1.25 倍像素密度 + 2048 阴影 + Bloom + 4 倍 MSAA；
+   * 高 = 最高 1.25 倍像素密度 + 2048 阴影 + 半分辨率 GTAO + Bloom + 2 倍 MSAA；
    * 中 = 1 倍像素密度 + 1024 阴影 + Bloom（无抗锯齿）；
    * 低 = 1 倍像素密度 + 无阴影 + 无后期（没有抗锯齿）。
    * 以前高画质是 1.5 倍像素密度再叠 4 倍 MSAA（中画质也带着 MSAA），像素量是中画质的 2.25 倍、
    * 每个像素还要算 9 盏点光源和阴影，是高画质卡的主要原因。MSAA 已经负责抗锯齿，像素密度再往上加收益很小。
    */
+  /**
+   * 渲染实验（M19，?render=1 的面板用）：实时开关各个效果，对比用。返回当前状态。
+   * 只动显示，不碰逻辑；画质切换仍然走 setQuality
+   */
+  renderToggle(key: 'ao' | 'grade' | 'decals' | 'vista' | 'contact' | 'shadows', on?: boolean): boolean {
+    switch (key) {
+      case 'ao':
+        if (on !== undefined) this.post.setAO(on ? 0.5 : 0);
+        return this.post.aoOn;
+      case 'grade':
+        if (on !== undefined) this.gradeOn = on;
+        return this.gradeOn;
+      case 'decals':
+        if (on !== undefined && this.mapDecals) this.mapDecals.group.visible = on;
+        return !!this.mapDecals?.group.visible;
+      case 'vista':
+        if (on !== undefined && this.vista) this.vista.group.visible = on;
+        return !!this.vista?.group.visible;
+      case 'contact':
+        if (on !== undefined && this.contact) this.contact.group.visible = on;
+        return !!this.contact?.group.visible;
+      case 'shadows':
+        if (on !== undefined) this.lighting.sun.castShadow = on;
+        return this.lighting.sun.castShadow;
+    }
+  }
+
+  /** 渲染实验面板：上一帧（含后期、阴影）一共多少次绘制、多少三角形 */
+  private frameStats = { calls: 0, tris: 0 };
+  renderStats(): { calls: number; tris: number } {
+    return this.frameStats;
+  }
+
   setQuality(q: Quality): void {
     this.quality = q;
     const pr = q === 'high' ? Math.min(window.devicePixelRatio, 1.25) : 1;
@@ -203,6 +272,12 @@ export class GameView {
     }
     sun.castShadow = q !== 'low';
     this.post.enabled = q !== 'low';
+    this.mapDecals?.setQuality(q);
+    if (this.extras) this.extras.ambient = q !== 'low';
+    this.actors.shadows = q === 'high';
+    // 环境光遮蔽：只在高画质开（半分辨率）。?ao=0 / ?ao=1 强制关 / 开，对比截图用
+    const aoQ = new URLSearchParams(window.location.search).get('ao');
+    this.post.setAO(aoQ === '0' ? 0 : aoQ === '1' || q === 'high' ? 0.5 : 0);
     this.resize();
   }
 
@@ -226,13 +301,28 @@ export class GameView {
     }
     this.actors.update(dt);
     this.structures.update(dt);
+    this.soldiers.update(dt);
     this.fx.update(dt);
     this.extras.update(dt);
 
     // 发电机核心脉动
     this.map.coreMaterial.color.setScalar(0.85 + 0.3 * Math.sin(this.time * 3));
     // 零件箱光柱脉动，靠近时光环放大
+    // 搜刮点（M18）：能搜的时候才亮（白天、没搜过、危险区是本局开放的那一处）；污水一直在
+    this.map.lootMarks.forEach((m, i) => {
+      const on = lootAvailable(game, i);
+      for (const c of m.children) if (c.name === 'scrapBeacon') c.visible = on;
+    });
     this.map.updateBeacons(this.time, game.player.x, game.player.z, this.nightCur);
+    // 尸潮（> 40 只）时关掉 AO：GTAO 要把整个场景再画一遍，70 只僵尸时绘制调用会翻倍到 1200+（M19 实测）
+    let living = 0;
+    for (const z of game.zombies) if (z.alive) living++;
+    this.post.crowd(living > 40);
+    // 调色跟着当前的昼夜（M19）；?grade=0 关掉
+    this.post.setNight(this.nightCur, this.gradeOn);
+    // 环境反射：夜里换偏冷的夜空 HDRI
+    const env = this.nightCur > 0.5 && this.envNight ? this.envNight : this.envDay;
+    if (env && this.scene.environment !== env) this.scene.environment = env;
 
     const fps = this.rig.mode === 'fps';
     if (fps) {
@@ -288,7 +378,13 @@ export class GameView {
     this.lighting.follow(this.rig.focus.x, this.rig.focus.z, dt);
     this.rig.camera.updateMatrixWorld();
     this.sky.update(this.rig.camera, this.lighting);
+    const info = this.renderer.info;
+    info.autoReset = false;
+    info.reset();
     this.post.render(dt);
+    this.frameStats.calls = info.render.calls;
+    this.frameStats.tris = info.render.triangles;
+    info.autoReset = true;
   }
 
   /**
@@ -314,14 +410,56 @@ export class GameView {
     });
   }
 
+  /** 标题页装饰：发电机灯光呼吸 + 地面薄雾飘移 */
+  private fogMotes: Group | null = null;
+  menuFlicker(t: number): void {
+    // 发电机灯光呼吸：hemisphere intensity 在 0.9–1.1 之间慢慢正弦波动
+    this.lighting.hemi.intensity = this.lighting.hemi.intensity * (0.98 + 0.02 * Math.sin(t * 3.14));
+    // 薄雾：第一次调用时创建 20 个半透明 Sprite，之后每帧飘移
+    if (!this.fogMotes) {
+      const g = new Group();
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const ctx = c.getContext('2d')!;
+      const gr = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+      gr.addColorStop(0, 'rgba(255,255,255,0.18)');
+      gr.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = gr;
+      ctx.fillRect(0, 0, 64, 64);
+      const tex = new CanvasTexture(c);
+      for (let i = 0; i < 20; i++) {
+        const mat = new SpriteMaterial({ map: tex, transparent: true, opacity: 0.12 + Math.random() * 0.1, depthWrite: false });
+        const sp = new Sprite(mat);
+        sp.position.set((Math.random() - 0.5) * 40, 0.3 + Math.random() * 1.2, (Math.random() - 0.5) * 40);
+        sp.scale.setScalar(2 + Math.random() * 3);
+        sp.userData.vx = (Math.random() - 0.5) * 0.3;
+        sp.userData.vz = (Math.random() - 0.5) * 0.15;
+        g.add(sp);
+      }
+      this.scene.add(g);
+      this.fogMotes = g;
+    }
+    for (const sp of this.fogMotes.children) {
+      sp.position.x += (sp.userData.vx as number) * 0.016;
+      sp.position.z += (sp.userData.vz as number) * 0.016;
+      // 飘出 25 米就绕回来
+      if (Math.abs(sp.position.x) > 25) sp.position.x *= -0.9;
+      if (Math.abs(sp.position.z) > 25) sp.position.z *= -0.9;
+    }
+  }
+
   dispose(): void {
     this.disposed = true;
     this.realProps?.dispose();
+    this.contact?.dispose();
+    this.vista?.dispose();
+    this.mapDecals?.dispose();
     this.realSurfaces?.dispose();
     this.baked.dispose();
     window.removeEventListener('resize', this.onResize);
     for (const f of this.offEvents) f();
     this.structures.dispose();
+    this.soldiers.dispose();
     this.extras.dispose();
     this.sky.dispose();
     this.fx.dispose();

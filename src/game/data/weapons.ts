@@ -97,6 +97,8 @@ export interface WeaponDef {
   ammo: { pack: number; price: number } | null;
   /** 这把枪最好用的场景（工坊和大厅里显示） */
   role: string;
+  /** 3 米内的伤害倍率（霰弹枪的贴脸加成）；缺省 1 */
+  close?: number;
 }
 
 const s = (o: Partial<WeaponStats>): WeaponStats => ({
@@ -185,7 +187,9 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     kind: 'shotgun',
     weight: 3.9,
     ammo: { pack: 24, price: 6 },
-    role: '门口、走廊等狭窄入口：一枪打一片',
+    role: '门口、走廊等狭窄入口：一枪打一片；3 米内伤害 +15%',
+    // sim:progress：霰弹枪是最难练的枪（机器人每局只有 46 经验），贴脸加成让它在门口真正好用
+    close: 1.15,
     name: '铁砧霰弹枪',
     price: 450,
     muzzle: 130,
@@ -265,7 +269,8 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ammo: { pack: 150, price: 9 },
     role: '守据点：压住一整个入口，但扛着走不快',
     name: '铁幕轻机枪',
-    price: 1000,
+    // 1000 → 800：前三夜买不起，解锁了也用不上（sim:progress）
+    price: 800,
     muzzle: 220,
     zero: 15,
     headMult: 1.8,
@@ -273,7 +278,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ads: { spread: 0.4, zoom: 1.45 },
     recoil: { v: 0.42, h: 0.4 },
     base: s({ damage: 12, rate: 11, mag: 100, reload: 4.0, spread: 5, range: 26, adsTime: 0.3, adsSlow: 0.55 }),
-    upgrades: route(1000, [
+    upgrades: route(800, [
       { name: '重弹头', desc: '伤害 12 → 14', patch: { damage: 14 } },
       { name: '两脚架', desc: '散布 5° → 3.5°', patch: { spread: 3.5, damage: 15 } },
       { name: '快拆供弹盖', desc: '换弹 4.0 → 3.0 秒', patch: { reload: 3.0 } },
@@ -290,7 +295,8 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ammo: { pack: 8, price: 10 },
     role: '尸潮扎堆时：范围爆炸，别对着脚下打',
     name: '炼狱榴弹发射器',
-    price: 1100,
+    // 1100 → 850：同上
+    price: 850,
     muzzle: 0,
     zero: 0,
     headMult: 1,
@@ -298,7 +304,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     ads: { spread: 0.7, zoom: 1.3 },
     recoil: { v: 3.6, h: 0.5 },
     base: s({ damage: 120, rate: 1.2, mag: 6, reload: 2.4, spread: 1.5, range: 14, speed: 16, aoe: 2.2, adsTime: 0.25 }),
-    upgrades: route(1100, [
+    upgrades: route(850, [
       { name: '高爆弹', desc: '伤害 120 → 140', patch: { damage: 140 } },
       { name: '扩容弹仓', desc: '弹仓 6 → 8，射速 +0.2', patch: { mag: 8, rate: 1.4 } },
       { name: '扩大杀伤', desc: '伤害 → 160，爆炸半径 → 3.0', patch: { damage: 160, aoe: 3.0 } },
@@ -358,9 +364,11 @@ export interface WeaponMod {
   lighter: number;
   /** 弹匣容量倍率 */
   mag: number;
+  /** 射速倍率（枪机） */
+  rate: number;
 }
 
-export const NO_MOD: WeaponMod = { damage: 1, recoil: 1, lighter: 0, mag: 1 };
+export const NO_MOD: WeaponMod = { damage: 1, recoil: 1, lighter: 0, mag: 1, rate: 1 };
 
 export function noMods(): Record<WeaponKind, WeaponMod> {
   const o = {} as Record<WeaponKind, WeaponMod>;
@@ -382,6 +390,7 @@ export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = 
   const st = statsAt(kind, tier);
   if (mod.damage !== 1) st.damage *= mod.damage;
   if (mod.mag !== 1) st.mag = Math.max(1, Math.round(st.mag * mod.mag));
+  if (mod.rate !== 1) st.rate *= mod.rate;
   if (dual && kind === 'pistol') {
     st.mag *= DUAL.mag;
     st.rate *= DUAL.rate;

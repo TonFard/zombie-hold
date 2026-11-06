@@ -13,6 +13,10 @@ export class Navigator {
   private readonly coreLarge: FlowField;
   private readonly playerSmall: FlowField;
   private readonly playerLarge: FlowField;
+  /** 爬行者：只追玩家，路障格当成可以钻的地面；没有活着的爬行者时不算 */
+  private readonly playerCrawl: FlowField;
+  private crawlCell = -1;
+  private crawlVersion = -1;
 
   private structVersion = -1;
   private playerCell = -1;
@@ -29,6 +33,19 @@ export class Navigator {
     this.coreLarge = new FlowField(grid, true, true);
     this.playerSmall = new FlowField(grid, false, false);
     this.playerLarge = new FlowField(grid, true, false);
+    this.playerCrawl = new FlowField(grid, false, false, true);
+  }
+
+  /** 爬行者用的距离场（追玩家）。按需重算：玩家换格或建筑变了 */
+  crawlField(): FlowField {
+    const cell = this.fieldCell;
+    if (cell >= 0 && (cell !== this.crawlCell || this.crawlVersion !== this.grid.structVersion)) {
+      this.playerCrawl.compute([cell]);
+      this.crawlCell = cell;
+      this.crawlVersion = this.grid.structVersion;
+      this.recomputes++;
+    }
+    return this.playerCrawl;
   }
 
   update(dt: number, playerX: number, playerZ: number, playerAlive: boolean): void {

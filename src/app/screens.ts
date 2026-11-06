@@ -25,6 +25,12 @@ export class Screens {
     const onKey = (e: KeyboardEvent): void => this.onKey(e);
     // Tab：按住看本局面板（属性 / 加成 / 击杀 / 建筑），松开就关。浏览器默认会切焦点，拦掉
     const onTabDown = (e: KeyboardEvent): void => {
+      // 按住 Tab 时 Q / E 切页（不再当成电击脉冲 / 交互：输入层看 hud.tab.open 跳过）
+      if (hud.tab.open && (e.code === 'KeyQ' || e.code === 'KeyE')) {
+        hud.tab.page = (hud.tab.page + (e.code === 'KeyE' ? 1 : 2)) % 3;
+        e.preventDefault();
+        return;
+      }
       if (e.code !== 'Tab') return;
       e.preventDefault();
       if (this.isPlaying && this.inRun) hud.tab.open = true;

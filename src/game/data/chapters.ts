@@ -59,8 +59,8 @@ export const CHAPTERS: Chapter[] = [
     scrap: 1.1,
     medals: 1.3,
     weapons: ['rifle', 'sniper'],
-    // 奔跑者多：开阔地上它们冲得最快，要在远处解决
-    mix: { runner: 0.12 },
+    // 奔跑者多：开阔地上它们冲得最快，要在远处解决；麦田里爬行者也多（M17）
+    mix: { runner: 0.12, crawler: 0.05 },
   },
   {
     id: 'lakeside',
@@ -75,7 +75,8 @@ export const CHAPTERS: Chapter[] = [
     scrap: 1.2,
     medals: 1.6,
     weapons: ['shotgun', 'lmg'],
-    mix: { bloater: 0.06, spitter: 0.05 },
+    // 湖畔窄路：重装感染者堵在路口（M17），要绕后或者用爆炸
+    mix: { bloater: 0.06, spitter: 0.05, armored: 0.05 },
   },
   {
     id: 'city',
@@ -94,7 +95,9 @@ export const CHAPTERS: Chapter[] = [
   },
 ];
 
-export const CHAPTER_BY_ID: Record<MapId, Chapter> = Object.fromEntries(CHAPTERS.map((c) => [c.id, c])) as Record<MapId, Chapter>;
+const BY_ID = Object.fromEntries(CHAPTERS.map((c) => [c.id, c])) as Partial<Record<MapId, Chapter>>;
+/** 章节表；不是战役的地图（团队死斗的竞技场）按第一章的系数算 */
+export const CHAPTER_BY_ID = new Proxy(BY_ID, { get: (o, k) => (o as Record<string, Chapter>)[k as string] ?? CHAPTERS[0] }) as Record<MapId, Chapter>;
 
 /** 第几章解锁：第一章一开始就能打，之后要通关上一章（任意难度） */
 export function chapterUnlocked(cleared: readonly string[], id: MapId): boolean {

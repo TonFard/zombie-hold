@@ -1,4 +1,5 @@
-import { AdditiveBlending, BufferGeometry, CanvasTexture, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Sprite, SpriteMaterial } from 'three';
+import { AdditiveBlending, BufferGeometry, CircleGeometry, CanvasTexture, CylinderGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, PlaneGeometry, Sprite, SpriteMaterial } from 'three';
+import { FEATURES } from '../../game/data/features';
 import { Rng } from '../../game/core/rng';
 import { GRID_H, GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
 import type { MapData, Prop, PropKind, WallStyle } from '../../game/world/types';
@@ -13,6 +14,8 @@ export interface MapView {
   /** 发电机能量核心的材质，渲染层用它做脉动 */
   coreMaterial: MeshBasicMaterial;
   scrapBoxes: Group[];
+  /** 搜刮点的光柱（M18），visible 由 view 按能不能搜来设 */
+  lootMarks: Group[];
   /** 零件箱标记的脉动：t = 时间（秒），玩家位置，night 0–1（夜里光柱收一点，免得太抢眼） */
   updateBeacons(t: number, px: number, pz: number, night: number): void;
   /** 重建静态道具：skip 里的种类不建，trimWalls 里风格的墙只建细节，cliffs = false 时不建岩壁 */
@@ -121,9 +124,9 @@ function beaconTextures(): { beam: CanvasTexture; dot: CanvasTexture; ring: Canv
   return beaconTex;
 }
 
-function addBeacon(g: Group, rng: Rng): Beacon {
+function addBeacon(g: Group, rng: Rng, color = BEACON_COLOR): Beacon {
   const tex = beaconTextures();
-  const glow = { color: BEACON_COLOR, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, fog: false } as const;
+  const glow = { color, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, fog: false } as const;
   beaconGeo.beam ??= new CylinderGeometry(0.16, 0.26, 9, 14, 1, true).translate(0, 4.5, 0);
   beaconGeo.ring ??= new PlaneGeometry(1, 1).rotateX(-Math.PI / 2);
   const beam = new MeshBasicMaterial({ ...glow, map: tex.beam, side: DoubleSide, opacity: 0.5 });
@@ -252,14 +255,37 @@ export function buildMapView(map: MapData, anisotropy: number): MapView {
     scrapBoxes.push(g);
   }
 
+  // ---- 搜刮点（M18）：和零件箱一样的光柱 + 光环，危险区是红色；能搜的时候才显示（由 view 每帧设置 visible） ----
+  const lootMarks: Group[] = [];
+  // 搜刮点下线时（FEATURES.lootSpots）不画光柱和污水；周围的沙袋、油桶这些布景是普通道具，照常留着当掩体
+  for (const l of FEATURES.lootSpots ? (map.loot ?? []) : []) {
+    const g = new Group();
+    g.position.set(l.x, 0, l.z);
+    const danger = l.kind === 'checkpoint' || l.kind === 'bunker' || l.kind === 'toxic';
+    beacons.push(addBeacon(g, rng, danger ? 0xff5a46 : 0xffd060));
+    // 污染区：地上一摊发绿的污水（不发光，正常混合）
+    if (l.kind === 'toxic' && l.r) {
+      // 受光、很光滑（像一层油乎乎的污水，能反射天空），颜色压暗：不受光的话在夜里也亮得像荧光
+      const m = new Mesh(new CircleGeometry(l.r, 32).rotateX(-Math.PI / 2), new MeshStandardMaterial({ color: 0x2e4a12, roughness: 0.12, metalness: 0.1, transparent: true, opacity: 0.82, depthWrite: false }));
+      m.position.y = 0.025;
+      m.renderOrder = 2;
+      geos.push(m.geometry);
+      g.add(m);
+    }
+    group.add(g);
+    lootMarks.push(g);
+  }
+  const lootOffset = scrapBoxes.length;
+
   return {
     group,
     coreMaterial,
     scrapBoxes,
+    lootMarks,
     updateBeacons(t, px, pz, night) {
       for (let i = 0; i < beacons.length; i++) {
         const b = beacons[i] as Beacon;
-        const g = scrapBoxes[i] as Group;
+        const g = (i < lootOffset ? scrapBoxes[i] : lootMarks[i - lootOffset]) as Group;
         if (!g.visible) continue;
         const d = Math.hypot(g.position.x - px, g.position.z - pz);
         const pulse = 0.5 + 0.5 * Math.sin(t * 2.6 + b.phase);

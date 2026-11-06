@@ -25,7 +25,7 @@ const c = computed(() => ui.cloud);
 h3 {
   font-size: 13px;
   letter-spacing: 6px;
-  color: #6fd0e8;
+  color: var(--t-cyan);
   margin-bottom: 12px;
 }
 .row {
@@ -36,11 +36,11 @@ h3 {
 }
 .who {
   font-size: 13px;
-  color: #8f9aa6;
+  color: var(--t-muted);
 }
 .who b {
   font-size: 15px;
-  color: #f0b83a;
+  color: var(--t-gold);
 }
 button {
   padding: 8px 18px;
@@ -53,7 +53,7 @@ button {
   cursor: pointer;
 }
 button:hover:not(:disabled) {
-  border-color: #e8553f;
+  border-color: var(--t-red);
   color: #fff;
 }
 button:disabled {

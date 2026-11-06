@@ -1,6 +1,7 @@
 import type { StructureKind } from './structures';
 import { WEAPONS, type WeaponKind } from './weapons';
 import { REGEN_PER_LEVEL } from './heal';
+import { MASTERY_MAX } from './mastery';
 
 /** 局外成长：大厅里用勋章买的项目。一张表同时给逻辑（加成）和界面（列表）用 */
 export type MetaSection = 'armory' | 'engineering' | 'supply' | 'fitness';
@@ -17,6 +18,8 @@ export interface MetaItem {
   prices: number[];
   /** 前置：另一个项目至少到几级 */
   requires?: { id: string; level: number };
+  /** 前置：某把枪的熟练度至少到几级（武器解锁链靠它，不靠勋章） */
+  mastery?: { weapon: WeaponKind; level: number };
   /** 每一级要求的军衔（RANKS 的下标），长度 = prices；不写 = 全部 0 */
   ranks?: number[];
   /** 效果（汇总进 MetaBonuses），level 是当前已买的级数 */
@@ -26,7 +29,7 @@ export interface MetaItem {
 /** 局外加成汇总：开局时由 meta/loadout.ts 应用到一局上 */
 export interface MetaBonuses {
   weapons: Set<WeaponKind>;
-  /** 每把武器的等级上限（5–8） */
+  /** 每把武器的局内等级上限（5–8）：由熟练度决定（progress.bonusesOf 里填） */
   tierCap: Record<WeaponKind, number>;
   /** 允许带一把随身武器开局 */
   sidearm: boolean;
@@ -87,13 +90,13 @@ export interface Rank {
 
 export const RANKS: Rank[] = [
   { name: '列兵', earned: 0 },
-  { name: '下士', earned: 200 },
-  { name: '中士', earned: 600 },
-  { name: '上士', earned: 1300 },
-  { name: '少尉', earned: 2300 },
-  { name: '中尉', earned: 3700 },
-  { name: '上尉', earned: 5400 },
-  { name: '少校', earned: 7500 },
+  { name: '下士', earned: 170 },
+  { name: '中士', earned: 500 },
+  { name: '上士', earned: 1100 },
+  { name: '少尉', earned: 1950 },
+  { name: '中尉', earned: 3150 },
+  { name: '上尉', earned: 4600 },
+  { name: '少校', earned: 6400 },
 ];
 
 /** 累计勋章对应的军衔下标 */
@@ -118,70 +121,40 @@ const PRICE_K = 0.5;
 
 const WEAPON_NAMES: Record<WeaponKind, string> = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '突击步枪', sniper: '狙击步枪', lmg: '轻机枪', launcher: '榴弹发射器' };
 
-/** 解锁每把枪要求的军衔；这把枪的等级上限从它往上排 */
-const UNLOCK_RANK: Record<WeaponKind, number> = { pistol: 0, smg: 0, shotgun: 1, rifle: 2, sniper: 3, lmg: 4, launcher: 5 };
-/** 等级上限 6 / 7 / 8 级要求的军衔：不低于解锁这把枪，第 8 级都要中尉以上 */
-const CAP_RANKS: Record<WeaponKind, number[]> = {
-  pistol: [1, 3, 5],
-  smg: [1, 3, 5],
-  shotgun: [2, 4, 6],
-  rifle: [2, 4, 6],
-  sniper: [3, 5, 7],
-  lmg: [4, 5, 7],
-  launcher: [5, 6, 7],
-};
+/**
+ * 武器解锁链：手枪 → 冲锋枪 → 霰弹枪 → 突击步枪 → 狙击 / 轻机枪 → 榴弹（要先精通轻机枪）。
+ * 解锁一把枪要先把上一把枪练到精通（熟练度 5 级，见 data/mastery.ts），再花勋章。
+ * 等级上限也不再用勋章买，由这把枪自己的熟练度决定——想用好枪，就得先把手里的枪用熟
+ */
+const UNLOCK_PRE: Record<Exclude<WeaponKind, 'pistol'>, WeaponKind> = { smg: 'pistol', shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle', launcher: 'lmg' };
 
-/** 武器解锁链：霰弹 → 步枪 → 狙击 / 轻机枪 → 榴弹（要先有轻机枪） */
-const UNLOCK_PRE: Partial<Record<WeaponKind, WeaponKind>> = { shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle', launcher: 'lmg' };
-
-const unlockWeapon = (k: WeaponKind, price: number, desc: string): MetaItem => {
-  const pre = UNLOCK_PRE[k];
-  return {
-    id: `unlock-${k}`,
-    section: 'armory',
-    name: `解锁${WEAPON_NAMES[k]}`,
-    // 解锁只是让工坊里能买，局内还要花零件：写在描述里，免得以为解锁了就直接有枪
-    desc: `${desc}；之后每局在工坊花 ${WEAPONS[k].price} 零件购买`,
-    prices: P(price),
-    ranks: [UNLOCK_RANK[k]],
-    ...(pre ? { requires: { id: `unlock-${pre}`, level: 1 } } : {}),
-    apply: (b, lv) => {
-      if (lv > 0) b.weapons.add(k);
-    },
-  };
-};
-
-/** 武器等级上限 5 → 8：手枪便宜一些 */
-const tierCap = (k: WeaponKind): MetaItem => ({
-  id: `cap-${k}`,
+const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: string): MetaItem => ({
+  id: `unlock-${k}`,
   section: 'armory',
-  name: `${WEAPON_NAMES[k]} 等级上限`,
-  desc: '局内工坊能升到第 {n} 级',
-  prices: k === 'pistol' ? P(60, 120, 200) : P(120, 220, 360),
-  ranks: CAP_RANKS[k],
-  ...(k === 'pistol' ? {} : { requires: { id: `unlock-${k}`, level: 1 } }),
+  name: `解锁${WEAPON_NAMES[k]}`,
+  // 解锁只是让工坊里能买，局内还要花零件：写在描述里，免得以为解锁了就直接有枪
+  desc: `${desc}；之后每局在工坊花 ${WEAPONS[k].price} 零件购买`,
+  // 武器解锁价格不打折：门槛主要是熟练度，勋章只是最后一步
+  prices: [price],
+  mastery: { weapon: UNLOCK_PRE[k], level: MASTERY_MAX },
+  ...(UNLOCK_PRE[k] !== 'pistol' ? { requires: { id: `unlock-${UNLOCK_PRE[k]}`, level: 1 } } : {}),
   apply: (b, lv) => {
-    b.tierCap[k] = 5 + lv;
+    if (lv > 0) b.weapons.add(k);
   },
 });
 
 export const META_ITEMS: MetaItem[] = [
   // ---- 军械库 ----
-  unlockWeapon('smg', 80, '射速 13，城区巷战主力'),
-  unlockWeapon('shotgun', 150, '全自动，近距离一喷一片'),
-  unlockWeapon('rifle', 250, '射程 32 米，升级后穿透'),
-  unlockWeapon('sniper', 380, '初速 420，爆头 ×3，穿透 2'),
-  unlockWeapon('lmg', 450, '弹链 100 发，压制减速'),
-  unlockWeapon('launcher', 600, '榴弹范围爆炸，伤害 120'),
-  tierCap('pistol'),
-  tierCap('smg'),
-  tierCap('shotgun'),
-  tierCap('rifle'),
-  tierCap('sniper'),
-  tierCap('lmg'),
-  tierCap('launcher'),
-  { id: 'dual', section: 'armory', name: '手枪双持', desc: '左右手各一把：弹匣 ×2、射速 ×1.7，散布变大、不能举镜', prices: P(220), ranks: [2], requires: { id: 'cap-pistol', level: 1 }, apply: (b, lv) => { b.dual = lv > 0; } },
-  { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）', prices: P(300), ranks: [4], requires: { id: 'unlock-rifle', level: 1 }, apply: (b, lv) => { b.sidearm = lv > 0; } },
+  unlockWeapon('smg', 60, '射速 13，城区巷战主力'),
+  unlockWeapon('shotgun', 120, '全自动，近距离一喷一片'),
+  unlockWeapon('rifle', 200, '射程 32 米，从一开始就穿透'),
+  unlockWeapon('sniper', 300, '初速 420，爆头 ×3，穿透 2'),
+  unlockWeapon('lmg', 300, '弹链 100 发，压制减速'),
+  unlockWeapon('launcher', 400, '榴弹范围爆炸，伤害 120'),
+  // 双持：手枪练到 3 级就能买，是手枪前期的大目标；后期手枪当副武器也用得上
+  { id: 'dual', section: 'armory', name: '手枪双持', desc: '左右手各一把：弹匣 ×2、射速 ×1.7，散布变大、不能举镜', prices: P(160), mastery: { weapon: 'pistol', level: 3 }, apply: (b, lv) => { b.dual = lv > 0; } },
+  // 随身武器：手枪精通后就能买。新解锁的枪不用每局再攒零件买，开局就能拿着练熟练度
+  { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）', prices: P(120), mastery: { weapon: 'pistol', level: 5 }, apply: (b, lv) => { b.sidearm = lv > 0; } },
   // ---- 工程部 ----
   { id: 'turret-cap', section: 'engineering', name: '炮塔数量上限', desc: '所有炮塔合计最多 {n} 座', prices: P(80, 140, 210, 300, 420), ranks: [1, 2, 4, 5, 6], apply: (b, lv) => { b.turretCap = 3 + lv; } },
   { id: 'unlock-hmg', section: 'engineering', name: '解锁重机枪塔', desc: '射程 12，伤害高，转得慢，能吃伤害', prices: P(200), ranks: [2], requires: { id: 'turret-cap', level: 1 }, apply: (b, lv) => { if (lv) b.structures.add('hmg'); } },
@@ -231,7 +204,7 @@ export function metaValue(id: string, level: number): number {
     case 'regen':
       return Math.round(REGEN_PER_LEVEL * level * 10) / 10;
     default:
-      return id.startsWith('cap-') ? 5 + level : level;
+      return level;
   }
 }
 

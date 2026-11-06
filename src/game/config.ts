@@ -50,6 +50,8 @@ export interface RunConfig {
   weaponMods: Record<WeaponKind, WeaponMod>;
   /** 双持手枪 */
   dual: boolean;
+  /** 每把枪的星级 0–3（熟练度精通后继续累计；出征时冻结，见 data/stars.ts） */
+  stars: Record<WeaponKind, number>;
 }
 
 export interface MetaApplied {
@@ -62,9 +64,11 @@ export interface MetaApplied {
   regen: number;
   speed: number;
   fireRate: number;
+  /** 难度 × 章节的零件倍率（applyMeta 乘进 g.mods.scrap 的那部分；沙盒 / 训练场 / 每日是 1） */
+  scrapEnv: number;
 }
 
-export const NO_META: MetaApplied = { maxHp: 0, coreHp: 0, structHp: 1, turretDamage: 1, scrapGain: 1, armor: 1, regen: 0, speed: 1, fireRate: 1 };
+export const NO_META: MetaApplied = { maxHp: 0, coreHp: 0, structHp: 1, turretDamage: 1, scrapGain: 1, armor: 1, regen: 0, speed: 1, fireRate: 1, scrapEnv: 1 };
 
 export function sandboxConfig(): RunConfig {
   const tierCap = {} as Record<WeaponKind, number>;
@@ -90,5 +94,7 @@ export function sandboxConfig(): RunConfig {
     ammo: false,
     weaponMods: noMods(),
     dual: false,
+    // 字段顺序要和 configFor 一致：检查点按模板重建 config，顺序不同的话 JSON 逐字比较会对不上
+    stars: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
   };
 }

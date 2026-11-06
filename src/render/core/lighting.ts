@@ -11,9 +11,31 @@ import {
   HemisphereLight,
   PointLight,
   Scene,
+  ShaderChunk,
   Vector3,
 } from 'three';
 import type { MapData } from '../../game/world/types';
+
+/**
+ * 阴影边缘"跑起来就闪"的根因之一：three 的 PCF 用屏幕像素坐标（gl_FragCoord）算一个噪声去旋转 5 个采样点。
+ * 相机一动，同一块地面落到不同的屏幕像素上，采样图案每帧都变，柔边上的像素就一闪一闪（噪声在画面上"爬"）。
+ * 改成固定的旋转角：采样图案和阴影贴图一起锁在世界里（阴影相机已按纹素对齐），相机怎么动阴影边缘都不变。
+ * 代价是柔边上可能看到很轻的条纹，radius 只有 1.2 个纹素时几乎看不出来
+ */
+{
+  const IGN = 'float phi = interleavedGradientNoise( gl_FragCoord.xy ) * PI2;';
+  if (ShaderChunk.shadowmap_pars_fragment.includes(IGN)) ShaderChunk.shadowmap_pars_fragment = ShaderChunk.shadowmap_pars_fragment.replace(IGN, 'float phi = 0.7;');
+  else console.warn('阴影采样补丁没有生效：three 的 shadowmap_pars_fragment 改过了');
+}
+
+/** 真正打光的路灯数，和满亮 / 熄灭的距离（米） */
+const LAMP_LIGHTS = 10;
+const LAMP_FULL = 14;
+const LAMP_FAR = 20;
+
+const _right = new Vector3();
+const _up = new Vector3();
+const _p = new Vector3();
 
 interface Look {
   sun: number;
@@ -76,6 +98,9 @@ export class Lighting {
   readonly hemi: HemisphereLight;
   readonly fog: FogExp2;
   private readonly lampLights: PointLight[] = [];
+  /** 每盏点光源认领的路灯下标（-1 = 空着）和当前亮度 0–1 */
+  private readonly lampOwner: number[] = [];
+  private readonly lampLevel: number[] = [];
   private readonly lampPos: Array<{ x: number; z: number }>;
   private lampStrength = 1;
   /** 每根路灯下面一块常亮的暖色光斑（贴地加色面片），不算光照，全部一次画完 */
@@ -107,8 +132,17 @@ export class Lighting {
     cam.bottom = -26;
     cam.near = 1;
     cam.far = 120;
-    this.sun.shadow.bias = -0.0004;
-    this.sun.shadow.normalBias = 0.04;
+    // bias：负值消除 shadow acne，但太大会让阴影从物体底部"飘"开（peter-panning）。
+    // normalBias 沿法线方向偏移，对地面有帮助但对薄物体（墙、栏杆）会让阴影缩进去。
+    // 旧值 bias -0.0004 / normalBias 0.04，车和集装箱底部的阴影有明显离地感。
+    // 收紧 normalBias 到 0.02，阴影更贴物体底部
+    this.sun.shadow.bias = -0.0003;
+    this.sun.shadow.normalBias = 0.02;
+    // 阴影边缘柔一点（M19）：PCF 的模糊半径。r187 去掉了 PCFSoftShadowMap，用 radius 达到同样的效果。
+    // radius 太大（旧值 2.5）跑动时阴影边缘会一帧一帧地跳——texel 对齐只管整数偏移，
+    // blur 核跨越多个 texel 后亚 texel 漂移仍然可见。收到 1.2 + 提高采样次数，阴影仍柔但抖动不可见
+    this.sun.shadow.radius = 1.2;
+    this.sun.shadow.blurSamples = 16;
     scene.add(this.sun);
     scene.add(this.sun.target);
 
@@ -116,11 +150,14 @@ export class Lighting {
     scene.fog = this.fog;
 
     this.lampPos = map.lamps;
-    for (let i = 0; i < 6; i++) {
+    // 10 盏：第一章 20 米内最多 10 根路灯（按 4 张图统计），这样附近的路灯始终全亮
+    for (let i = 0; i < LAMP_LIGHTS; i++) {
       const l = new PointLight(0xffc880, 0, 13, 2);
       l.castShadow = false;
       scene.add(l);
       this.lampLights.push(l);
+      this.lampOwner.push(-1);
+      this.lampLevel.push(0);
     }
     this.poolMat = new MeshBasicMaterial({ map: poolTexture(), color: 0xffb860, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
     const pg = new PlaneGeometry(9, 9);
@@ -172,31 +209,69 @@ export class Lighting {
       DUSK.sunDir[2] + (NIGHT.sunDir[2] - DUSK.sunDir[2]) * t,
     ] as const;
     this.dir.set(d[0], d[1], d[2]).normalize();
-    this.sun.target.position.set(x, 0, z);
-    this.sun.position.set(x + this.dir.x * 60, this.dir.y * 60, z + this.dir.z * 60);
+    // 对齐到阴影贴图的一个像素（在光源视角的平面里取整）：阴影随玩家移动时一格一格地走，边缘不会每帧抖动
+    const cam = this.sun.shadow.camera;
+    const texel = (cam.right - cam.left) / this.sun.shadow.mapSize.x;
+    _right.set(this.dir.z, 0, -this.dir.x).normalize();
+    _up.crossVectors(this.dir, _right).normalize();
+    _p.set(x, 0, z);
+    const a = Math.round(_p.dot(_right) / texel) * texel;
+    const b = Math.round(_p.dot(_up) / texel) * texel;
+    const c = _p.dot(this.dir);
+    _p.copy(_right).multiplyScalar(a).addScaledVector(_up, b).addScaledVector(this.dir, c);
+    this.sun.target.position.copy(_p);
+    this.sun.position.copy(_p).addScaledVector(this.dir, 60);
     this.sun.target.updateMatrixWorld();
     // 雾的倍率平滑过渡
     const want = this.baseFog * this.fogMult;
     this.fog.density += (want - this.fog.density) * Math.min(1, dt * 1.5);
 
-    // 路灯比灯光多，只有离玩家最近的几根真正打光。以前按距离挑灯、换灯时淡入淡出，走动中还是能看到光一跳一跳。
-    // 现在每盏灯的亮度按"它比第 N+1 近的那根近多少"连续衰减：一根路灯被挤出前 N 名的那一刻，它的亮度正好是 0，
-    // 换灯没有任何跳变（这个参考距离随玩家位置连续变化）。远处的路灯靠地上的光斑（lampPools）撑着
+    // 路灯比灯光多，只有离玩家最近的几根真正打光（6 盏点光源）。
+    // 以前每帧按距离重新排序，第 k 近的路灯用第 k 盏灯：两根路灯的远近一交换，同一盏灯就从这根瞬移到那根
+    // （实测一帧跳 10–22 米、亮度不变），画面上看就是灯光在闪。
+    // 现在每盏灯"认领"一根路灯，只要那根还在最近的 N 根里就一直跟着它；被挤出去时先淡到 0，
+    // 再去认领新进来的那根（从 0 淡入）。亮度仍按"比第 N+1 近的那根近多少"连续衰减，所以换灯时亮度本来就是 0
+    // 亮度只看"这根路灯离玩家多远"（固定的 LAMP_FULL → LAMP_FAR 米淡出），不再看"比第 N+1 近的那根近多少"：
+    // 以前那个参考距离随着走路一直在变，身边 8–12 米的路灯会在 0 和满亮之间来回变（实测 6.5 / 0.1 / 16 / 11.9，满亮是 38），
+    // 跑起来地面上的灯光就一明一暗地晃。现在 14 米内一律满亮，淡出发生在 14–20 米外
     const n = this.lampLights.length;
     const order = this.lampPos.map((p, i) => ({ i, d: Math.hypot(p.x - x, p.z - z) })).sort((a, b) => a.d - b.d);
-    const ref = order[n]?.d ?? (order[order.length - 1]?.d ?? 0) + 8;
+    // 灯不够用时（离得近的路灯比 N 多）才退回按名次淡出
+    const ref = Math.min(LAMP_FAR, order[n]?.d ?? Infinity);
+    const full = Math.min(LAMP_FULL, ref - 3);
     const off = this.lampsOff ? 0 : 1;
+    const wanted = new Set(order.slice(0, n).map((e) => e.i));
+    const dist = new Map(order.map((e) => [e.i, e.d]));
+    // 1) 认领的路灯已经不在前 N 名：放手（这时它的目标亮度是 0，见下面的衰减公式）
+    for (let k = 0; k < n; k++) {
+      const own = this.lampOwner[k] as number;
+      if (own >= 0 && !wanted.has(own)) this.lampOwner[k] = -1;
+    }
+    // 2) 前 N 名里还没被认领的路灯，分给空着的灯
+    const taken = new Set(this.lampOwner.filter((o) => o >= 0));
+    for (const i of wanted) {
+      if (taken.has(i)) continue;
+      const free = this.lampOwner.indexOf(-1);
+      if (free < 0) break;
+      this.lampOwner[free] = i;
+      taken.add(i);
+      // 新认领：从 0 开始淡入，位置直接放过去（这时亮度是 0，看不出移动）
+      this.lampLevel[free] = 0;
+    }
     for (let k = 0; k < n; k++) {
       const l = this.lampLights[k] as PointLight;
-      const e = order[k];
-      if (!e) {
-        l.intensity = 0;
-        continue;
+      const own = this.lampOwner[k] as number;
+      let target = 0;
+      if (own >= 0) {
+        const p = this.lampPos[own] as { x: number; z: number };
+        l.position.set(p.x + 0.4, 4.2, p.z);
+        const w = Math.min(1, Math.max(0, (ref - (dist.get(own) as number)) / Math.max(1, ref - full)));
+        target = w * w * (3 - 2 * w);
       }
-      const p = this.lampPos[e.i] as { x: number; z: number };
-      l.position.set(p.x + 0.4, 4.2, p.z);
-      const w = Math.min(1, Math.max(0, (ref - e.d) / 5));
-      l.intensity = 38 * this.lampStrength * w * w * (3 - 2 * w) * off;
+      // 亮度平滑跟随目标（约 0.15 秒），即使目标突变也不会一帧跳过去
+      const cur = this.lampLevel[k] as number;
+      this.lampLevel[k] = cur + (target - cur) * Math.min(1, dt * 7);
+      l.intensity = 38 * this.lampStrength * (this.lampLevel[k] as number) * off;
     }
     // 停电时光斑也渐渐熄掉
     this.poolK += ((this.lampsOff ? 0 : 1) - this.poolK) * Math.min(1, dt * 3);

@@ -54,7 +54,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'endless-15', name: '无尽之夜', desc: '无尽模式撑过第 15 夜', medals: 60, test: (a) => a.bestNight >= 15 },
   { id: 'combo-15', name: '收割机', desc: '一局里打出 15 连杀', medals: 20, test: (a) => a.bestCombo >= 15 },
   { id: 'challenges-10', name: '挑战者', desc: '累计完成 10 个夜间挑战', medals: 25, test: (a) => a.challenges >= 10 },
-  { id: 'codex', name: '博物学家', desc: '图鉴里集齐全部 7 种僵尸', medals: 30, test: (a) => seenAll(a.codex, ['walker', 'runner', 'bloater', 'breaker', 'colossus', 'spitter', 'screamer']) },
+  { id: 'codex', name: '博物学家', desc: '图鉴里集齐全部 9 种僵尸', medals: 30, test: (a) => seenAll(a.codex, ['walker', 'runner', 'bloater', 'breaker', 'colossus', 'spitter', 'screamer', 'crawler', 'armored']) },
 ];
 
 /** 新达成的成就（不含已经达成过的） */

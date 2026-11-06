@@ -14,7 +14,7 @@ export const SAVE_KEY_V1 = 'zombie-hold-save-v1';
 /** 存档纪元：记在单独的键里。和这里的值不一样时清掉进度重新开始（只保留音量、画质、灵敏度） */
 export const EPOCH_KEY = 'zombie-hold-epoch';
 /** 每次更新游戏都把它加一：玩家打开新版本时进度全部重置 */
-export const SAVE_EPOCH = 7;
+export const SAVE_EPOCH = 12;
 
 /** 跨局存档：统计、设置、局外进度 */
 export interface SaveData {
@@ -28,6 +28,8 @@ export interface SaveData {
   /** 最快通关用时（秒），0 = 还没通关过 */
   bestWinTime: number;
   volume: number;
+  /** 分类音量（M20）：武器 / 僵尸 / 环境 / 界面，0–1 */
+  mix: { weapons: number; zombies: number; world: number; ui: number };
   quality: Quality;
   /** 鼠标灵敏度倍率 */
   sensitivity: number;
@@ -46,6 +48,7 @@ export const defaultSave = (): SaveData => ({
   totalHeadshots: 0,
   bestWinTime: 0,
   volume: 0.8,
+  mix: { weapons: 1, zombies: 1, world: 1, ui: 1 },
   quality: 'high',
   sensitivity: 1,
   meta: newMeta(),
@@ -81,6 +84,13 @@ export function oneOf<T extends string>(o: Record<string, unknown>, key: string,
 
 export const isQuality = (v: unknown): v is Quality => v === 'low' || v === 'mid' || v === 'high';
 
+/** 分类音量：缺字段 / 坏值都按 1 */
+function parseMix(v: unknown): SaveData['mix'] {
+  const o = isObj(v) ? v : {};
+  const f = (k: string) => (typeof o[k] === 'number' && Number.isFinite(o[k] as number) ? Math.min(1, Math.max(0, o[k] as number)) : 1);
+  return { weapons: f('weapons'), zombies: f('zombies'), world: f('world'), ui: f('ui') };
+}
+
 function parseMeta(v: unknown): MetaState {
   if (!isObj(v)) throw new SaveError('meta 缺失');
   const levels: Record<string, number> = {};
@@ -106,7 +116,14 @@ function parseMeta(v: unknown): MetaState {
 }
 
 /** 补给 / 库存子弹 / 工作台 / 章节：缺省时按新档处理（旧存档升级上来） */
-function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | 'ammo' | 'bench' | 'chapters' | 'lastChapter'> {
+function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | 'ammo' | 'bench' | 'chapters' | 'lastChapter' | 'mastery'> {
+  const mastery: Partial<Record<WeaponKind, number>> = {};
+  if (isObj(v.mastery)) {
+    for (const k of WEAPON_ORDER) {
+      const n = v.mastery[k];
+      if (typeof n === 'number' && Number.isFinite(n) && n > 0) mastery[k] = Math.min(1e7, Math.floor(n));
+    }
+  }
   const ammo: Partial<Record<WeaponKind, number>> = {};
   if (isObj(v.ammo)) {
     for (const k of WEAPON_ORDER) {
@@ -129,6 +146,7 @@ function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | '
     bench,
     chapters,
     lastChapter: isMapId(v.lastChapter) ? v.lastChapter : 'outpost',
+    mastery,
   };
 }
 
@@ -166,6 +184,7 @@ export function parseSave(v: unknown): SaveData {
     totalHeadshots: num(v, 'totalHeadshots', 0, 1e9, true),
     bestWinTime: num(v, 'bestWinTime', 0, 1e7),
     volume: num(v, 'volume', 0, 1),
+    mix: parseMix(v.mix),
     quality: v.quality,
     sensitivity: num(v, 'sensitivity', 0.2, 3),
     meta: parseMeta(v.meta),

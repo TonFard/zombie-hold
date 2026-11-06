@@ -43,9 +43,13 @@ export const PROPORTIONS: Record<ZombieKind, Proportions> = {
   colossus: { ...HUMAN, shoulderX: 0.34, hipX: 0.14, neckY: 1.55, shoulderY: 1.46, waistY: 1.02, upper: 0.32, fore: 0.3 },
   spitter: { ...HUMAN, neckY: 1.46, shoulderY: 1.4, waistY: 0.98 },
   screamer: { ...HUMAN, hipY: 0.95, kneeY: 0.5, waistY: 1.0, neckY: 1.48, shoulderY: 1.4, shoulderX: 0.18, hipX: 0.08, upper: 0.3, fore: 0.29 },
+  // 爬行者：瘦长，胳膊比腿长（四肢着地时上身能撑起来）
+  crawler: { ...HUMAN, shoulderX: 0.18, hipX: 0.09, upper: 0.36, fore: 0.34 },
+  // 重装感染者：宽肩、粗壮
+  armored: { ...HUMAN, shoulderX: 0.3, hipX: 0.13, neckY: 1.6, shoulderY: 1.52, waistY: 1.06, upper: 0.32, fore: 0.29 },
 };
 
-export const MODEL_SCALE: Record<ZombieKind, number> = { walker: 1, runner: 1, bloater: 1, breaker: 1, colossus: 2.1, spitter: 1, screamer: 1 };
+export const MODEL_SCALE: Record<ZombieKind, number> = { walker: 1, runner: 1, bloater: 1, breaker: 1, colossus: 2.1, spitter: 1, screamer: 1, crawler: 1, armored: 1.05 };
 
 function lookFor(kind: ZombieKind, variant: number): Look {
   const r = new Rng(variant * 7919 + kind.length * 104729 + kind.charCodeAt(0));
@@ -77,6 +81,10 @@ function lookFor(kind: ZombieKind, variant: number): Look {
       return { ...base, skin: r.pick([0x7a8a4a, 0x8a9a50, 0x6f8044]), eyes: 0xb8ff3a, bulk: 1.05, sleeves: 'none', hat: null, hair: null, shirt: 0x4a5032, wounds: r.int(3, 6) };
     case 'screamer':
       return { ...base, skin: r.pick([0xb0aaa0, 0xa8a49a, 0xbab4a8]), eyes: 0xff3af0, bulk: 0.78, depth: 0.8, sleeves: 'none', missingArm: 0, gaunt: true, hat: null, hair: r.pick([0x7a7468, 0x2a2018]), shirt: 0x6a5a7a, wounds: r.int(2, 4) };
+    case 'crawler':
+      return { ...base, skin: r.pick([0x8a9078, 0x7c8470, 0x969a86]), eyes: 0xff6a20, bulk: 0.78, depth: 0.8, sleeves: 'none', missingArm: 0, gaunt: true, hat: null, hair: r.chance(0.5) ? base.hair : null, wounds: r.int(4, 7), pants: 0x3a3228 };
+    case 'armored':
+      return { ...base, skin: r.pick([0x6a7660, 0x5f6c58]), eyes: 0xffc040, bulk: 1.3, depth: 1.2, sleeves: 'long', missingArm: 0, hat: null, hair: null, shirt: 0x3a3e30, pants: 0x2f3426 };
     case 'colossus':
       return { ...base, skin: 0x5a6068, eyes: 0xff2a1a, bulk: 1.5, depth: 1.3, sleeves: 'none', missingArm: 0, hat: null, hair: null, shirt: 0x4a3a34, pants: 0x3a3028, wounds: 8 };
     default:
@@ -355,6 +363,32 @@ function extrasScreamer(b: Builder, J: Joints): void {
   b.box(0.012, 0.012, 0.004, { x: 0.05, y: hy + 0.11, z: 0.115 }, glow(0xff3af0, 2));
 }
 
+/** 爬行者：背上撕开的伤口、拖在地上的碎布 */
+function extrasCrawler(b: Builder, J: Joints, rng: Rng): void {
+  b.bone(B.chest);
+  for (let i = 0; i < 5; i++) wound(b, rng, rng.range(-0.12, 0.12), J.chest[1] + rng.range(0.05, 0.4), -0.11, -1, 0.05);
+  b.box(0.3, 0.02, 0.2, { y: J.chest[1] - 0.05, z: -0.05 }, matte(0x3a3228, { jitter: 0.3, ao: 0.2 }));
+}
+
+/** 重装感染者：胸前一整块焊起来的钢板（护住正面）、肩甲、钢盔——背后什么都没有 */
+function extrasArmored(b: Builder, J: Joints): void {
+  const c = J.chest[1];
+  b.bone(B.chest);
+  // 正面大钢板：比身体宽一圈，看上去就是"正面打不动"
+  b.box(0.62, 0.62, 0.06, { y: c + 0.12, z: 0.2 }, metal(0x6e7276, { jitter: 0.3, ao: 0.25 }));
+  b.box(0.58, 0.05, 0.065, { y: c + 0.42, z: 0.205 }, metal(0x4a4e52, { jitter: 0.2, ao: 0 }));
+  for (const [x, y] of [[-0.26, 0.38], [0.26, 0.38], [-0.26, -0.14], [0.26, -0.14], [0, 0.12]] as const) b.cyl(0.018, 0.018, 0.02, 6, { x, y: c + y, z: 0.235, rx: Math.PI / 2 }, metal(0xb0b0a8, { ao: 0 }));
+  // 喷漆的警告条纹
+  b.box(0.5, 0.06, 0.004, { y: c - 0.05, z: 0.232 }, matte(0xc8a020, { jitter: 0.25, ao: 0 }));
+  // 肩甲
+  for (const s of [-1, 1]) b.box(0.18, 0.08, 0.22, { x: s * 0.3, y: c + 0.44, z: 0.02 }, metal(0x5a5e62, { jitter: 0.25, ao: 0.2 }));
+  // 钢盔（头还是能打：盔沿下面露着脸）
+  b.bone(B.head);
+  const hy = J.head[1];
+  b.sphere(0.17, 10, 6, { y: hy + 0.06, sy: 0.7 }, metal(0x4e5a44, { jitter: 0.2, ao: 0.2 }));
+  b.cyl(0.21, 0.21, 0.015, 12, { y: hy + 0.02 }, metal(0x3e4834, { jitter: 0.2, ao: 0 }));
+}
+
 function buildKindGeometry(kind: ZombieKind, variant: number): Built {
   const b = new Builder(true);
   const J = makeJoints(PROPORTIONS[kind]);
@@ -367,6 +401,8 @@ function buildKindGeometry(kind: ZombieKind, variant: number): Built {
   else if (kind === 'runner') extrasRunner(b, J, rng);
   else if (kind === 'spitter') extrasSpitter(b, J, rng);
   else if (kind === 'screamer') extrasScreamer(b, J);
+  else if (kind === 'crawler') extrasCrawler(b, J, rng);
+  else if (kind === 'armored') extrasArmored(b, J);
   return b.build();
 }
 

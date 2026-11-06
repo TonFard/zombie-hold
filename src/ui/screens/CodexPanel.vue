@@ -13,6 +13,8 @@ const NOTES: Record<ZombieKind, string> = {
   colossus: '首领。冲锋前地上有红线，冲完硬直时打胸口的核心',
   spitter: '远程吐酸，留下酸池；打破喉咙的酸囊一枪毙命',
   screamer: '尖叫让周围僵尸加速，必须先杀',
+  crawler: '贴着地爬，能从路障底下钻过去，只追人。站着平射打不到，要压低枪口',
+  armored: '正面挂钢板，打身体只有四成伤害。打头、绕到背后、或者用爆炸',
 };
 const kinds = Object.keys(ZOMBIES) as ZombieKind[];
 const doneCount = computed(() => ACHIEVEMENTS.filter((a) => codex.value.done.includes(a.id)).length);
@@ -55,7 +57,7 @@ const doneCount = computed(() => ACHIEVEMENTS.filter((a) => codex.value.done.inc
 h3 {
   font-size: 12px;
   letter-spacing: 8px;
-  color: #6fd0e8;
+  color: var(--t-cyan);
   margin: 0 0 12px;
   font-weight: 400;
 }
@@ -67,10 +69,10 @@ h3 {
 .z {
   padding: 8px 12px;
   border-left: 3px solid rgba(255, 255, 255, 0.12);
-  color: #6f7c88;
+  color: var(--t-dim);
 }
 .z.seen {
-  border-color: #e8553f;
+  border-color: var(--t-red);
   color: #aeb8c2;
 }
 .z b {
@@ -91,7 +93,7 @@ h3 {
   gap: 10px;
   padding: 6px 10px;
   font-size: 13px;
-  color: #6f7c88;
+  color: var(--t-dim);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .a.done {
@@ -100,11 +102,11 @@ h3 {
   background: rgba(240, 184, 58, 0.05);
 }
 .a b {
-  color: #d8dee4;
+  color: var(--t-text);
 }
 .a.done b,
 .a i {
-  color: #f0b83a;
+  color: var(--t-gold);
   font-style: normal;
 }
 </style>

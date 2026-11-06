@@ -1,4 +1,6 @@
 import { CARD_BY_ID, drawCards } from '../data/cards';
+import { planLoot, refreshLoot } from './loot';
+import { RISK_FX, nightRisk, planRisk, riskOn } from './events';
 import { WEAPON_ORDER } from '../data/weapons';
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { ALIVE_CAP, DAY_FIRST, DAY_LEN, FINAL_NIGHT, START_SCRAP, batchInterval, batchSize, bossFor, hpScale, nightBonus, nightCount, pickKind } from '../data/waves';
@@ -160,6 +162,9 @@ function startDay(g: Game, first = false): void {
     g.hz.fires = Math.max(g.hz.fires, GRENADE.fireMax);
     planNight(g);
     planAirdrop(g);
+    planRisk(g);
+    if (first) planLoot(g);
+    refreshLoot(g);
     const m = r.mod ? nightMod(r.mod) : null;
     const ch = CHALLENGES[r.challenge as keyof typeof CHALLENGES];
     sub = `${m ? `今晚：${m.name}（${m.desc}）· ` : ''}挑战：${ch.desc}`;
@@ -174,6 +179,8 @@ export function skipDay(g: Game): void {
 
 function startNight(g: Game): void {
   const r = g.run;
+  nightRisk(g);
+  g.stats.nights.push({ night: r.night, kills: 0, coreLow: g.core.hp / g.core.maxHp, lost: 0, hurt: 0, boss: 0, elite: 0, challenge: r.challenge ? 0 : -1, mod: r.mod });
   const m = nightMod(r.mod);
   r.modSpeed = r.mod ? m.speed : 1;
   r.modScrap = r.mod ? m.scrap : 1;
@@ -201,6 +208,8 @@ function startNight(g: Game): void {
 function endNight(g: Game): void {
   const r = g.run;
   if (g.config.extras) checkChallenge(g, true);
+  const nl = g.stats.nights[g.stats.nights.length - 1];
+  if (nl && nl.night === r.night && nl.challenge === 0 && r.chDone) nl.challenge = 1;
   r.modSpeed = 1;
   r.modScrap = 1;
   const bonus = Math.round(nightBonus(r.night) * g.mods.scrap);
@@ -212,7 +221,10 @@ function endNight(g: Game): void {
     g.events.emit('runEnded', { won: true, reason: '' });
     return;
   }
-  r.cardChoices = drawCards(g, g.config.cardChoices).map((c) => c.id);
+  // 风险事件「幸存者求救」：这个黎明多 1 张卡
+  const extra = g.ev.extraCard;
+  g.ev.extraCard = 0;
+  r.cardChoices = drawCards(g, g.config.cardChoices + extra).map((c) => c.id);
   r.rerollsLeft = g.config.rerolls;
   setPhase(g, 'cards');
   g.events.emit('banner', { text: '黎明', sub: `撑过了第 ${r.night} 夜，奖励 ${bonus} 零件` });
@@ -286,13 +298,15 @@ function updateNight(g: Game, dt: number): void {
       const dense = g.config.extras ? RANKED_DENSITY : null;
       const want = Math.min(Math.round(batchSize(r.night) * (dense?.batch ?? 1)), r.toSpawn, ALIVE_CAP - g.zombies.length);
       const gates = pickGates(g, 1 + g.rng.int(0, 2));
+      // 风险事件「尸潮迁徙」：一半的批次全部从预告的入口来
+      if (riskOn(g, 'migration') && g.ev.gate >= 0 && g.rng.next() < RISK_FX.migrationShare) gates.splice(0, gates.length, g.ev.gate);
       let made = 0;
       const m = nightMod(r.mod);
       const hp = hpScale(r.night) * g.config.zombieHp * (r.mod ? m.hp : 1);
       for (let i = 0; i < want; i++) {
         const kind = g.config.extras ? pickKindExtra(g, r.night, m.runner) : pickKind(r.night, g.rng.next());
         // 精英夜：每批第一只是精英
-        const elite = g.config.extras && r.mod === 'elite' && i === 0;
+        const elite = g.config.extras && ((r.mod === 'elite' && i === 0) || (riskOn(g, 'broadcast') && i === 0 && !g.ev.eliteDone));
         const z = g.spawnAtGate(kind, gates[i % gates.length] as number, hp * (elite ? ELITE_HP : 1));
         if (z) {
           z.elite = elite;
@@ -300,12 +314,17 @@ function updateNight(g: Game, dt: number): void {
         }
       }
       r.toSpawn -= made;
+      // 军事广播的精英只来一只
+      if (riskOn(g, 'broadcast') && made > 0) g.ev.eliteDone = 1;
       r.spawnTimer = made < want ? 0.6 : batchInterval(r.night) * (dense?.interval ?? 1);
     }
     return;
   }
   if (g.zombies.length === 0) endNight(g);
 }
+
+/** 测试用：按正式出场表抽一种普通僵尸（sim:zombies 统计出场比例） */
+export const pickKindForTest = (g: Game, n: number): ZombieKind => pickKindExtra(g, n, 1);
 
 /** 带新僵尸的出场表：第 3 夜起吐酸者、第 6 夜起尖啸者；浓雾夜奔袭者更多 */
 function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
@@ -322,9 +341,15 @@ function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
   const r = g.rng.next();
   const spitter = n >= 3 ? Math.min(0.04 + (n - 3) * 0.015, 0.12) : 0;
   const screamer = n >= 6 ? Math.min(0.03 + (n - 6) * 0.01, 0.08) : 0;
+  // M17：爬行者第 4 夜起、重装感染者第 6 夜起
+  const crawler = n >= 4 ? Math.min(0.05 + (n - 4) * 0.015, 0.12) : 0;
+  const armored = n >= 6 ? Math.min(0.03 + (n - 6) * 0.012, 0.09) : 0;
   if (r < spitter) return 'spitter';
   if (r < spitter + screamer) return 'screamer';
-  const k = pickKind(n, (r - spitter - screamer) / (1 - spitter - screamer));
+  if (r < spitter + screamer + crawler) return 'crawler';
+  if (r < spitter + screamer + crawler + armored) return 'armored';
+  const used = spitter + screamer + crawler + armored;
+  const k = pickKind(n, (r - used) / (1 - used));
   if (k === 'walker' && runnerK > 1 && g.rng.next() < (runnerK - 1) * 0.25) return 'runner';
   return k;
 }
@@ -361,10 +386,15 @@ function updatePickups(g: Game): void {
 
 export function updateRun(g: Game, dt: number): void {
   const r = g.run;
+  // 团队死斗：没有白天 / 夜晚、不刷僵尸、死了会复活，只走时钟
+  if (g.tdm.on) {
+    r.time += dt;
+    return;
+  }
   if (r.phase === 'menu' || r.phase === 'won' || r.phase === 'lost' || r.phase === 'training') return;
   r.time += dt;
 
-  if (g.mods.coreRegen > 0 && g.core.hp > 0) g.core.hp = Math.min(g.core.maxHp, g.core.hp + g.mods.coreRegen * dt);
+  if (g.mods.coreRegen > 0 && g.core.hp > 0 && !riskOn(g, 'fuel')) g.core.hp = Math.min(g.core.maxHp, g.core.hp + g.mods.coreRegen * dt);
   // 玩家脱战回血（局外「急救训练」）：4 秒没受伤后开始
   g.hurtT += dt;
   const p = g.player;

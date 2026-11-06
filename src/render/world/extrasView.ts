@@ -47,7 +47,8 @@ export class ExtrasView {
   ) {
     scene.add(this.wrecks);
     // 手电筒：挂在相机上的聚光灯（不投影，省性能）
-    this.flash = new SpotLight(0xfff2d8, 0, FLASHLIGHT.range, 0.38, 0.45, 1.4);
+    // 衰减 1（以前 1.4）：贴着墙不再一片死白（实测亮度 11 → 195），10 米外的路面也照得清
+    this.flash = new SpotLight(0xfff2d8, 0, FLASHLIGHT.range, 0.4, 0.5, 1);
     this.flash.castShadow = false;
     this.flash.target = this.flashTarget;
     scene.add(this.flash, this.flashTarget);
@@ -71,8 +72,19 @@ export class ExtrasView {
       this.smoke.push({ sp, mat, age: 0, life: 1, vx: 0, vz: 0, s0: 0.3 });
     }
 
+    // 冒烟的车（M19）：地图里的车每 4 辆挑一辆，再隔一辆着火（固定，不随机）
+    const cars = game.map.props.filter((p) => p.kind === 'car');
+    cars.forEach((c, k) => {
+      if (k % 4 !== 1) return;
+      this.smokers.push({ x: (c.x0 + c.x1) / 2 - game.map.grid.w / 2, z: (c.y0 + c.y1) / 2 - game.map.grid.h / 2, fire: k % 8 === 1 });
+    });
+
     const e = game.events;
     this.off.push(
+      e.on('riskFlare', (f) => {
+        this.flare = f.on ? { x: f.x, z: f.z } : null;
+        if (f.on) this.ring(f.x, f.z, 0.4, 3, 1, 0xff4a3a);
+      }),
       e.on('airdrop', (a) => {
         this.drop.visible = a.stage === 'land';
         this.drop.position.set(a.x, 0, a.z);
@@ -154,10 +166,32 @@ export class ExtrasView {
     }
   }
 
+  /** 风险事件「幸存者求救」的信号弹位置（没有就是 null） */
+  private flare: { x: number; z: number } | null = null;
+  /** 冒烟的车残骸（M19）：固定挑出来的几辆，烟和火星有距离上限（离玩家 30 米内） */
+  private smokers: Array<{ x: number; z: number; fire: boolean }> = [];
+  private wreckT = 0;
+  /** 环境粒子开关（低画质关） */
+  ambient = true;
+
   update(dt: number): void {
     this.time += dt;
     const g = this.game;
     const h = g.hz;
+
+    // 环境粒子（M19）：冒烟的车。每 0.25 秒挑一辆离玩家 30 米内的冒一口烟，着火的车再冒火星
+    if (this.ambient) {
+      this.wreckT -= dt;
+      if (this.wreckT <= 0 && this.smokers.length) {
+        this.wreckT = 0.25;
+        const p = g.player;
+        for (const w of this.smokers) {
+          if (Math.hypot(w.x - p.x, w.z - p.z) > 30) continue;
+          this.fx.smoke(w.x + this.rng.range(-0.4, 0.4), 1.1, w.z + this.rng.range(-0.4, 0.4));
+          if (w.fire) this.fx.flameLick(w.x + this.rng.range(-0.5, 0.5), w.z + this.rng.range(-0.3, 0.3));
+        }
+      }
+    }
 
     // 手雷、酸团
     this.syncPool(this.grenadeMeshes, h.thrown, () => new Mesh(this.grenadeGeo, this.grenadeMat));
@@ -206,7 +240,9 @@ export class ExtrasView {
 
     // 空投：信号烟从箱子旁的烟罐冒出，一团接一团往上飘
     this.smokeT -= dt;
-    if (this.drop.visible && this.smokeT <= 0) {
+    // 烟的来源：空投箱旁的烟罐；没有空投时，换成幸存者的信号弹
+    const src = this.drop.visible ? { x: this.drop.position.x + 0.78, z: this.drop.position.z + 0.5 } : this.flare;
+    if (src && this.smokeT <= 0) {
       this.smokeT = 0.09;
       const p = this.smoke[this.smokeIdx++ % SMOKE_N]!;
       p.age = 0;
@@ -214,7 +250,7 @@ export class ExtrasView {
       p.vx = 0.35 + this.rng.range(-0.12, 0.12);
       p.vz = 0.12 + this.rng.range(-0.12, 0.12);
       p.s0 = this.rng.range(0.35, 0.55);
-      p.sp.position.set(this.drop.position.x + 0.78, 0.35, this.drop.position.z + 0.5);
+      p.sp.position.set(src.x, 0.35, src.z);
       p.sp.material.rotation = this.rng.range(0, 6.28);
       p.sp.visible = true;
     }
@@ -267,7 +303,7 @@ export class ExtrasView {
     const on = g.flashOn && this.rig.mode === 'fps';
     const low = g.battery < 2 && Math.sin(this.time * 40) > 0.6;
     // 灯一直在场景里、关的时候亮度为 0：灯的数量变了 three 会把所有材质的着色器重新编译一遍，按 T 会卡一下
-    this.flash.intensity = on ? (low ? 15 : 60) : 0;
+    this.flash.intensity = on ? (low ? 8 : 26) : 0;
     if (on) {
       cam.getWorldPosition(this.flash.position);
       this.flash.position.y -= 0.15;

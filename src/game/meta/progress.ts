@@ -1,9 +1,10 @@
 import { DIFFICULTIES, DIFFICULTY_ORDER, type Difficulty } from '../data/difficulty';
 import { META_BY_ID, META_ITEMS, baseBonuses, rankFor, rankOf, type MetaBonuses, type MetaItem } from '../data/meta-catalog';
-import { WEAPONS, type WeaponKind } from '../data/weapons';
+import { WEAPONS, WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import type { MapId } from '../world/maps';
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { BENCH_MAX, benchKey, benchPrice, type BenchLine } from '../data/bench';
+import { masteryBenchCap, masteryLevel, masteryTierCap, xpFor } from '../data/mastery';
 import { CHALLENGE_MEDALS } from '../data/modifiers';
 import { FINAL_NIGHT } from '../data/waves';
 
@@ -29,9 +30,11 @@ export interface MetaState {
   chapters: MapId[];
   /** 上次选的章节 */
   lastChapter: MapId;
+  /** 武器熟练度经验（累计，永久）：用这把枪击杀 +1，爆头击杀再 +1 */
+  mastery: Partial<Record<WeaponKind, number>>;
 }
 
-export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', lastSidearm: null, supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost' });
+export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', lastSidearm: null, supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost', mastery: {} });
 
 // ---------------------------------------------------------------- 勋章结算
 
@@ -46,6 +49,12 @@ export interface RunOutcome {
   challenges?: number;
   /** 哪一章（勋章、补给按章节倍率；缺省第一章） */
   chapter?: MapId;
+  /** 每把枪的击杀 / 爆头击杀（熟练度） */
+  weaponKills?: Partial<Record<WeaponKind, number>>;
+  weaponHeads?: Partial<Record<WeaponKind, number>>;
+  /** 风险事件（M17）：「燃料告急」给的补给、「尸潮迁徙」接过的夜数（这些夜的勋章 ×1.3） */
+  eventSupplies?: number;
+  migrationNights?: number[];
 }
 
 export interface MedalBreakdown {
@@ -59,6 +68,8 @@ export interface MedalBreakdown {
   base: number;
   mult: number;
   total: number;
+  /** 风险事件（尸潮迁徙）的勋章加成 */
+  events: number;
 }
 
 /** 撑过第 n 夜得 4 + 2n；第 5 / 10 夜首领 15 / 30；每 25 击杀 1；每 10 爆头击杀 1；通关 40；最后乘难度倍率 */
@@ -72,9 +83,11 @@ export function medalsFor(o: RunOutcome): MedalBreakdown {
   const headshots = Math.floor(o.headshotKills / 10);
   const win = o.won ? 40 : 0;
   const challenges = (o.challenges ?? 0) * CHALLENGE_MEDALS;
-  const base = nights + bosses + kills + headshots + win + challenges;
+  // 尸潮迁徙：接下的那几夜，这一夜本身的勋章（4 + 2n）再多 30%
+  const events = Math.round((o.migrationNights ?? []).filter((m) => m <= Math.floor(o.nights)).reduce((a, m) => a + (4 + 2 * Math.min(m, FINAL_NIGHT)) * 0.3, 0));
+  const base = nights + bosses + kills + headshots + win + challenges + events;
   const mult = DIFFICULTIES[o.difficulty].medals * (o.chapter ? CHAPTER_BY_ID[o.chapter].medals : 1);
-  return { nights, bosses, kills, headshots, win, challenges, base, mult, total: Math.round(base * mult) };
+  return { nights, bosses, kills, headshots, win, challenges, events, base, mult, total: Math.round(base * mult) };
 }
 
 /**
@@ -84,19 +97,32 @@ export function medalsFor(o: RunOutcome): MedalBreakdown {
 export function suppliesFor(o: RunOutcome): number {
   const n = Math.max(0, Math.floor(o.nights));
   const base = 6 * n + n * (n + 1) + Math.floor(o.kills / 10) + (o.won ? 50 : 0);
-  return Math.round(base * (o.chapter ? CHAPTER_BY_ID[o.chapter].medals : 1));
+  // 风险事件的补给不乘章节倍率（事件本身写的就是 +80）
+  return Math.round(base * (o.chapter ? CHAPTER_BY_ID[o.chapter].medals : 1)) + (o.eventSupplies ?? 0);
 }
 
 /** 一局结束：加勋章和补给，通关就记下这个难度和章节。返回新状态和明细（不修改传入的对象） */
 export function settleRun(m: MetaState, o: RunOutcome): [MetaState, MedalBreakdown] {
   const b = medalsFor(o);
   const next: MetaState = { ...cloneMeta(m), medals: m.medals + b.total, medalsEarned: m.medalsEarned + b.total, supplies: m.supplies + suppliesFor(o) };
+  addMastery(next, o);
   if (o.won && !next.cleared.includes(o.difficulty)) next.cleared.push(o.difficulty);
   if (o.won && o.chapter && !next.chapters.includes(o.chapter)) next.chapters.push(o.chapter);
   return [next, b];
 }
 
-export const cloneMeta = (m: MetaState): MetaState => ({ ...m, levels: { ...m.levels }, cleared: [...m.cleared], ammo: { ...m.ammo }, bench: { ...m.bench }, chapters: [...m.chapters] });
+export const cloneMeta = (m: MetaState): MetaState => ({ ...m, levels: { ...m.levels }, cleared: [...m.cleared], ammo: { ...m.ammo }, bench: { ...m.bench }, chapters: [...m.chapters], mastery: { ...m.mastery } });
+
+/** 把一局里每把枪的击杀加进熟练度（直接改 next） */
+export function addMastery(next: MetaState, o: Pick<RunOutcome, 'weaponKills' | 'weaponHeads'>): void {
+  for (const k of WEAPON_ORDER) {
+    const xp = xpFor(o.weaponKills?.[k] ?? 0, o.weaponHeads?.[k] ?? 0);
+    if (xp > 0) next.mastery[k] = (next.mastery[k] ?? 0) + xp;
+  }
+}
+
+/** 某把枪的熟练度等级（0–5） */
+export const masteryOf = (m: MetaState, k: WeaponKind): number => masteryLevel(k, m.mastery[k] ?? 0);
 
 // ---------------------------------------------------------------- 补给：子弹和工作台
 
@@ -114,13 +140,15 @@ export function buyAmmo(m: MetaState, k: WeaponKind, packs = 1): MetaState | nul
 
 export const benchLevel = (m: MetaState, k: WeaponKind, line: BenchLine): number => m.bench[benchKey(k, line)] ?? 0;
 
-export type BenchResult = 'ok' | 'maxed' | 'supplies' | 'locked';
+export type BenchResult = 'ok' | 'maxed' | 'supplies' | 'locked' | 'mastery';
 
 /** 工作台：这把枪要先在军械库解锁（手枪一开始就有） */
 export function canBench(m: MetaState, k: WeaponKind, line: BenchLine): BenchResult {
   const lv = benchLevel(m, k, line);
   if (lv >= BENCH_MAX) return 'maxed';
   if (k !== 'pistol' && !bonusesOf(m).weapons.has(k)) return 'locked';
+  // 武器台每一级都要这把枪先练到对应的熟练度
+  if (lv >= masteryBenchCap(masteryOf(m, k))) return 'mastery';
   if (m.supplies < benchPrice(k, lv)) return 'supplies';
   return 'ok';
 }
@@ -136,7 +164,7 @@ export function buyBench(m: MetaState, k: WeaponKind, line: BenchLine): MetaStat
 
 // ---------------------------------------------------------------- 购买
 
-export type BuyResult = 'ok' | 'unknown' | 'maxed' | 'medals' | 'requires' | 'rank';
+export type BuyResult = 'ok' | 'unknown' | 'maxed' | 'medals' | 'requires' | 'rank' | 'mastery';
 
 export const levelOf = (m: MetaState, id: string): number => m.levels[id] ?? 0;
 
@@ -151,6 +179,7 @@ export function canBuy(m: MetaState, id: string): BuyResult {
   const price = nextPrice(m, item);
   if (price === null) return 'maxed';
   if (item.requires && levelOf(m, item.requires.id) < item.requires.level) return 'requires';
+  if (item.mastery && masteryOf(m, item.mastery.weapon) < item.mastery.level) return 'mastery';
   if (rankOf(m.medalsEarned) < rankFor(item, levelOf(m, item.id))) return 'rank';
   if (m.medals < price) return 'medals';
   return 'ok';
@@ -171,6 +200,8 @@ export function buyMeta(m: MetaState, id: string): [MetaState, BuyResult] {
 export function bonusesOf(m: MetaState): MetaBonuses {
   const b = baseBonuses();
   for (const item of META_ITEMS) item.apply(b, levelOf(m, item.id));
+  // 局内等级上限：看这把枪自己的熟练度
+  for (const k of WEAPON_ORDER) b.tierCap[k] = masteryTierCap(masteryOf(m, k));
   return b;
 }
 
