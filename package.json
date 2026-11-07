@@ -1,6 +1,6 @@
 {
   "name": "zombie-hold",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "description": "黎明：第一人称 3D 据点防守",
@@ -31,6 +31,7 @@
     "assets:atoms": "python assets/programs/build_all.py",
     "assets:manifest": "python assets/programs/_lib/build_manifest.py",
     "assets:check": "python assets/programs/_lib/check_all.py",
+    "review:api": "python assets/programs/_lib/review_server.py",
     "desktop": "vite build && node electron/run.cjs",
     "desktop:dev": "node electron/run.cjs --dev",
     "dist:win": "npm run build && electron-builder --win"
