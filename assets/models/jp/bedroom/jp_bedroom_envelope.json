@@ -1,0 +1,35 @@
+{
+  "id": "jp_bedroom_envelope",
+  "region": "jp",
+  "site": "bedroom",
+  "room": "rm_jp_06",
+  "object": "envelope",
+  "part": null,
+  "style": "jp",
+  "size_m": [
+    0.23,
+    0.0012,
+    0.162
+  ],
+  "size_m_s3d": [
+    0.23,
+    0.162,
+    0.0012
+  ],
+  "tri": 0,
+  "origin": "base_center",
+  "materials": [
+    "paper"
+  ],
+  "collider": "box",
+  "instanced": true,
+  "tags": [
+    "interior",
+    "prop",
+    "small",
+    "flat"
+  ],
+  "states": [
+    "intact"
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "id": "jp_bedroom_desk_drawer_face",
+  "region": "jp",
+  "site": "bedroom",
+  "room": "rm_jp_06",
+  "object": "desk",
+  "part": "drawer_face",
+  "style": "jp",
+  "size_m": [
+    0.472,
+    0.138,
+    0.014
+  ],
+  "size_m_s3d": [
+    0.472,
+    0.014,
+    0.138
+  ],
+  "tri": 0,
+  "origin": "base_center",
+  "materials": [
+    "oak"
+  ],
+  "collider": "box",
+  "instanced": true,
+  "tags": [
+    "interior",
+    "drawer"
+  ],
+  "states": [
+    "intact"
+  ]
+}

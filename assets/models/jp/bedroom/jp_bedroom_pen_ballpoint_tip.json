@@ -1,0 +1,34 @@
+{
+  "id": "jp_bedroom_pen_ballpoint_tip",
+  "region": "jp",
+  "site": "bedroom",
+  "room": "rm_jp_06",
+  "object": "pen",
+  "part": "tip",
+  "style": "jp",
+  "size_m": [
+    0.008,
+    0.014,
+    0.008
+  ],
+  "size_m_s3d": [
+    0.008,
+    0.008,
+    0.014
+  ],
+  "tri": 0,
+  "origin": "base_center",
+  "materials": [
+    "brass"
+  ],
+  "collider": "box",
+  "instanced": true,
+  "tags": [
+    "interior",
+    "prop",
+    "small"
+  ],
+  "states": [
+    "intact"
+  ]
+}

@@ -1,5 +1,5 @@
 // 店门口：props.ts（贩卖机、扭蛋机、伞架、垃圾桶、自行车、面包车……）+ 玩家手里的伞。
-import type { AssetEntry } from '../../../src/viewer/catalog';
+import type { AssetEntry } from './types';
 
 export function outdoor(): AssetEntry[] {
   return [

@@ -8,7 +8,7 @@
 // 开发服务器会自动发现，不用改目录；要改尺寸、预算、交互，改 scripts/tools/catalog/*.ts 再跑一次。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AssetEntry, Catalog } from '../../src/viewer/catalog';
+import type { AssetEntry, Catalog } from './catalog/types';
 import { building } from './catalog/building';
 import { fixtures } from './catalog/fixtures';
 import { goods, skuCount } from './catalog/goods';

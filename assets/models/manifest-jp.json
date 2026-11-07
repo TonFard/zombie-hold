@@ -1,0 +1,1116 @@
+{
+  "region": "jp",
+  "atoms": [
+    {
+      "id": "jp_bedroom_book_hardcover_cover",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "cover",
+      "style": "jp",
+      "size_m": [
+        0.148,
+        0.032,
+        0.21
+      ],
+      "size_m_s3d": [
+        0.148,
+        0.21,
+        0.032
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "leather"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_hardcover_cover.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_hardcover_pages",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "pages",
+      "style": "jp",
+      "size_m": [
+        0.148,
+        0.032,
+        0.21
+      ],
+      "size_m_s3d": [
+        0.148,
+        0.21,
+        0.032
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "removable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_hardcover_pages.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_hardcover_spine",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "spine",
+      "style": "jp",
+      "size_m": [
+        0.01,
+        0.032,
+        0.21
+      ],
+      "size_m_s3d": [
+        0.01,
+        0.21,
+        0.032
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "leather"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_hardcover_spine.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_magazine_cover",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "cover",
+      "style": "jp",
+      "size_m": [
+        0.185,
+        0.008,
+        0.24
+      ],
+      "size_m_s3d": [
+        0.185,
+        0.24,
+        0.008
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_magazine_cover.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_magazine_pages",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "pages",
+      "style": "jp",
+      "size_m": [
+        0.185,
+        0.008,
+        0.24
+      ],
+      "size_m_s3d": [
+        0.185,
+        0.24,
+        0.008
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "removable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_magazine_pages.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_manga_cover",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "cover",
+      "style": "jp",
+      "size_m": [
+        0.142,
+        0.018,
+        0.2
+      ],
+      "size_m_s3d": [
+        0.142,
+        0.2,
+        0.018
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_manga_cover.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_manga_pages",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "pages",
+      "style": "jp",
+      "size_m": [
+        0.142,
+        0.018,
+        0.2
+      ],
+      "size_m_s3d": [
+        0.142,
+        0.2,
+        0.018
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "removable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_manga_pages.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_paperback_cover",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "cover",
+      "style": "jp",
+      "size_m": [
+        0.11,
+        0.022,
+        0.175
+      ],
+      "size_m_s3d": [
+        0.11,
+        0.175,
+        0.022
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_paperback_cover.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_book_paperback_pages",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "book",
+      "part": "pages",
+      "style": "jp",
+      "size_m": [
+        0.11,
+        0.022,
+        0.175
+      ],
+      "size_m_s3d": [
+        0.11,
+        0.175,
+        0.022
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "removable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_book_paperback_pages.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_apron",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "apron",
+      "style": "jp",
+      "size_m": [
+        1.09,
+        0.09,
+        0.018
+      ],
+      "size_m_s3d": [
+        1.09,
+        0.018,
+        0.09
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "oak"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_apron.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_cable_grommet",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "grommet",
+      "style": "jp",
+      "size_m": [
+        0.068,
+        0.004,
+        0.068
+      ],
+      "size_m_s3d": [
+        0.068,
+        0.068,
+        0.004
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_cable_grommet.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_drawer_box",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "drawer_box",
+      "style": "jp",
+      "size_m": [
+        0.46,
+        0.13,
+        0.48
+      ],
+      "size_m_s3d": [
+        0.46,
+        0.48,
+        0.13
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "birch"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "loot_container",
+        "drawer"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_drawer_box.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_drawer_face",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "drawer_face",
+      "style": "jp",
+      "size_m": [
+        0.472,
+        0.138,
+        0.014
+      ],
+      "size_m_s3d": [
+        0.472,
+        0.014,
+        0.138
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "oak"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "drawer"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_drawer_face.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_handle_bar",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "handle",
+      "style": "jp",
+      "size_m": [
+        0.16,
+        0.03,
+        0.03
+      ],
+      "size_m_s3d": [
+        0.16,
+        0.03,
+        0.03
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "brushed_steel"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_handle_bar.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_leg_taper",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "leg",
+      "style": "jp",
+      "size_m": [
+        0.04,
+        0.7,
+        0.04
+      ],
+      "size_m_s3d": [
+        0.04,
+        0.04,
+        0.7
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "oak"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "instanced"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_leg_taper.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_pin_leg",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "pin",
+      "style": "jp",
+      "size_m": [
+        0.012,
+        0.018,
+        0.012
+      ],
+      "size_m_s3d": [
+        0.012,
+        0.012,
+        0.018
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_pin_leg.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_desk_top_oak",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "desk",
+      "part": "top",
+      "style": "jp",
+      "size_m": [
+        1.2,
+        0.025,
+        0.6
+      ],
+      "size_m_s3d": [
+        1.2,
+        0.6,
+        0.025
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "oak"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "surface"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_desk_top_oak.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_envelope",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "envelope",
+      "part": null,
+      "style": "jp",
+      "size_m": [
+        0.23,
+        0.0012,
+        0.162
+      ],
+      "size_m_s3d": [
+        0.23,
+        0.162,
+        0.0012
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "flat"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_envelope.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_marker_highlight_body",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "marker",
+      "part": "body",
+      "style": "jp",
+      "size_m": [
+        0.011,
+        0.077,
+        0.011
+      ],
+      "size_m_s3d": [
+        0.011,
+        0.011,
+        0.077
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "glossy_plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_marker_highlight_body.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_marker_highlight_cap",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "marker",
+      "part": "cap",
+      "style": "jp",
+      "size_m": [
+        0.012,
+        0.042,
+        0.012
+      ],
+      "size_m_s3d": [
+        0.012,
+        0.012,
+        0.042
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_marker_highlight_cap.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_notebook_cover",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "notebook",
+      "part": "cover",
+      "style": "jp",
+      "size_m": [
+        0.1,
+        0.012,
+        0.145
+      ],
+      "size_m_s3d": [
+        0.1,
+        0.145,
+        0.012
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_notebook_cover.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_notebook_pages",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "notebook",
+      "part": "pages",
+      "style": "jp",
+      "size_m": [
+        0.1,
+        0.012,
+        0.145
+      ],
+      "size_m_s3d": [
+        0.1,
+        0.145,
+        0.012
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "paper"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "removable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_notebook_pages.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_paper_shredder_bin",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "shredder",
+      "part": "bin",
+      "style": "jp",
+      "size_m": [
+        0.3,
+        0.38,
+        0.3
+      ],
+      "size_m_s3d": [
+        0.3,
+        0.3,
+        0.38
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "loot_container"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_paper_shredder_bin.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pen_ballpoint_body",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pen",
+      "part": "body",
+      "style": "jp",
+      "size_m": [
+        0.009,
+        0.0868,
+        0.009
+      ],
+      "size_m_s3d": [
+        0.009,
+        0.009,
+        0.0868
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "glossy_plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pen_ballpoint_body.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pen_ballpoint_cap",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pen",
+      "part": "cap",
+      "style": "jp",
+      "size_m": [
+        0.0095,
+        0.0308,
+        0.0095
+      ],
+      "size_m_s3d": [
+        0.0095,
+        0.0095,
+        0.0308
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "glossy_plastic"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pen_ballpoint_cap.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pen_ballpoint_tip",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pen",
+      "part": "tip",
+      "style": "jp",
+      "size_m": [
+        0.008,
+        0.014,
+        0.008
+      ],
+      "size_m_s3d": [
+        0.008,
+        0.008,
+        0.014
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "brass"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pen_ballpoint_tip.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pencil_body",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pencil",
+      "part": "body",
+      "style": "jp",
+      "size_m": [
+        0.0077,
+        0.1008,
+        0.0077
+      ],
+      "size_m_s3d": [
+        0.0077,
+        0.0077,
+        0.1008
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "painted_metal"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pencil_body.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pencil_eraser",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pencil",
+      "part": "eraser",
+      "style": "jp",
+      "size_m": [
+        0.0068,
+        0.008,
+        0.0068
+      ],
+      "size_m_s3d": [
+        0.0068,
+        0.0068,
+        0.008
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "rubber"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pencil_eraser.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_pencil_wood",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "pencil",
+      "part": "wood",
+      "style": "jp",
+      "size_m": [
+        0.0077,
+        0.016,
+        0.0077
+      ],
+      "size_m_s3d": [
+        0.0077,
+        0.0077,
+        0.016
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "pine"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_pencil_wood.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_stapler_arm",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "stapler",
+      "part": "arm",
+      "style": "jp",
+      "size_m": [
+        0.14,
+        0.014,
+        0.026
+      ],
+      "size_m_s3d": [
+        0.14,
+        0.026,
+        0.014
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "painted_metal"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small",
+        "movable"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_stapler_arm.glb",
+      "exists": true
+    },
+    {
+      "id": "jp_bedroom_stapler_body",
+      "region": "jp",
+      "site": "bedroom",
+      "room": "rm_jp_06",
+      "object": "stapler",
+      "part": "body",
+      "style": "jp",
+      "size_m": [
+        0.15,
+        0.022,
+        0.038
+      ],
+      "size_m_s3d": [
+        0.15,
+        0.038,
+        0.022
+      ],
+      "tri": 0,
+      "origin": "base_center",
+      "materials": [
+        "painted_metal"
+      ],
+      "collider": "box",
+      "instanced": true,
+      "tags": [
+        "interior",
+        "prop",
+        "small"
+      ],
+      "states": [
+        "intact"
+      ],
+      "file": "assets/models/jp/bedroom/jp_bedroom_stapler_body.glb",
+      "exists": true
+    }
+  ]
+}

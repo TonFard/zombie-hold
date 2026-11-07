@@ -5,3 +5,5 @@ dist
 *.log
 .vendor
 release
+__pycache__/
+*.pyc

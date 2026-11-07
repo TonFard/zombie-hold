@@ -28,6 +28,9 @@
     "tacz:shots": "node scripts/tools/tacz-shots.mjs",
     "props:import": "node scripts/tools/props-import.mjs",
     "assets:catalog": "tsx scripts/tools/konbini-catalog.ts",
+    "assets:atoms": "python assets/programs/build_all.py",
+    "assets:manifest": "python assets/programs/_lib/build_manifest.py",
+    "assets:check": "python assets/programs/_lib/check_all.py",
     "desktop": "vite build && node electron/run.cjs",
     "desktop:dev": "node electron/run.cjs --dev",
     "dist:win": "npm run build && electron-builder --win"

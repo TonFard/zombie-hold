@@ -1,5 +1,5 @@
 // 街道、车辆、周边建筑、底座：street.ts / traffic.ts / buildings.ts / ground.ts。
-import type { AssetEntry } from '../../../src/viewer/catalog';
+import type { AssetEntry } from './types';
 
 const S = (category: string) => (a: Omit<AssetEntry, 'category' | 'status'>): AssetEntry => ({ category, status: 'pending', ...a });
 const st = S('street');

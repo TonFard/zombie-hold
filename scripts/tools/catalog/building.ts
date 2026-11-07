@@ -1,5 +1,5 @@
 // 店铺本体：store.ts（外壳、门窗、灯条、招牌、雨棚、屋顶设备）。尺寸是资产局部坐标（正面 +Z，原点底面中心）。
-import type { AssetEntry } from '../../../src/viewer/catalog';
+import type { AssetEntry } from './types';
 
 const A = (a: Omit<AssetEntry, 'category' | 'status'> & { category?: string }): AssetEntry => ({ category: 'building', status: 'pending', ...a });
 

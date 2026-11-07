@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>原子资产预览 · 卧室 RM-JP-06</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #14171c;
+        color: #d8dee4;
+        font: 13px/1.5 'Segoe UI', 'Microsoft YaHei', sans-serif;
+      }
+      #c {
+        display: block;
+        width: 100vw;
+        height: 100vh;
+      }
+      #panel {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        background: rgba(10, 14, 18, 0.82);
+        border: 1px solid #2a3038;
+        border-radius: 6px;
+        padding: 12px 14px;
+        min-width: 250px;
+        backdrop-filter: blur(6px);
+      }
+      #panel h1 {
+        margin: 0 0 8px;
+        font-size: 14px;
+        color: #f0b83a;
+      }
+      #panel dl {
+        margin: 0;
+        display: grid;
+        grid-template-columns: auto 1fr;
+        gap: 2px 12px;
+      }
+      #panel dt {
+        color: #8f9aa6;
+      }
+      #panel dd {
+        margin: 0;
+        color: #d8dee4;
+      }
+      #status {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        color: #8f9aa6;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="panel">
+      <h1>原子资产预览 · 卧室 RM-JP-06</h1>
+      <dl>
+        <dt>原子数</dt><dd id="atoms">—</dd>
+        <dt>绘制调用</dt><dd id="calls">—</dd>
+        <dt>三角形</dt><dd id="tris">—</dd>
+        <dt>帧时间</dt><dd id="ms">—</dd>
+      </dl>
+    </div>
+    <div id="status">正在加载原子资产…</div>
+    <script type="module" src="/src/atoms-preview.ts"></script>
+  </body>
+</html>

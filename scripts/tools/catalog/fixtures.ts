@@ -1,5 +1,5 @@
 // 店内陈设：尺寸都从 fixtures.ts 的建模代码换算（局部坐标，正面朝 +Z，原点在底面中心）。
-import type { AssetEntry } from '../../../src/viewer/catalog';
+import type { AssetEntry } from './types';
 
 const n2 = (i: number): string => String(i).padStart(2, '0');
 

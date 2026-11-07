@@ -1,0 +1,33 @@
+{
+  "id": "jp_bedroom_desk_top_oak",
+  "region": "jp",
+  "site": "bedroom",
+  "room": "rm_jp_06",
+  "object": "desk",
+  "part": "top",
+  "style": "jp",
+  "size_m": [
+    1.2,
+    0.025,
+    0.6
+  ],
+  "size_m_s3d": [
+    1.2,
+    0.6,
+    0.025
+  ],
+  "tri": 0,
+  "origin": "base_center",
+  "materials": [
+    "oak"
+  ],
+  "collider": "box",
+  "instanced": true,
+  "tags": [
+    "interior",
+    "surface"
+  ],
+  "states": [
+    "intact"
+  ]
+}

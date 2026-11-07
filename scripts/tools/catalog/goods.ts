@@ -1,7 +1,7 @@
 // 商品：12 个品类，每一款（SKU）对应场景里图集的一张包装贴图，名字和价格直接取游戏代码，保证一一对应。
 import { BENTO, BOTTLES, BREADS, CANS, DAILY, MAGAZINES, NOODLES, ONIGIRI, SNACKS, SWEETS } from '../../../src/konbini/atlas';
 import { goodInfo, SIZE, type GoodKind } from '../../../src/konbini/goods';
-import type { AssetEntry, Variant } from '../../../src/viewer/catalog';
+import type { AssetEntry, Variant } from './types';
 
 const pick = { id: 'pick', label: '拿起 / 放回', type: 'pick' as const, note: '游戏里：前排商品可以拿，拿走后隐藏并加入购物袋，90 秒后人不在附近时补货' };
 

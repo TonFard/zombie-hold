@@ -1,0 +1,35 @@
+{
+  "id": "jp_bedroom_stapler_arm",
+  "region": "jp",
+  "site": "bedroom",
+  "room": "rm_jp_06",
+  "object": "stapler",
+  "part": "arm",
+  "style": "jp",
+  "size_m": [
+    0.14,
+    0.014,
+    0.026
+  ],
+  "size_m_s3d": [
+    0.14,
+    0.026,
+    0.014
+  ],
+  "tri": 0,
+  "origin": "base_center",
+  "materials": [
+    "painted_metal"
+  ],
+  "collider": "box",
+  "instanced": true,
+  "tags": [
+    "interior",
+    "prop",
+    "small",
+    "movable"
+  ],
+  "states": [
+    "intact"
+  ]
+}

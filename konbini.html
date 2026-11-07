@@ -2,109 +2,38 @@
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <link rel="icon" href="data:," />
-    <title>雨夜便利店 · Rainy Night Konbini</title>
+    <title>爆发后的便利店 · Post-Outbreak Konbini</title>
     <style>
-      html,
-      body {
-        margin: 0;
-        height: 100%;
-        overflow: hidden;
-        background: #05070c;
-        font-family: 'Yu Gothic UI', 'Microsoft YaHei', sans-serif;
-        color: #e8eef8;
-        user-select: none;
-      }
-      #c {
-        display: block;
-        width: 100vw;
-        height: 100vh;
-        cursor: grab;
-      }
-      body[data-mode='walk'] #c {
-        cursor: crosshair;
-      }
-      /* 游览时才有的极简提示：准星、交互提示、一行字幕。模型视角下什么都不显示 */
-      #cross {
-        position: fixed;
-        left: 50%;
-        top: 50%;
-        width: 4px;
-        height: 4px;
-        margin: -2px 0 0 -2px;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.55);
-        pointer-events: none;
-        transition: transform 0.12s, background 0.12s;
-      }
-      #cross.hot {
-        transform: scale(2.2);
-        background: #ffd448;
-      }
-      #prompt,
-      #say {
-        position: fixed;
-        left: 50%;
-        transform: translateX(-50%);
-        padding: 6px 14px;
-        border-radius: 6px;
-        background: rgba(8, 12, 24, 0.55);
-        font-size: 15px;
-        letter-spacing: 0.04em;
-        opacity: 0;
-        transition: opacity 0.2s;
-        pointer-events: none;
-        white-space: nowrap;
-      }
-      #prompt {
-        top: calc(50% + 28px);
-      }
-      #say {
-        bottom: 48px;
-        font-size: 16px;
-      }
-      #prompt.on,
-      #say.on {
-        opacity: 1;
-      }
-      #help {
-        position: fixed;
-        left: 18px;
-        bottom: 16px;
-        font-size: 12px;
-        line-height: 1.7;
-        color: rgba(220, 230, 250, 0.55);
-        pointer-events: none;
-        transition: opacity 0.3s;
-      }
-      #help.hide {
-        opacity: 0;
-      }
-      #help b {
-        color: rgba(255, 230, 160, 0.8);
-        font-weight: 600;
-        margin-right: 4px;
-      }
-      body[data-mode='model'] #cross,
-      body[data-mode='model'] #prompt,
-      body[data-mode='model'] .walk {
-        display: none;
-      }
-      body[data-mode='walk'] .model {
-        display: none;
-      }
+      :root { color-scheme: dark; font-family: 'Yu Gothic UI', 'Microsoft YaHei', sans-serif; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #111722; color: #e7edf4; }
+      canvas { display: block; width: 100%; height: 100%; cursor: grab; }
+      canvas:active { cursor: grabbing; }
+      #bar { position: fixed; right: 20px; bottom: 18px; display: flex; gap: 8px; padding: 7px; border: 1px solid #64708055; border-radius: 30px; background: #0b1019dd; box-shadow: 0 8px 32px #0008; }
+      button { border: 1px solid transparent; border-radius: 22px; padding: 10px 17px; background: transparent; color: #adb8c8; font: inherit; cursor: pointer; }
+      button:hover { color: white; background: #ffffff12; }
+      button.active { color: #e9f1ff; border-color: #7588a088; background: #29384b; }
+      #title { position: fixed; left: 22px; top: 18px; font-size: 14px; letter-spacing: .1em; color: #d6dfeb; text-shadow: 0 2px 8px #000; pointer-events: none; }
+      #sub { display:block; margin-top:5px; font-size:11px; letter-spacing:.04em; color:#8995a7; }
+      #hint { position:fixed; left:22px; bottom:20px; font-size:12px; color:#aeb9c8; text-shadow:0 1px 5px #000; pointer-events:none; }
+      #status { position:fixed; left:50%; top:18px; transform:translateX(-50%); padding:8px 14px; border-radius:6px; color:#e8d6b5; background:#141923c9; font-size:13px; }
+      #status:empty { display:none; }
+      @media(max-width:600px) { #bar { right:10px; bottom:10px; gap:0; } button { padding:9px 12px; font-size:13px; } #hint { bottom:78px; left:12px; } #title { left:12px; top:12px; } }
     </style>
   </head>
-  <body data-mode="model">
+  <body>
     <canvas id="c"></canvas>
-    <div id="cross"></div>
-    <div id="prompt"></div>
-    <div id="say"></div>
-    <div id="help">
-      <div class="model"><b>拖动</b>旋转 <b>滚轮</b>缩放 <b>双击 / Enter</b>进入游览 <b>R</b>下雨 / 停雨 <b>H</b>隐藏提示</div>
-      <div class="walk"><b>WASD</b>移动 <b>Shift</b>跑 <b>C</b>蹲 <b>空格</b>跳 <b>E / 左键</b>交互 <b>V</b>第一 / 第三人称 <b>R</b>下雨 / 停雨 <b>Tab</b>回到模型 <b>H</b>隐藏提示</div>
+    <div id="title">爆发后的便利店<span id="sub">POST-OUTBREAK · DRAG TO ORBIT · SCROLL TO ZOOM</span></div>
+    <div id="status">正在载入爆发后场景…</div>
+    <div id="hint">拖动旋转 · 滚轮缩放 · 点击推拉门可开合</div>
+    <div id="bar">
+      <button id="light" class="active" type="button">灯光</button>
+      <button id="white" type="button">白模</button>
+      <button id="door" type="button">开门</button>
+      <button id="spin" type="button">自动旋转</button>
     </div>
-    <script type="module" src="/src/konbini/main.ts"></script>
+    <script type="module" src="/src/konbini/postOutbreakPreview.ts"></script>
   </body>
 </html>
