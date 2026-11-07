@@ -59,7 +59,7 @@ export const ui = reactive({
   /** 渲染层给界面的小工具（boot 里填）：武器图标、武器台的 3D 预览 */
   gfx: {
     icon: (_kind: string, _tier?: number): string => '',
-    preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number): void; resize(w: number, h: number): void; dispose(): void } | null => null,
+    preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number, dual?: boolean): void; resize(w: number, h: number): void; dispose(): void } | null => null,
   },
   /** 这一局每把枪涨的熟练度击杀（结算页显示） */
   masteryGain: {} as Partial<Record<string, number>>,
@@ -86,7 +86,7 @@ export const ui = reactive({
   /** 游戏通过它把"开始 / 重新开始 / 回主菜单 / 继续"等动作交给应用层 */
   actions: {
     enterLobby: () => {},
-    deploy: (_d: Difficulty, _sidearm: string | null, _chapter: string) => {},
+    deploy: (_d: Difficulty, _chapter: string) => {},
     buyAmmo: (_k: string, _packs: number) => {},
     buyBench: (_k: string, _line: string) => {},
     continueRun: () => {},

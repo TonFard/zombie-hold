@@ -68,7 +68,7 @@ console.log('\n== 局外、难度、章节：面板 = 实际 ==');
     for (const ch of MAP_ORDER) {
       for (const meta of [newMeta(), fullMeta()]) {
         const g = new Game(3, ch);
-        applyMeta(g, bonusesOf(meta), { difficulty: d, sidearm: null, chapter: ch });
+        applyMeta(g, bonusesOf(meta), { difficulty: d, chapter: ch });
         startRun(g);
         const x = diff(g);
         if (x.length) bad.push(`${d}/${ch}/${meta === undefined ? '' : Object.keys(meta.levels).length ? '满局外' : '无局外'}：${x.join('；')}`);
@@ -78,7 +78,7 @@ console.log('\n== 局外、难度、章节：面板 = 实际 ==');
   for (const b of bad.slice(0, 6)) console.log(`     ${b}`);
   check(bad.length === 0, `${DIFFICULTY_ORDER.length} 难度 × ${MAP_ORDER.length} 章 × 有无局外，面板和实际一致`);
   const g = new Game(3, 'city');
-  applyMeta(g, bonusesOf(fullMeta()), { difficulty: 'hard', sidearm: null, chapter: 'city' });
+  applyMeta(g, bonusesOf(fullMeta()), { difficulty: 'hard', chapter: 'city' });
   const sc = modsBreakdown(g).find((l) => l.id === 'scrap');
   check(!!sc && sc.parts.some((p) => p.kind === 'difficulty') && sc.parts.some((p) => p.kind === 'chapter') && sc.parts.some((p) => p.kind === 'meta'), `零件收益拆成：${sc?.parts.map((p) => `${p.name} ×${p.value.toFixed(2)}`).join('、')}`);
 }
@@ -92,7 +92,7 @@ console.log('\n== 随机组合 200 次 ==');
     const ch = MAP_ORDER[Math.floor(rng.next() * MAP_ORDER.length)] as (typeof MAP_ORDER)[number];
     const d = DIFFICULTY_ORDER[Math.floor(rng.next() * 3)] as (typeof DIFFICULTY_ORDER)[number];
     const g = new Game(10 + t, ch);
-    applyMeta(g, bonusesOf(rng.next() < 0.5 ? fullMeta() : newMeta()), { difficulty: d, sidearm: null, chapter: ch });
+    applyMeta(g, bonusesOf(rng.next() < 0.5 ? fullMeta() : newMeta()), { difficulty: d, chapter: ch });
     startRun(g);
     const n = 1 + Math.floor(rng.next() * 12);
     for (let i = 0; i < n; i++) {
@@ -118,7 +118,7 @@ console.log('\n== 武器面板 = statsOf() ==');
     meta.supplies = 1e6;
     meta.bench = Object.fromEntries(WEAPON_ORDER.flatMap((k) => ['damage', 'recoil', 'rate', 'lighter', 'mag'].map((l) => [`${k}.${l}`, 3])));
     const g = new Game(4);
-    applyMeta(g, bonusesOf(meta), { difficulty: 'normal', sidearm: null, bench: meta.bench });
+    applyMeta(g, bonusesOf(meta), { difficulty: 'normal', bench: meta.bench });
     startRun(g);
     giveCard(g, 'gunsmith');
     giveCard(g, 'quickhands');
@@ -141,7 +141,7 @@ console.log('\n== 重量和截断 ==');
 {
   const meta = fullMeta();
   const g = new Game(5);
-  applyMeta(g, bonusesOf(meta), { difficulty: 'normal', sidearm: null });
+  applyMeta(g, bonusesOf(meta), { difficulty: 'normal' });
   startRun(g);
   g.scrap = 1e6;
   g.buyWeapon('lmg');

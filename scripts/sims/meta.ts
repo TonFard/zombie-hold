@@ -2,7 +2,7 @@
 import { CARD_BY_ID } from '../../src/game/data/cards';
 import { META_BY_ID, META_ITEMS, RANKS, SECTION_NAME, baseBonuses, rankFor, rankOf } from '../../src/game/data/meta-catalog';
 import { FINAL_NIGHT } from '../../src/game/data/waves';
-import { applyMeta, applyTraining, sidearmOk, widenMeta } from '../../src/game/meta/loadout';
+import { applyMeta, applyTraining, widenMeta } from '../../src/game/meta/loadout';
 import { bonusesOf, buyBench, buyMeta, canBench, canBuy, masteryOf, medalsFor, newMeta, settleRun, totalMetaCost, unlockedDifficulties, type MetaState } from '../../src/game/meta/progress';
 import { MASTERY_XP, MASTERY_MAX } from '../../src/game/data/mastery';
 import { WEAPON_ORDER } from '../../src/game/data/weapons';
@@ -34,7 +34,6 @@ console.log('\n== 存档：写入后读回 ==');
   s.meta.medals = 321;
   s.meta.levels = { 'turret-cap': 2, 'unlock-sniper': 1 };
   s.meta.cleared = ['normal'];
-  s.meta.lastSidearm = 'sniper';
   writeSave(st, s);
   const r = loadSave(st);
   check(JSON.stringify(r.save) === JSON.stringify(s) && r.warning === '', '读回的存档和写入的逐字段相等');
@@ -227,73 +226,73 @@ console.log('\n== 版本更新重置进度 ==');
 
 console.log('\n== 开局应用加成 ==');
 {
-  const m: MetaState = { ...newMeta(), levels: { 'start-scrap': 2, 'max-hp': 3, 'core-hp': 1, 'struct-hp': 1, 'unlock-rifle': 1, sidearm: 1 } };
+  const m: MetaState = { ...newMeta(), levels: { 'start-scrap': 2, 'max-hp': 3, 'core-hp': 1, 'struct-hp': 1, 'unlock-rifle': 1 } };
   const g = new Game(5);
-  applyMeta(g, bonusesOf(m), { difficulty: 'hard', sidearm: 'rifle' });
+  applyMeta(g, bonusesOf(m), { difficulty: 'hard' });
   startRun(g);
   check(g.scrap === 120 + 80, `开局零件 +80（${g.scrap}）`);
   check(g.player.maxHp === 130 && g.player.hp === 130, `最大生命 +30（${g.player.maxHp}）`);
   check(g.core.maxHp === 550, `发电机生命 +50（${g.core.maxHp}）`);
-  check(g.loadout.rifle.owned, '随身带着突击步枪');
   check(g.config.zombieHp === 1.3 && g.config.zombieCount === 1.15, '困难：僵尸生命 ×1.3、数量 ×1.15');
 
-  check(g.player.weapon === 'rifle' && g.player.tier === 0, '开局手里拿的就是随身武器');
+  // 开局手里是手枪；解锁了步枪也只是能在工坊里买
+  check(g.player.weapon === 'pistol' && g.player.tier === 0, '开局手里是手枪');
   g.scrap = 9999;
-  const scrap0 = g.scrap;
-  check(!g.buyWeapon('rifle') && g.scrap === scrap0, '随身带的枪不能在工坊里再买一次（不扣零件）');
+  check(g.buyWeapon('rifle') && g.loadout.rifle.owned, '解锁了的步枪能在工坊里买');
   for (let i = 0; i < 9; i++) g.upgradeWeapon('rifle');
-  check(g.loadout.rifle.tier === 5 && g.player.tier === 5, `随身武器能升到它自己的上限 5 级（${g.loadout.rifle.tier}）`);
+  check(g.loadout.rifle.tier === 5, `步枪能升到它自己的上限 5 级（${g.loadout.rifle.tier}）`);
 
-  // 第一个白天的自动存档在 startRun 里就存了：读档继续时手里还是随身武器
+  // 第一个白天的自动存档在 startRun 里就存了：读档继续时状态还在
   const gs = new Game(5);
-  applyMeta(gs, bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-smg': 1 } }), { difficulty: 'normal', sidearm: 'smg' });
+  applyMeta(gs, bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1 } }), { difficulty: 'normal' });
   startRun(gs);
   const gr = new Game(5);
-  check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.player.weapon === 'smg' && gr.loadout.smg.owned, '带冲锋枪出征，读第 1 天的检查点继续：手里还是冲锋枪');
+  check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.loadout.pistol.owned, '读第 1 天的检查点继续：状态正常');
 
   // 存档之后在大厅解锁了步枪、买了冲锋枪上限：继续这一局时要生效
-  const later = bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-smg': 1, 'unlock-rifle': 1, 'unlock-hmg': 1 }, mastery: { smg: MASTERY_XP.smg[3] as number } });
+  const later = bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1, 'unlock-rifle': 1, 'unlock-hmg': 1 }, mastery: { smg: MASTERY_XP.smg[3] as number } });
   widenMeta(gr, later);
   gr.scrap = 9999;
+  check(gr.buyWeapon('smg'), '读档继续后，大厅里新解锁的冲锋枪工坊里能买');
   for (let i = 0; i < 9; i++) gr.upgradeWeapon('smg');
   check(gr.loadout.smg.tier === 7, `读档继续后，新买的冲锋枪上限生效（${gr.loadout.smg.tier}）`);
   check(gr.buyWeapon('rifle'), '读档继续后，大厅里新解锁的突击步枪工坊里能买');
-  // 已经带着手枪 + 冲锋枪：买步枪换掉手里的冲锋枪
-  check(gr.carried().join() === 'pistol,rifle' && gr.player.weapon === 'rifle' && gr.loadout.smg.owned && !gr.loadout.smg.carried && gr.loadout.smg.tier === 7, `最多带两把：买步枪时手里的冲锋枪放回工坊，等级保留（${gr.carried().join()}）`);
+  // 身上已经有手枪 + 冲锋枪，再买步枪：手里那把（手枪）放回工坊，等级保留
+  check(gr.carried().join() === 'smg,rifle' && gr.player.weapon === 'rifle' && gr.loadout.pistol.owned && !gr.loadout.pistol.carried, `最多带两把：买步枪时手里的手枪放回工坊（${gr.carried().join()}）`);
   gr.input.cycle = 1;
   gr.update(STEP);
-  check(gr.player.weapon === 'pistol', '滚轮切到另一把');
+  check(gr.player.weapon === 'smg', '滚轮切到另一把');
   gr.input.select = 4;
   gr.update(STEP);
   check(gr.player.weapon === 'rifle', '数字键就是工坊里的编号：4 = 突击步枪');
   gr.input.select = 2;
   gr.update(STEP);
-  check(gr.player.weapon === 'rifle', '没带的枪（2 = 冲锋枪）按了没反应');
-  // 放回工坊的冲锋枪：不用再买，取出来免费、等级还在，手里的步枪放回去
+  check(gr.player.weapon === 'smg', '数字键就是工坊里的编号：2 = 冲锋枪');
+  // 放回工坊的手枪：不用再买，取出来免费、等级还在，手里的冲锋枪放回去
   const sc = gr.scrap;
-  check(gr.buyState('smg') === 'owned' && !gr.buyWeapon('smg'), '放回工坊的枪不用（也不能）再买一遍');
-  gr.takeWeapon('smg');
-  check(gr.player.weapon === 'smg' && gr.player.tier === 7 && gr.scrap === sc && gr.carried().join() === 'pistol,smg' && gr.loadout.rifle.owned, `取出冲锋枪：免费、7 级还在，步枪放回工坊（${gr.carried().join()}）`);
+  check(gr.buyState('pistol') === 'owned' && !gr.buyWeapon('pistol'), '放回工坊的枪不用（也不能）再买一遍');
+  gr.takeWeapon('pistol');
+  check(gr.player.weapon === 'pistol' && gr.scrap === sc && gr.carried().join() === 'pistol,rifle' && gr.loadout.smg.owned && !gr.loadout.smg.carried && gr.loadout.smg.tier === 7, `取出手枪：免费、冲锋枪放回工坊、7 级还在（${gr.carried().join()}）`);
   const gr2 = new Game(5);
-  check(loadCheckpoint(gr2, JSON.stringify(serialize(gr, 0))) === null && gr2.carried().join() === 'pistol,smg' && gr2.loadout.rifle.owned && !gr2.loadout.rifle.carried, '存档读档后：身上的和工坊里的枪都对');
+  check(loadCheckpoint(gr2, JSON.stringify(serialize(gr, 0))) === null && gr2.carried().join() === 'pistol,rifle' && gr2.loadout.smg.owned && !gr2.loadout.smg.carried, '存档读档后：身上的和工坊里的枪都对');
   gr.takeWeapon('rifle');
   check(gr.config.structures.includes('hmg') && gr.player.maxHp === 100, '新解锁的炮塔也能用；生命这类开局加成不重复叠加');
 
-  // 哪些枪能当随身武器带
-  const bs = bonusesOf({ ...newMeta(), levels: { sidearm: 1, 'unlock-smg': 1 } });
-  check(sidearmOk(bs, 'smg') && !sidearmOk(bs, 'pistol') && !sidearmOk(bs, 'rifle') && !sidearmOk(bs, 'bogus') && !sidearmOk(baseBonuses(), 'smg') && !sidearmOk(bonusesOf({ ...newMeta(), levels: { sidearm: 1 } }), 'smg'), '随身武器：解锁过的冲锋枪能带；手枪、没解锁的、不认识的、没买「随身武器」时都不能带');
+  // 双持：买了才生效
+  const bs = bonusesOf({ ...newMeta(), levels: { dual: 1 } });
+  check(bs.dual && !baseBonuses().dual, '双持：买了才有');
   const gp = new Game(5);
-  applyMeta(gp, bs, { difficulty: 'normal', sidearm: 'pistol' });
-  check(gp.player.weapon === 'pistol' && gp.loadout.pistol.owned, '选手枪当随身武器时什么都不变');
+  applyMeta(gp, bs, { difficulty: 'normal' });
+  check(gp.config.dual, '双持：开局规则里生效');
 
   const g0 = new Game(5);
-  applyMeta(g0, baseBonuses(), { difficulty: 'normal', sidearm: 'rifle' });
-  check(!g0.loadout.rifle.owned, '没买「随身武器」时不能带');
+  applyMeta(g0, baseBonuses(), { difficulty: 'normal' });
+  check(!g0.loadout.rifle.owned, '开局不白送武器');
   g0.scrap = 9999;
   check(!g0.buyWeapon('shotgun'), '没解锁的霰弹枪工坊里买不了');
   check(!g0.buyWeapon('smg'), '冲锋枪要先在大厅解锁，工坊里才能买');
   const gU = new Game(5);
-  applyMeta(gU, bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1 } }), { difficulty: 'normal', sidearm: null, ammo: { smg: 500 } });
+  applyMeta(gU, bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1 } }), { difficulty: 'normal', ammo: { smg: 500 } });
   gU.scrap = 9999;
   check(gU.buyWeapon('smg') && gU.loadout.smg.mag === 36 && gU.reserveOf('smg') === Infinity, '解锁后能买，弹匣装满（目前子弹无限）');
   for (let i = 0; i < 9; i++) gU.upgradeWeapon('smg');
@@ -303,7 +302,7 @@ console.log('\n== 开局应用加成 ==');
 
   // 炮塔数量上限
   const g1 = new Game(5);
-  applyMeta(g1, baseBonuses(), { difficulty: 'normal', sidearm: null });
+  applyMeta(g1, baseBonuses(), { difficulty: 'normal' });
   g1.scrap = 9999;
   g1.buildKind = 'turret';
   const spots: Array<[number, number]> = [[38, 36], [42, 36], [38, 42], [42, 42]];
@@ -350,7 +349,7 @@ console.log('\n== 开局应用加成 ==');
 console.log('\n== 卡牌重抽 / 四选一 ==');
 {
   const g = new Game(9);
-  applyMeta(g, bonusesOf({ ...newMeta(), levels: { reroll: 1, 'four-cards': 1 } }), { difficulty: 'normal', sidearm: null });
+  applyMeta(g, bonusesOf({ ...newMeta(), levels: { reroll: 1, 'four-cards': 1 } }), { difficulty: 'normal' });
   g.invulnerableCore = true;
   g.invulnerablePlayer = true;
   startRun(g);
@@ -411,7 +410,7 @@ const snap = (g: Game): string => JSON.stringify({ ...serialize(g), savedAt: 0 }
 console.log('\n== 检查点：确定性 ==');
 {
   const g = freshGame();
-  applyMeta(g, bonusesOf({ ...newMeta(), levels: { 'unlock-hmg': 1, 'unlock-mortar': 1, 'turret-cap': 2 } }), { difficulty: 'hard', sidearm: null });
+  applyMeta(g, bonusesOf({ ...newMeta(), levels: { 'unlock-hmg': 1, 'unlock-mortar': 1, 'turret-cap': 2 } }), { difficulty: 'hard' });
   startRun(g);
   g.scrap += 2000;
   const build: Array<[typeof g.buildKind, number, number]> = [['turret', 38, 36], ['hmg', 42, 36], ['mortar', 38, 42], ['barricade', 40, 45], ['spikes', 40, 34]];

@@ -4,7 +4,8 @@ import { CHALLENGES, COMBO_WINDOW, ELITE_HP, FLASHLIGHT, NIGHT_MODS, comboMult }
 import { ZOMBIES } from '../../src/game/data/zombies';
 import { CARD_BY_ID, drawCards } from '../../src/game/data/cards';
 import { FINAL_NIGHT, bossFor } from '../../src/game/data/waves';
-import { baseBonuses } from '../../src/game/data/meta-catalog';
+import { baseBonuses, META_ITEMS } from '../../src/game/data/meta-catalog';
+import { NO_MOD, weightOf } from '../../src/game/data/weapons';
 import { applyMeta } from '../../src/game/meta/loadout';
 import { medalsFor } from '../../src/game/meta/progress';
 import { loadCheckpoint, serialize } from '../../src/game/save/checkpoint';
@@ -23,7 +24,7 @@ const check = (ok: boolean, msg: string) => {
 /** 正式规则的一局（M12 玩法打开） */
 function ranked(seed = 3): Game {
   const g = new Game(seed);
-  applyMeta(g, baseBonuses(), { difficulty: 'normal', sidearm: null });
+  applyMeta(g, baseBonuses(), { difficulty: 'normal' });
   return g;
 }
 const run = (g: Game, sec: number) => {
@@ -561,7 +562,7 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
   // 重量：拿轻机枪走得比手枪慢
   const speedWith = (k: 'pistol' | 'lmg'): number => {
     const g = new Game(41);
-    applyMeta(g, b, { difficulty: 'normal', sidearm: null, ammo: { lmg: 300 } });
+    applyMeta(g, b, { difficulty: 'normal', ammo: { lmg: 300 } });
     startRun(g);
     g.zombies.length = 0;
     g.scrap = 9999;
@@ -578,7 +579,7 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
 
   // 弹药：带进去多少就有多少，打光了换不了弹
   const g = new Game(42);
-  applyMeta(g, b, { difficulty: 'normal', sidearm: null, ammo: { smg: 40 } });
+  applyMeta(g, b, { difficulty: 'normal', ammo: { smg: 40 } });
   // 弹药有限目前关着（AMMO_LIMITED），这里打开测逻辑本身
   g.config.ammo = true;
   g.ammo.smg = 40;
@@ -596,33 +597,50 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
   check(g.loadout.smg.mag === 0 && g.player.reloadTimer === 0, '备弹打光：不会再换弹');
   check(g.reserveOf('pistol') === Infinity, '手枪子弹无限');
 
-  // 双持：弹匣翻倍、射速更高
+  // 双持：弹匣翻倍、射速更高、换弹更慢、重量翻倍
   const gd = new Game(43);
-  applyMeta(gd, b, { difficulty: 'normal', sidearm: null });
+  applyMeta(gd, b, { difficulty: 'normal' });
   check(gd.config.dual && gd.statsOf('pistol').mag === 24 && gd.statsOf('pistol').rate > 5, `双持手枪：弹匣 ${gd.statsOf('pistol').mag}、射速 ${gd.statsOf('pistol').rate.toFixed(1)}`);
+  {
+    // 换弹更慢：双持的换弹时间要比单持长
+    const gs = new Game(48);
+    applyMeta(gs, bonusesOf({ ...newMeta(), levels: { ...all, dual: 0 } }), { difficulty: 'normal' });
+    const single = gs.statsOf('pistol').reload;
+    const dual = gd.statsOf('pistol').reload;
+    check(dual > single * 1.2, `双持换弹更慢：单持 ${single.toFixed(2)} 秒 → 双持 ${dual.toFixed(2)} 秒`);
+
+    // 重量翻倍：双持手枪的重量正好是两把手枪
+    const wSingle = weightOf('pistol', NO_MOD, false);
+    const wDual = weightOf('pistol', NO_MOD, true);
+    check(Math.abs(wDual - wSingle * 2) < 1e-9, `双持重量翻倍：单持 ${wSingle.toFixed(1)} kg → 双持 ${wDual.toFixed(1)} kg`);
+
+    // 「随身武器」已经从军械库里去掉了
+    check(!META_ITEMS.some((it) => it.id === 'sidearm'), '军械库里没有「随身武器」了');
+    check(!('sidearm' in baseBonuses()), '局外加成里也没有随身武器');
+  }
 
   // 工作台强化：伤害、扩容带进局内
   let m: ReturnType<typeof newMeta> = { ...newMeta(), levels: all, supplies: 9999, mastery: { smg: 9999 } };
   m = buyBench(m, 'smg', 'damage')!;
   m = buyBench(m, 'smg', 'mag')!;
   const gb = new Game(44);
-  applyMeta(gb, bonusesOf(m), { difficulty: 'normal', sidearm: null, bench: m.bench });
+  applyMeta(gb, bonusesOf(m), { difficulty: 'normal', bench: m.bench });
   check(Math.abs(gb.statsOf('smg', 0).damage - 10.6) < 1e-6 && gb.statsOf('smg', 0).mag === 40, `工作台：冲锋枪伤害 10 → ${gb.statsOf('smg', 0).damage.toFixed(1)}，弹匣 36 → ${gb.statsOf('smg', 0).mag}`);
   const m2 = buyAmmo({ ...newMeta(), supplies: 10 }, 'smg');
   check(!!m2 && m2.ammo.smg === 120 && m2.supplies === 4 && !buyAmmo(newMeta(), 'pistol'), '补给买子弹：6 补给 = 120 发；手枪不用买');
 
   const gn = new Game(46);
-  applyMeta(gn, b, { difficulty: 'normal', sidearm: null });
+  applyMeta(gn, b, { difficulty: 'normal' });
   check(!gn.config.ammo && gn.reserveOf('smg') === Infinity, '目前正式局所有武器子弹无限');
 
   // 章节：越往后越难，补给越多
   const gc = new Game(45, 'city');
-  applyMeta(gc, b, { difficulty: 'normal', sidearm: null, chapter: 'city' });
+  applyMeta(gc, b, { difficulty: 'normal', chapter: 'city' });
   check(gc.config.zombieHp === CHAPTER_BY_ID.city.hp && gc.mapId === 'city', `第四章：僵尸生命 ×${gc.config.zombieHp}`);
   check(suppliesFor({ difficulty: 'normal', nights: 5, won: false, kills: 100, headshotKills: 0, chapter: 'city' }) > suppliesFor({ difficulty: 'normal', nights: 5, won: false, kills: 100, headshotKills: 0 }), '后面的章节补给更多');
   const scrapK = (d: 'normal' | 'hard' | 'nightmare', c: 'outpost' | 'city') => {
     const gs = new Game(47, c);
-    applyMeta(gs, b, { difficulty: d, sidearm: null, chapter: c });
+    applyMeta(gs, b, { difficulty: d, chapter: c });
     return gs.mods.scrap;
   };
   check(scrapK('hard', 'outpost') > scrapK('normal', 'outpost') && scrapK('nightmare', 'outpost') > scrapK('hard', 'outpost') && scrapK('normal', 'city') > scrapK('normal', 'outpost'), `零件收入：普通 ×${scrapK('normal', 'outpost')}、困难 ×${scrapK('hard', 'outpost')}、噩梦 ×${scrapK('nightmare', 'outpost')}、第四章普通 ×${scrapK('normal', 'city').toFixed(2)}`);

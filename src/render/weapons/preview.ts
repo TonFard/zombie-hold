@@ -43,8 +43,9 @@ function frame(obj: Object3D, camera: PerspectiveCamera, aspect: number, yaw: nu
     obj.userData.radius = box.getSize(new Vector3()).length() / 2;
   }
   // 包围球装进视野：竖直半视角和水平半视角取小的那个
+  // 0.62：模型不要撑满整个台子，留一圈空隙，转起来才好看
   const half = Math.min((camera.fov * Math.PI) / 360, Math.atan(Math.tan((camera.fov * Math.PI) / 360) * aspect));
-  const r = ((obj.userData.radius as number) / Math.tan(half)) * 0.78;
+  const r = ((obj.userData.radius as number) / Math.tan(half)) * 0.62;
   camera.aspect = aspect;
   camera.position.set(Math.cos(pitch) * Math.cos(yaw) * r, Math.sin(pitch) * r, Math.cos(pitch) * Math.sin(yaw) * r);
   camera.lookAt(0, 0, 0);
@@ -85,9 +86,10 @@ export const allIcons = (): Record<WeaponKind, string> => Object.fromEntries(WEA
 /**
  * 武器台的 3D 展示（UI-PLAN 3.3）：返回一个画布，默认自动旋转（约 12 秒一圈）；
  * 拖动手动转，松手 3 秒后恢复自动；滚轮缩放 0.6–1.8 倍；换枪时新枪从侧面转进来。
- * 画布跟着容器尺寸走（resize），单独一个渲染器，只在武器台打开时存在
+ * 画布跟着容器尺寸走（resize），单独一个渲染器，只在武器台打开时存在。
+ * 双持手枪展示两把（一左一右），不是一把
  */
-export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; setWeapon(kind: WeaponKind, tier: number): void; resize(w: number, h: number): void; dispose(): void } {
+export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; setWeapon(kind: WeaponKind, tier: number, dual?: boolean): void; resize(w: number, h: number): void; dispose(): void } {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -175,11 +177,24 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   raf = requestAnimationFrame(loop);
   return {
     canvas: el,
-    setWeapon(kind, tier) {
+    setWeapon(kind, tier, dual = false) {
       holder.clear();
       // frame() 会挪模型的位置，每次都用新建的模型
-      current = buildWeapon(kind, tier).group;
-      holder.add(current);
+      // 双持：左右各一把（左边那把沿 X 镜像），摆开一点距离
+      const g = new Group();
+      if (dual && kind === 'pistol') {
+        const right = buildWeapon(kind, tier).group;
+        const left = buildWeapon(kind, tier).group;
+        left.scale.x = -1;
+        const GAP = 0.11;
+        right.position.x = GAP;
+        left.position.x = -GAP;
+        g.add(right, left);
+      } else {
+        g.add(buildWeapon(kind, tier).group);
+      }
+      holder.add(g);
+      current = g;
       swap = reduce ? 1 : 0;
       zoom = 1;
     },

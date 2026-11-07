@@ -46,9 +46,7 @@ interface RunLog {
 function playRun(meta: MetaState, seed: number): { outcome: RunOutcome; main: WeaponKind } {
   const b = bonusesOf(meta);
   const g = new Game(seed);
-  // 有「随身武器」就带上最新解锁的枪
-  const side = [...WEAPON_ORDER].reverse().find((k) => k !== 'pistol' && b.weapons.has(k)) ?? null;
-  applyMeta(g, b, { difficulty: 'normal', sidearm: b.sidearm ? side : null, bench: meta.bench });
+  applyMeta(g, b, { difficulty: 'normal', bench: meta.bench });
   startRun(g);
   g.player.x = 0.5;
   g.player.z = 4;
@@ -149,9 +147,21 @@ function playRun(meta: MetaState, seed: number): { outcome: RunOutcome; main: We
       g.input.aimZ = z.z;
       // 瞄目标身体中间（爬行者只有 0.7 米高，瞄胸口高度会从它头顶飞过去）
       g.input.aimPitch = Math.atan2(Math.min(1.2, z.def.height * 0.55) - g.player.eye, Math.max(0.5, d));
-      g.input.fire = d < Math.min(16, statsAt(g.player.weapon, g.player.tier).range - 0.5);
-      if (d < 3.5) {
-        const away = Math.hypot(g.player.x - z.x, g.player.z - z.z) || 1;
+      // 霰弹枪散量大（14°），远了打不中，得像真人一样贴到 4–5 米再开火
+      const close = g.player.weapon === 'shotgun';
+      const fireRange = close ? 6 : Math.min(16, statsAt(g.player.weapon, g.player.tier).range - 0.5);
+      g.input.fire = d < fireRange;
+      const away = Math.hypot(g.player.x - z.x, g.player.z - z.z) || 1;
+      if (close) {
+        // 霰弹枪：保持 3–5 米，太远就压上去，太近就退一步
+        if (d > 5) {
+          g.input.moveX = (z.x - g.player.x) / away;
+          g.input.moveZ = (z.z - g.player.z) / away;
+        } else if (d < 2.5) {
+          g.input.moveX = (g.player.x - z.x) / away;
+          g.input.moveZ = (g.player.z - z.z) / away;
+        }
+      } else if (d < 3.5) {
         g.input.moveX = (g.player.x - z.x) / away;
         g.input.moveZ = (g.player.z - z.z) / away;
         g.input.sprint = true;
@@ -172,7 +182,7 @@ function shop(m: MetaState): [MetaState, string[]] {
   let changed = true;
   while (changed) {
     changed = false;
-    const unlock = META_ITEMS.find((it) => (it.id.startsWith('unlock-') || it.id === 'sidearm') && it.section === 'armory' && canBuy(m, it.id) === 'ok');
+    const unlock = META_ITEMS.find((it) => it.id.startsWith('unlock-') && it.section === 'armory' && canBuy(m, it.id) === 'ok');
     if (unlock) {
       [m] = buyMeta(m, unlock.id);
       bought.push(unlock.name);

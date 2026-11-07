@@ -37,15 +37,18 @@ import { buildWeapon, type WeaponModel } from './';
  * - 滑铲、蹲伏：枪身倾斜；近战：枪托向左前方挥出去。
  */
 
-/** 各武器在相机空间里腰射时的位置（后握把）和缩放。第一人称里枪要比真实比例略大一点才好看 */
+/**
+ * 各武器在相机空间里腰射时的位置（后握把）和缩放。第一人称里枪要比真实比例略大一点才好看，
+ * 但也不能太大：之前手枪 ×1.3 挡掉半块屏幕，别的枪也偏大，整体缩了一档。
+ */
 const PLACE: Record<WeaponKind, { x: number; y: number; z: number; s: number }> = {
-  pistol: { x: 0.12, y: -0.13, z: -0.3, s: 1.3 },
-  smg: { x: 0.15, y: -0.15, z: -0.26, s: 1.1 },
-  shotgun: { x: 0.16, y: -0.165, z: -0.22, s: 1.0 },
-  rifle: { x: 0.165, y: -0.17, z: -0.22, s: 1.0 },
-  sniper: { x: 0.165, y: -0.18, z: -0.2, s: 0.95 },
-  lmg: { x: 0.18, y: -0.19, z: -0.22, s: 0.95 },
-  launcher: { x: 0.2, y: -0.21, z: -0.25, s: 0.9 },
+  pistol: { x: 0.12, y: -0.125, z: -0.28, s: 1.05 },
+  smg: { x: 0.15, y: -0.145, z: -0.25, s: 0.98 },
+  shotgun: { x: 0.16, y: -0.16, z: -0.22, s: 0.92 },
+  rifle: { x: 0.165, y: -0.165, z: -0.22, s: 0.92 },
+  sniper: { x: 0.165, y: -0.175, z: -0.2, s: 0.86 },
+  lmg: { x: 0.18, y: -0.185, z: -0.22, s: 0.88 },
+  launcher: { x: 0.2, y: -0.205, z: -0.25, s: 0.84 },
 };
 
 /** 枪口火光亮度（近距离点光源，数值比世界里的小得多） */
@@ -53,6 +56,8 @@ const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 2.2, smg: 2, shotgun: 
 const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun: 1.3, rifle: 0.95, sniper: 1.4, lmg: 1.05, launcher: 1.5 };
 /** FLASH_SIZE 按枪口离镜头这么远（米，程序模型腰射时大约的距离）调的；更近就按比例缩小 */
 const FLASH_REF_DIST = 0.55;
+/** 双持时枪口火焰的缩小系数：两把枪都在画面里，火光太大就挡住半个屏幕 */
+const DUAL_FLASH_K = 0.6;
 /** 开火时整枪后坐的力度 */
 const KICK: Record<WeaponKind, number> = { pistol: 1, smg: 0.55, shotgun: 1.8, rifle: 0.75, sniper: 2.2, lmg: 0.7, launcher: 1.9 };
 
@@ -345,7 +350,9 @@ export class ViewModel {
 
   /** 开火：枪口火光 + 近处补光 + 整枪后坐 + 机构动作。interval = 两发之间的秒数 */
   fire(kind: WeaponKind, interval = 0.3, last = false): void {
-    const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3);
+    // 双持时两把枪轮流开火，火光只需要照亮这一侧的枪：整体缩小一点，别糊满屏幕
+    const dual = !!this.weaponL && this.rootL.visible;
+    const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3) * (dual ? DUAL_FLASH_K : 1);
     const s = this.taczRig ? TACZ_SCALE : PLACE[kind].s;
     // 火光按"屏幕上看起来多大"来定：枪口离镜头越近（TACZ 手枪腰射只有 0.25 米、开镜时枪口就在眼前），
     // 同样的世界尺寸在屏幕上就越大，不按距离缩放会糊满全屏。开镜时再小一点，不挡准星
@@ -358,8 +365,8 @@ export class ViewModel {
     this.flash.rotation.z = Math.random() * 6.28;
     this.flash.visible = true;
     this.flashT = 0.055;
-    // 补光也一样：离得近时手臂、袖子会被照成一大片橙色
-    this.flashPeak = FLASH_LIGHT[kind] * near * near;
+    // 补光也一样：离得近时手臂、袖子会被照成一大片橙色；双持时再压一档
+    this.flashPeak = FLASH_LIGHT[kind] * near * near * (dual ? DUAL_FLASH_K : 1);
     if (this.taczRig) {
       // 后坐、套筒都在 TACZ 的 shoot 动画里
       this.taczRig.fire(Math.max(0.06, interval), last);

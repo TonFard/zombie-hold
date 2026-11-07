@@ -208,6 +208,7 @@ export function weaponBreakdown(g: Game, kind: WeaponKind, tier: number): Weapon
   // 换弹速度倍率越大越快：换弹时间 = 基础 ÷ 倍率
   line('reload', '换弹', b0.reload, '秒', 2, false, [
     ['tier', `工坊 ${tier + 1} 级`, bt.reload / b0.reload],
+    ['dual', '双持', dual ? DUAL.reload : 1],
     ...((rl?.parts ?? []).map((p) => [p.kind, p.name, 1 / p.value]) as Array<[SourceKind, string, number]>),
   ]);
   const def = WEAPONS[kind];

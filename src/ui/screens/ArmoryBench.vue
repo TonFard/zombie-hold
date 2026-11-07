@@ -95,11 +95,11 @@ onMounted(() => {
   preview = ui.gfx.preview(Math.max(2, el.clientWidth), Math.max(2, el.clientHeight));
   if (!preview) return;
   el.appendChild(preview.canvas);
-  preview.setWeapon(pick.value, 0);
+  preview.setWeapon(pick.value, 0, w.value.dual);
   ro = new ResizeObserver(() => preview?.resize(el.clientWidth, el.clientHeight));
   ro.observe(el);
 });
-watch(pick, (k) => preview?.setWeapon(k, 0));
+watch([pick, () => w.value.dual], ([k, dual]) => preview?.setWeapon(k, 0, dual));
 onBeforeUnmount(() => {
   ro?.disconnect();
   preview?.dispose();

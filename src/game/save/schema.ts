@@ -102,15 +102,12 @@ function parseMeta(v: unknown): MetaState {
     if (lv > 0) levels[id] = lv;
   }
   if (!Array.isArray(v.cleared) || !v.cleared.every(isDifficulty)) throw new SaveError('meta.cleared 不合法');
-  const side = v.lastSidearm;
-  if (side !== null && !(typeof side === 'string' && (WEAPON_ORDER as string[]).includes(side))) throw new SaveError('meta.lastSidearm 不合法');
   return {
     medals: num(v, 'medals', 0, 1e7, true),
     medalsEarned: num(v, 'medalsEarned', 0, 1e8, true),
     levels,
     cleared: DIFFICULTY_ORDER.filter((d) => (v.cleared as unknown[]).includes(d)),
     lastDifficulty: oneOf(v, 'lastDifficulty', DIFFICULTY_ORDER),
-    lastSidearm: side as WeaponKind | null,
     ...parseSupply(v),
   };
 }

@@ -13,8 +13,6 @@ import type { Game } from '../sim';
 /** 出征时的选择 */
 export interface Deploy {
   difficulty: Difficulty;
-  /** 随身武器：需要买了「随身武器」并且这把枪已解锁 */
-  sidearm: WeaponKind | null;
   /** 章节（地图）；缺省第一章 */
   chapter?: MapId;
   /** 工作台等级（存档里的 meta.bench）；缺省没有强化 */
@@ -77,17 +75,6 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
   g.scrap += b.startScrap;
   g.scrapEarned += b.startScrap;
   g.config.meta = { maxHp: b.maxHp, coreHp: b.coreHp, structHp: b.structHp, turretDamage: b.turretDamage, scrapGain: b.scrapGain, armor: b.armor, regen: b.regen, speed: b.speed, fireRate: b.fireRate, scrapEnv };
-  const side = dep.sidearm;
-  if (sidearmOk(b, side)) {
-    const slot = g.loadout[side];
-    slot.owned = true;
-    slot.carried = true;
-    slot.tier = 0;
-    slot.mag = g.takeAmmo(side, g.statsOf(side, 0).mag);
-    // 直接拿在手上：startRun 里第一个白天就会存检查点，要在那之前换好，读档继续时手里才是随身武器
-    g.player.weapon = side;
-    g.player.tier = 0;
-  }
 }
 
 /**
@@ -152,11 +139,6 @@ export function widenMeta(g: Game, b: MetaBonuses): void {
     g.mods.fireRate *= b.fireRate / m.fireRate;
     m.fireRate = b.fireRate;
   }
-}
-
-/** 这把武器能不能当随身武器带：买了「随身武器」、已解锁、不是手枪（手枪本来就有） */
-export function sidearmOk(b: MetaBonuses, k: string | null): k is WeaponKind {
-  return !!k && b.sidearm && k !== 'pistol' && b.weapons.has(k as WeaponKind);
 }
 
 /** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限 */

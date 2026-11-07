@@ -2,9 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { CHAPTERS, chapterUnlocked, type Chapter } from '../../game/data/chapters';
 import { DIFFICULTIES, DIFFICULTY_ORDER, type Difficulty } from '../../game/data/difficulty';
-import { WEAPONS, WEAPON_ORDER, type WeaponKind } from '../../game/data/weapons';
+import { WEAPONS } from '../../game/data/weapons';
 import { dailyFor, todayKey } from '../../game/meta/achievements';
-import { sidearmOk } from '../../game/meta/loadout';
 import { bonusesOf, difficultyUnlocked } from '../../game/meta/progress';
 import { nightMod } from '../../game/data/modifiers';
 import type { MapId } from '../../game/world/maps';
@@ -19,7 +18,6 @@ const meta = computed(() => ui.save.meta);
 const bonuses = computed(() => bonusesOf(meta.value));
 
 const difficulty = ref<Difficulty>(meta.value.lastDifficulty);
-const sidearm = ref<WeaponKind | null>(meta.value.lastSidearm);
 const chapter = ref<MapId>(meta.value.lastChapter ?? 'outpost');
 const chapterOn = (id: MapId) => chapterUnlocked(meta.value.chapters, id);
 const cur = computed<Chapter>(() => CHAPTERS.find((c) => c.id === chapter.value) ?? (CHAPTERS[0] as Chapter));
@@ -30,12 +28,10 @@ watch(
     if (!open) return;
     const m = meta.value;
     difficulty.value = difficultyUnlocked(m, m.lastDifficulty) ? m.lastDifficulty : 'normal';
-    sidearm.value = sidearmOk(bonuses.value, m.lastSidearm) ? m.lastSidearm : null;
     chapter.value = chapterOn(m.lastChapter) ? m.lastChapter : 'outpost';
   },
   { immediate: true },
 );
-const sidearms = computed<WeaponKind[]>(() => WEAPON_ORDER.filter((k) => sidearmOk(bonuses.value, k)));
 
 /** 章节状态：已通关 / 已开放 / 锁定 */
 const stateOf = (c: Chapter): 'done' | 'open' | 'locked' => (meta.value.chapters.includes(c.id) ? 'done' : chapterOn(c.id) ? 'open' : 'locked');
@@ -71,8 +67,7 @@ const deploy = (): void => {
     return;
   }
   confirming.value = false;
-  const side = sidearm.value && sidearms.value.includes(sidearm.value) ? sidearm.value : null;
-  ui.actions.deploy(difficulty.value, side, chapter.value);
+  ui.actions.deploy(difficulty.value, chapter.value);
 };
 
 /** 当前加成：顶部状态条，默认只显示几个关键数字，点开看全部 */
@@ -162,13 +157,6 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         </button>
       </div>
       <p class="note">{{ diffNote(difficulty) }}</p>
-
-      <div class="sub">随身武器</div>
-      <p v-if="!bonuses.sidearm" class="note">军械库解锁后可以多带一把</p>
-      <div v-else class="t-seg">
-        <button :class="{ on: sidearm === null }" @click="sidearm = null">不带</button>
-        <button v-for="k in sidearms" :key="k" :class="{ on: sidearm === k }" @click="sidearm = k">{{ WEAPONS[k].name }}</button>
-      </div>
     </aside>
 
     <!-- 底栏 -->
