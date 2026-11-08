@@ -31,6 +31,11 @@ function setup(): NonNullable<typeof shared> {
   return shared;
 }
 
+/** 武器台展示：包围球直径占画面短边的比例 */
+const PREVIEW_FILL = 0.8;
+/** 武器台展示：取景用的最小包围球半径（米）。长枪约 0.4–0.6，手枪 0.17 */
+const PREVIEW_MIN_R = 0.24;
+
 /**
  * 把模型放到画面中间、长边撑满：枪口朝 +Z，所以侧视 = 从 +X 看过去（yaw = 0）。
  * 只在第一次居中（userData.centered），之后每帧只动相机，模型不会被一次次挪走
@@ -42,10 +47,12 @@ function frame(obj: Object3D, camera: PerspectiveCamera, aspect: number, yaw: nu
     obj.userData.centered = true;
     obj.userData.radius = box.getSize(new Vector3()).length() / 2;
   }
-  // 包围球装进视野：竖直半视角和水平半视角取小的那个
-  // 0.62：模型不要撑满整个台子，留一圈空隙，转起来才好看
+  // 包围球装进视野：竖直半视角和水平半视角取小的那个。
+  // PREVIEW_FILL：包围球直径只占画面短边的这么多，四周留空隙，转起来不会出框。
+  // PREVIEW_MIN_R：小于它的枪（手枪 0.17 米）按它来取景，不会被放大成和步枪一样大
   const half = Math.min((camera.fov * Math.PI) / 360, Math.atan(Math.tan((camera.fov * Math.PI) / 360) * aspect));
-  const r = ((obj.userData.radius as number) / Math.tan(half)) * 0.62;
+  const radius = Math.max(obj.userData.radius as number, PREVIEW_MIN_R);
+  const r = radius / Math.sin(half) / PREVIEW_FILL;
   camera.aspect = aspect;
   camera.position.set(Math.cos(pitch) * Math.cos(yaw) * r, Math.sin(pitch) * r, Math.cos(pitch) * Math.sin(yaw) * r);
   camera.lookAt(0, 0, 0);
@@ -180,15 +187,17 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
     setWeapon(kind, tier, dual = false) {
       holder.clear();
       // frame() 会挪模型的位置，每次都用新建的模型
-      // 双持：左右各一把（左边那把沿 X 镜像），摆开一点距离
+      // 双持：左右各一把（左边那把沿 X 镜像）。只沿 X 摆开的话，从侧面看两把完全重叠、像一把，
+      // 所以再前后、上下错开一点，枪口各向外撇一点，转到哪个角度都看得出是两把
       const g = new Group();
       if (dual && kind === 'pistol') {
         const right = buildWeapon(kind, tier).group;
         const left = buildWeapon(kind, tier).group;
         left.scale.x = -1;
-        const GAP = 0.11;
-        right.position.x = GAP;
-        left.position.x = -GAP;
+        right.position.set(0.07, 0.035, 0.07);
+        left.position.set(-0.07, -0.035, -0.07);
+        right.rotation.y = 0.2;
+        left.rotation.y = -0.2;
         g.add(right, left);
       } else {
         g.add(buildWeapon(kind, tier).group);

@@ -57,7 +57,7 @@ const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun
 /** FLASH_SIZE 按枪口离镜头这么远（米，程序模型腰射时大约的距离）调的；更近就按比例缩小 */
 const FLASH_REF_DIST = 0.55;
 /** 双持时枪口火焰的缩小系数：两把枪都在画面里，火光太大就挡住半个屏幕 */
-const DUAL_FLASH_K = 0.6;
+const DUAL_FLASH_K = 0.5;
 /** 开火时整枪后坐的力度 */
 const KICK: Record<WeaponKind, number> = { pistol: 1, smg: 0.55, shotgun: 1.8, rifle: 0.75, sniper: 2.2, lmg: 0.7, launcher: 1.9 };
 
@@ -157,6 +157,8 @@ export class ViewModel {
   private readonly flashLight = new PointLight(0xffa860, 0, 3.2, 2);
   private flashT = 0;
   private flashPeak = 0;
+  /** 火光现在挂在哪把枪上（双持时左右轮流），补光跟着它的枪口走 */
+  private flashGun: WeaponModel | null = null;
 
   private readonly armR = new Arm(false);
   private readonly armL = new Arm(true);
@@ -339,6 +341,7 @@ export class ViewModel {
     });
     w.group.add(this.flash);
     this.flash.position.copy(w.muzzle);
+    this.flashGun = w;
     this.weapon = w;
     this.root.add(w.group);
     // 换枪（以及开局第一次拿枪）都有一个举枪的过程；升级同一把枪不重播
@@ -350,14 +353,25 @@ export class ViewModel {
 
   /** 开火：枪口火光 + 近处补光 + 整枪后坐 + 机构动作。interval = 两发之间的秒数 */
   fire(kind: WeaponKind, interval = 0.3, last = false): void {
-    // 双持时两把枪轮流开火，火光只需要照亮这一侧的枪：整体缩小一点，别糊满屏幕
-    const dual = !!this.weaponL && this.rootL.visible;
+    // 双持：两把枪轮流开火。先定这一发是哪只手，火光挂到那把枪的枪口上
+    //（以前火光一直挂在右手那把上，左手开火时火光也从右边冒出来）
+    const dual = !this.taczRig && !!this.weaponL && this.rootL.visible;
+    if (dual) this.leftNext = !this.leftNext;
+    const gun = dual && this.leftNext ? this.weaponL : this.weapon;
+    if (!this.taczRig && gun && this.flash.parent !== gun.group) {
+      gun.group.add(this.flash);
+      this.flash.position.copy(gun.muzzle);
+    }
+    this.flashGun = gun;
+    // 双持时两把枪都在画面里、射速又高，火光整体缩小，别糊满屏幕
     const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3) * (dual ? DUAL_FLASH_K : 1);
     const s = this.taczRig ? TACZ_SCALE : PLACE[kind].s;
     // 火光按"屏幕上看起来多大"来定：枪口离镜头越近（TACZ 手枪腰射只有 0.25 米、开镜时枪口就在眼前），
     // 同样的世界尺寸在屏幕上就越大，不按距离缩放会糊满全屏。开镜时再小一点，不挡准星
     this.root.updateMatrixWorld(true);
     this.taczRig?.root.updateMatrixWorld(true);
+    // 补光这一帧就放到开火那把的枪口（不然要等下一帧，双持时会在另一把枪那里亮一下）
+    if (!this.taczRig && gun) gun.group.localToWorld(this.flashLight.position.copy(gun.muzzle));
     this.flash.parent?.getWorldPosition(this.tmp);
     this.camera.worldToLocal(this.tmp);
     const near = clamp(-this.tmp.z / FLASH_REF_DIST, 0.25, 1);
@@ -372,12 +386,9 @@ export class ViewModel {
       this.taczRig.fire(Math.max(0.06, interval), last);
       return;
     }
-    if (this.weaponL && this.rootL.visible) {
-      this.leftNext = !this.leftNext;
-      if (this.leftNext) {
-        this.kickL = 1;
-        return;
-      }
+    if (dual && this.leftNext) {
+      this.kickL = 1;
+      return;
     }
     this.cycleT = 0;
     this.cycleLen = Math.max(0.06, interval);
@@ -432,6 +443,15 @@ export class ViewModel {
     if (key === this.dualKey) return;
     this.dualKey = key;
     if (this.weaponL) {
+      // 火光可能正挂在左手那把上：先挪回右手那把，免得几何体被一起释放
+      if (this.flash.parent === this.weaponL.group) {
+        this.flash.removeFromParent();
+        if (this.weapon && !this.taczRig) {
+          this.weapon.group.add(this.flash);
+          this.flash.position.copy(this.weapon.muzzle);
+        }
+      }
+      if (this.flashGun === this.weaponL) this.flashGun = this.weapon;
       this.rootL.remove(this.weaponL.group);
       this.weaponL.group.traverse((o) => (o as { geometry?: { dispose(): void } }).geometry?.dispose());
       this.weaponL = null;
@@ -569,31 +589,36 @@ export class ViewModel {
     this.cycleT += dt;
     this.animateParts(w, s, dt);
 
-    // 火光衰减
-    if (this.flashT > 0) {
-      this.flashT -= dt;
-      this.flashLight.intensity = this.flashPeak * clamp(this.flashT / 0.055, 0, 1);
-      w.group.localToWorld(this.flashLight.position.copy(w.muzzle));
-      if (this.flashT <= 0) {
-        this.flash.visible = false;
-        this.flashLight.intensity = 0;
-      }
-    }
-
     // 双持：右手那把往右挪一点，左手那把镜像摆在左边，各自后坐
-    if (this.weaponL && this.rootL.visible) {
+    const dualOn = !!this.weaponL && this.rootL.visible;
+    if (dualOn) {
       this.root.position.x += 0.035;
       this.kickL = Math.max(0, this.kickL - dt * 9);
       this.rootL.position.set(-this.root.position.x, this.root.position.y, this.root.position.z + 0.03 * this.kickL);
       this.rootL.rotation.set(this.root.rotation.x + 0.1 * this.kickL, Math.PI - (this.root.rotation.y - Math.PI), -this.root.rotation.z);
       this.rootL.scale.copy(this.root.scale);
     }
-    // 双手跟着枪的握点（IK）；换弹时左手去拿弹匣 / 塞子弹，泵动时左手跟着护木
     this.root.updateMatrixWorld(true);
+    if (dualOn) this.rootL.updateMatrixWorld(true);
+
+    // 火光衰减。补光的位置要在两把枪都摆好、矩阵更新之后再算：
+    // 以前在"右手那把往右挪 3.5 厘米"之前算，双持右手开火时补光落在枪身侧面几毫米处，
+    // 按距离平方衰减把枪面照到过曝，泛光糊成屏幕右边一大团
+    if (this.flashT > 0) {
+      this.flashT -= dt;
+      this.flashLight.intensity = this.flashPeak * clamp(this.flashT / 0.055, 0, 1);
+      const fg = this.flashGun ?? w;
+      fg.group.localToWorld(this.flashLight.position.copy(fg.muzzle));
+      if (this.flashT <= 0) {
+        this.flash.visible = false;
+        this.flashLight.intensity = 0;
+      }
+    }
+
+    // 双手跟着枪的握点（IK）；换弹时左手去拿弹匣 / 塞子弹，泵动时左手跟着护木
     w.group.localToWorld(this.gripR.copy(w.gripR));
-    if (this.weaponL && this.rootL.visible) {
+    if (dualOn && this.weaponL) {
       // 左手握住自己那把的握把（换弹时一起放低）
-      this.rootL.updateMatrixWorld(true);
       this.weaponL.group.localToWorld(this.gripL.copy(this.weaponL.gripR));
       this.armR.solve(this.shoulderR, this.gripR, this.poleR);
       this.armL.solve(this.shoulderL, this.gripL, this.poleL);

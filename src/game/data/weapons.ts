@@ -385,9 +385,10 @@ export const AMMO_LIMITED = false;
 /**
  * 双持手枪：左右手各一把（左右交替开火）。
  * 收益：弹匣 ×2、射速 ×1.7。
- * 代价：换弹更慢（两把都要装弹，×1.35）、重量翻倍、散布变大、不能举镜瞄准。
+ * 代价：换弹更慢（两把都要装弹，×1.5）、重量翻倍（×2，减重之后再翻倍）、散布变大、不能举镜瞄准。
+ * 换弹 1.35 → 1.5：手枪 ★3 的双持换弹 −25% 叠上去以后，1.35 倍几乎和单持一样快
  */
-export const DUAL = { mag: 2, rate: 1.7, spread: 1.5, recoil: 0.8, reload: 1.35, weight: 1.0 };
+export const DUAL = { mag: 2, rate: 1.7, spread: 1.5, recoil: 0.8, reload: 1.5, weight: 2 };
 
 /** 局外强化 + 双持之后的实际属性 */
 export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = NO_MOD, dual = false): WeaponStats {
@@ -406,12 +407,12 @@ export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = 
 }
 
 /**
- * 实际重量（千克）：局外减重之后，双持时手上是两把手枪——重量翻倍（多背一把）。
- * 手枪 1.0 kg → 双持 2.0 kg。
+ * 实际重量（千克）：局外减重之后的单把重量；双持时手上是两把手枪，重量 ×2。
+ * 手枪 1.0 kg → 双持 2.0 kg；减重到 0.6 kg 之后双持就是 1.2 kg（始终正好两把）。
  */
 export function weightOf(kind: WeaponKind, mod: WeaponMod = NO_MOD, dual = false): number {
-  const w = WEAPONS[kind].weight + (dual && kind === 'pistol' ? DUAL.weight : 0) - mod.lighter;
-  return Math.max(0.6, w);
+  const one = Math.max(0.6, WEAPONS[kind].weight - mod.lighter);
+  return dual && kind === 'pistol' ? one * DUAL.weight : one;
 }
 
 /**

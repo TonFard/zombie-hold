@@ -217,8 +217,8 @@ export function weaponBreakdown(g: Game, kind: WeaponKind, tier: number): Weapon
     name: '重量',
     base: def.weight,
     parts: [
-      ...(wm.lighter > 0 ? [{ kind: 'bench' as const, name: '武器台·轻量化', value: (def.weight - wm.lighter) / def.weight }] : []),
-      ...(dual ? [{ kind: 'dual' as const, name: '双持', value: (def.weight + DUAL.weight - wm.lighter) / Math.max(0.01, def.weight - wm.lighter) }] : []),
+      ...(wm.lighter > 0 ? [{ kind: 'bench' as const, name: '武器台·轻量化', value: weightOf(kind, wm) / def.weight }] : []),
+      ...(dual ? [{ kind: 'dual' as const, name: '双持', value: DUAL.weight }] : []),
     ],
     // 这把枪自己的重量（不是手上那把：背着的枪也要显示它自己的）
     final: weightOf(kind, wm, c.dual),
