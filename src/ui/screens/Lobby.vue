@@ -28,7 +28,7 @@ const tabs: Array<{ id: LobbyTab; name: string; code: string }> = [
 
 // ---- 军械库（四个子分类）----
 const SECTIONS: Array<{ id: MetaSection; name: string; code: string; icon: string; desc: string }> = [
-  { id: 'armory', name: '武器装备', code: 'WEAPONS', icon: '⌖', desc: '解锁新武器和手枪双持。解锁要先把上一把枪练到精通' },
+  { id: 'armory', name: '武器装备', code: 'WEAPONS', icon: '⌖', desc: '解锁新武器、手枪双持和随身武器。解锁要先把上一把枪练到精通' },
   { id: 'engineering', name: '工程设施', code: 'ENGINEERING', icon: '⛭', desc: '炮塔数量上限、新型炮塔和建筑强度，夜里守线靠它们' },
   { id: 'supply', name: '补给物资', code: 'SUPPLY', icon: '▣', desc: '开局零件、最大生命、发电机生命、零件收益和卡牌重抽' },
   { id: 'fitness', name: '体能训练', code: 'FITNESS', icon: '✚', desc: '减伤、自动回血、移动速度和射速，对每把枪都生效' },

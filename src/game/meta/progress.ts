@@ -17,8 +17,9 @@ export interface MetaState {
   levels: Record<string, number>;
   /** 通关过的难度 */
   cleared: Difficulty[];
-  /** 上次出征选的难度 */
+  /** 上次出征选的难度和随身武器 */
   lastDifficulty: Difficulty;
+  lastSidearm: WeaponKind | null;
   /** 补给点：买子弹、工作台强化用（和勋章分开，每局都按表现结算） */
   supplies: number;
   /** 库存子弹（手枪无限，不记）。出征时整份带进去，打剩下的结算时退回 */
@@ -33,7 +34,7 @@ export interface MetaState {
   mastery: Partial<Record<WeaponKind, number>>;
 }
 
-export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost', mastery: {} });
+export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', lastSidearm: null, supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost', mastery: {} });
 
 // ---------------------------------------------------------------- 勋章结算
 

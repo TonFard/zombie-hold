@@ -614,9 +614,9 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
     const wDual = weightOf('pistol', NO_MOD, true);
     check(Math.abs(wDual - wSingle * 2) < 1e-9, `双持重量翻倍：单持 ${wSingle.toFixed(1)} kg → 双持 ${wDual.toFixed(1)} kg`);
 
-    // 「随身武器」已经从军械库里去掉了
-    check(!META_ITEMS.some((it) => it.id === 'sidearm'), '军械库里没有「随身武器」了');
-    check(!('sidearm' in baseBonuses()), '局外加成里也没有随身武器');
+    // 「随身武器」：军械库里有，要先解锁霰弹枪，默认没有
+    check(META_ITEMS.some((it) => it.id === 'sidearm' && it.requires?.id === 'unlock-shotgun'), '军械库里有「随身武器」，前置是解锁霰弹枪');
+    check(baseBonuses().sidearm === false, '局外加成里默认没有随身武器');
   }
 
   // 工作台强化：伤害、扩容带进局内

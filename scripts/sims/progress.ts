@@ -46,7 +46,9 @@ interface RunLog {
 function playRun(meta: MetaState, seed: number): { outcome: RunOutcome; main: WeaponKind } {
   const b = bonusesOf(meta);
   const g = new Game(seed);
-  applyMeta(g, b, { difficulty: 'normal', bench: meta.bench });
+  // 有「随身武器」就带上最新解锁的枪
+  const side = [...WEAPON_ORDER].reverse().find((k) => k !== 'pistol' && b.weapons.has(k)) ?? null;
+  applyMeta(g, b, { difficulty: 'normal', sidearm: b.sidearm ? side : null, bench: meta.bench });
   startRun(g);
   g.player.x = 0.5;
   g.player.z = 4;

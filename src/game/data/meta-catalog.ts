@@ -31,6 +31,8 @@ export interface MetaBonuses {
   weapons: Set<WeaponKind>;
   /** 每把武器的局内等级上限（5–8）：由熟练度决定（progress.bonusesOf 里填） */
   tierCap: Record<WeaponKind, number>;
+  /** 允许带一把随身武器开局 */
+  sidearm: boolean;
   /** 双持手枪 */
   dual: boolean;
   structures: Set<StructureKind>;
@@ -57,6 +59,7 @@ export function baseBonuses(): MetaBonuses {
   return {
     weapons: new Set<WeaponKind>(['pistol']),
     tierCap: { pistol: 5, smg: 5, shotgun: 5, rifle: 5, sniper: 5, lmg: 5, launcher: 5 },
+    sidearm: false,
     dual: false,
     structures: new Set<StructureKind>(['barricade', 'turret', 'spikes']),
     turretCap: 3,
@@ -150,6 +153,9 @@ export const META_ITEMS: MetaItem[] = [
   unlockWeapon('launcher', 400, '榴弹范围爆炸，伤害 120'),
   // 双持：手枪练到 3 级就能买，是手枪前期的大目标；后期手枪当副武器也用得上
   { id: 'dual', section: 'armory', name: '手枪双持', desc: '左右手各一把：弹匣 ×2、射速 ×1.7，但换弹更慢、重量翻倍、散布变大、不能举镜', prices: P(160), mastery: { weapon: 'pistol', level: 3 }, apply: (b, lv) => { b.dual = lv > 0; } },
+  // 随身武器：开局就带一把已解锁的枪。要先解锁霰弹枪（不能靠它在前期跳过武器解锁链），
+  // 勋章 150：比解锁霰弹枪（120）贵一些、比解锁突击步枪（200）便宜，攒一阵子才买得起；不打折，和武器解锁同价档
+  { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）；要先解锁霰弹枪', prices: [150], requires: { id: 'unlock-shotgun', level: 1 }, apply: (b, lv) => { b.sidearm = lv > 0; } },
   // ---- 工程部 ----
   { id: 'turret-cap', section: 'engineering', name: '炮塔数量上限', desc: '所有炮塔合计最多 {n} 座', prices: P(80, 140, 210, 300, 420), ranks: [1, 2, 4, 5, 6], apply: (b, lv) => { b.turretCap = 3 + lv; } },
   { id: 'unlock-hmg', section: 'engineering', name: '解锁重机枪塔', desc: '射程 12，伤害高，转得慢，能吃伤害', prices: P(200), ranks: [2], requires: { id: 'turret-cap', level: 1 }, apply: (b, lv) => { if (lv) b.structures.add('hmg'); } },

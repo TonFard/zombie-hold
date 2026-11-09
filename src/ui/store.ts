@@ -86,7 +86,7 @@ export const ui = reactive({
   /** 游戏通过它把"开始 / 重新开始 / 回主菜单 / 继续"等动作交给应用层 */
   actions: {
     enterLobby: () => {},
-    deploy: (_d: Difficulty, _chapter: string) => {},
+    deploy: (_d: Difficulty, _sidearm: string | null, _chapter: string) => {},
     buyAmmo: (_k: string, _packs: number) => {},
     buyBench: (_k: string, _line: string) => {},
     continueRun: () => {},

@@ -5,7 +5,7 @@ import { AMMO_LIMITED, WEAPON_ORDER, type WeaponKind } from '../game/data/weapon
 import { FINAL_NIGHT } from '../game/data/waves';
 import type { ZombieKind } from '../game/data/zombies';
 import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
-import { applyDaily, applyMeta, applyTraining, configFor, widenMeta } from '../game/meta/loadout';
+import { applyDaily, applyMeta, applyTraining, configFor, sidearmOk, widenMeta } from '../game/meta/loadout';
 import { startTdm } from '../game/systems/tdm';
 import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunOutcome } from '../game/meta/progress';
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
@@ -72,6 +72,7 @@ function readParams() {
     resume: q.get('continue') === '1',
     deploy: isDifficulty(dep) ? dep : null,
     daily: q.get('daily') === '1',
+    sidearm: q.get('sidearm'),
     chapter: q.get('chapter'),
     tdm: q.get('tdm') === '1',
     /** 无头截图用：没有真实鼠标，假装已锁定指针 */
@@ -105,7 +106,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   input.assumeLocked = params.nolock || typeof canvas.requestPointerLock !== 'function';
   view.look = input.look;
   view.setNight(params.night !== null ? Number(params.night) : 0.15, true);
-  // 进度在服务器上：拉下来的就是全部（游戏更新后服务器上旧版本的存档不再下发，等于重置）
+  // 进度在服务器上：拉下来的就是全部（旧版本传上去的存档照样读，更新游戏不清进度）
   const loaded = loadSave(storage);
   ui.save = loaded.save;
   if (loaded.warning) {
@@ -147,7 +148,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     ui.save = next;
     writeSave(storage, next);
   };
-  // 新号 / 游戏更新后服务器上还没有这一版的存档：把新存档写上去
+  // 新号（服务器上还没有存档）：把新存档写上去
   if (!storage.get(SAVE_KEY)) save(ui.save);
   /** 这一局是正式的（按局外进度出征 / 读档继续）：会存检查点、结算勋章。沙盒（?autostart）和训练场都不是 */
   let ranked = false;
@@ -375,7 +376,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     ui.lobbyTab = 'deploy';
     screens.set('lobby');
   };
-  ui.actions.deploy = (d: Difficulty, chapter: string) => reload(`?deploy=${d}&chapter=${chapter}`);
+  ui.actions.deploy = (d: Difficulty, sidearm: string | null, chapter: string) => reload(`?deploy=${d}&chapter=${chapter}${sidearm ? `&sidearm=${sidearm}` : ''}`);
   ui.actions.continueRun = () => reload('?continue=1');
   ui.actions.training = () => reload('?training=1');
   ui.actions.daily = () => reload('?daily=1');
@@ -406,7 +407,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     // 正式局：重新开始 = 放弃这一局（结算）再用同样的设置出征
     if (ranked) {
       if (game.run.phase !== 'won' && game.run.phase !== 'lost') settle(false, 'abandon');
-      reload(`?deploy=${game.config.difficulty}&chapter=${game.config.chapter}`);
+      reload(`?deploy=${game.config.difficulty}&chapter=${game.config.chapter}${ui.save.meta.lastSidearm ? `&sidearm=${ui.save.meta.lastSidearm}` : ''}`);
     } else reload('?autostart=1');
   };
   ui.actions.abandon = () => {
@@ -547,7 +548,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   } else if (params.deploy) {
     const d = difficultyUnlocked(ui.save.meta, params.deploy) ? params.deploy : 'normal';
     const chapter: MapId = chapterUnlocked(ui.save.meta.chapters, mapId) ? mapId : 'outpost';
-    save({ ...ui.save, meta: { ...ui.save.meta, lastDifficulty: d, lastChapter: chapter } });
+    const side = sidearmOk(bonuses, params.sidearm) ? params.sidearm : null;
+    save({ ...ui.save, meta: { ...ui.save.meta, lastDifficulty: d, lastSidearm: side, lastChapter: chapter } });
     // 开一局新的会覆盖旧检查点：旧的那一局按已经撑过的夜数结算
     const old = peekCheckpoint(storage.get(RUN_KEY));
     if (old && isDifficulty(old.difficulty)) {
@@ -562,7 +564,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     // 子弹：库存整份带进这一局（结算时把剩下的退回来）；无限弹药时库存不动
     const stock = { ...ui.save.meta.ammo };
     if (AMMO_LIMITED) save({ ...ui.save, meta: { ...cloneMeta(ui.save.meta), ammo: {} } });
-    applyMeta(game, bonuses, { difficulty: d, chapter, bench: ui.save.meta.bench, mastery: ui.save.meta.mastery, ammo: stock });
+    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, mastery: ui.save.meta.mastery, ammo: stock });
     startRun(game);
     enterPlay('play');
   } else if (params.tdm) {

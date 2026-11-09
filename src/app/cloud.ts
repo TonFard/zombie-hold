@@ -1,5 +1,5 @@
 import { RUN_KEY } from '../game/save/checkpoint';
-import { EPOCH_KEY, SAVE_EPOCH, SAVE_KEY, parseSave, type SaveData } from '../game/save/schema';
+import { SAVE_EPOCH, SAVE_KEY, parseSave, type SaveData } from '../game/save/schema';
 import type { Storage } from '../game/save/storage';
 
 /**
@@ -66,7 +66,7 @@ export async function signOut(auth: CloudAuth): Promise<void> {
 }
 
 export interface Remote {
-  /** 服务器上的跨局存档；还没有（新号）或者是旧版本的（游戏更新后要重置）时为 null */
+  /** 服务器上的跨局存档；还没有（新号）或者内容坏得读不出来时为 null */
   save: SaveData | null;
   /** 服务器上存档的版本号，上传时带上，防止两台电脑互相覆盖 */
   rev: number;
@@ -78,10 +78,12 @@ export interface Remote {
 export async function pull(auth: CloudAuth): Promise<Remote> {
   const [s, r] = await Promise.all([call('GET', '/api/save', undefined, auth.token), call('GET', '/api/run', undefined, auth.token)]);
   let save: SaveData | null = null;
-  if (s.save && s.epoch === SAVE_EPOCH) {
+  // 不看纪元：旧版本传上去的存档照样读（parseSave 会兼容旧字段、补默认值），更新游戏不清玩家进度
+  if (s.save) {
     try {
       save = parseSave(s.save);
-    } catch {
+    } catch (e) {
+      console.warn('服务器上的存档读不出来：', e);
       save = null;
     }
   }
@@ -104,7 +106,7 @@ async function remoteRev(auth: CloudAuth): Promise<number> {
 
 /**
  * 游戏用的存储：内存里一份，写入时马上（合并 0.6 秒内的连续写）传到服务器。
- * 只认跨局存档和检查点两个键，其他键只在内存里（例如存档纪元）。
+ * 只认跨局存档和检查点两个键，其他键只在内存里。
  */
 export class CloudStore implements Storage {
   private readonly data = new Map<string, string>();
@@ -123,7 +125,6 @@ export class CloudStore implements Storage {
 
   hydrate(r: Remote): void {
     this.rev = r.rev;
-    this.data.set(EPOCH_KEY, String(SAVE_EPOCH));
     if (r.save) this.data.set(SAVE_KEY, JSON.stringify(r.save));
     if (r.run) this.data.set(RUN_KEY, r.run);
   }

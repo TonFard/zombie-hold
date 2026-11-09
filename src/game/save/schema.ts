@@ -11,10 +11,11 @@ import { ZOMBIES } from '../data/zombies';
 
 export const SAVE_KEY = 'zombie-hold-save-v2';
 export const SAVE_KEY_V1 = 'zombie-hold-save-v1';
-/** 存档纪元：记在单独的键里。和这里的值不一样时清掉进度重新开始（只保留音量、画质、灵敏度） */
-export const EPOCH_KEY = 'zombie-hold-epoch';
-/** 每次更新游戏都把它加一：玩家打开新版本时进度全部重置 */
-// 13：删掉了「随身武器」升级，旧的 meta.levels.sidearm 不再合法
+/**
+ * 存档纪元：只随存档上传做记录，**不再用来清档**。
+ * 以前纪元对不上就整份丢弃重来；现在更新游戏一律保留玩家进度，旧档靠 parseSave 宽松读取、缺的字段补默认值、
+ * 认不出的项目忽略。改了存档结构时在 parseSave / parseMeta 里兼容旧字段，不要靠重置。
+ */
 export const SAVE_EPOCH = 13;
 
 /** 跨局存档：统计、设置、局外进度 */
@@ -98,17 +99,22 @@ function parseMeta(v: unknown): MetaState {
   if (!isObj(v.levels)) throw new SaveError('meta.levels 缺失');
   for (const [id, lv] of Object.entries(v.levels)) {
     const item = META_BY_ID[id];
-    if (!item) continue; // 旧版本里有、新版本删掉的项目：忽略
-    if (typeof lv !== 'number' || !Number.isInteger(lv) || lv < 0 || lv > item.prices.length) throw new SaveError(`meta.levels.${id} 越界`);
-    if (lv > 0) levels[id] = lv;
+    if (!item) continue; // 旧版本里有、新版本删掉的项目：忽略（不能因为一个认不出的项目丢掉整份存档）
+    if (typeof lv !== 'number' || !Number.isFinite(lv)) continue;
+    // 级数超过现在的上限（项目被砍过级）：按上限算，不丢档
+    const n = Math.min(item.prices.length, Math.floor(lv));
+    if (n > 0) levels[id] = n;
   }
-  if (!Array.isArray(v.cleared) || !v.cleared.every(isDifficulty)) throw new SaveError('meta.cleared 不合法');
+  if (!Array.isArray(v.cleared)) throw new SaveError('meta.cleared 不合法');
+  // 上次出征选的东西只是个记忆：认不出（旧版本的难度名、没了的武器）就回到默认
+  const side = v.lastSidearm;
   return {
     medals: num(v, 'medals', 0, 1e7, true),
     medalsEarned: num(v, 'medalsEarned', 0, 1e8, true),
     levels,
     cleared: DIFFICULTY_ORDER.filter((d) => (v.cleared as unknown[]).includes(d)),
-    lastDifficulty: oneOf(v, 'lastDifficulty', DIFFICULTY_ORDER),
+    lastDifficulty: isDifficulty(v.lastDifficulty) ? v.lastDifficulty : 'normal',
+    lastSidearm: typeof side === 'string' && (WEAPON_ORDER as string[]).includes(side) ? (side as WeaponKind) : null,
     ...parseSupply(v),
   };
 }

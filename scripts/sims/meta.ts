@@ -2,7 +2,7 @@
 import { CARD_BY_ID } from '../../src/game/data/cards';
 import { META_BY_ID, META_ITEMS, RANKS, SECTION_NAME, baseBonuses, rankFor, rankOf } from '../../src/game/data/meta-catalog';
 import { FINAL_NIGHT } from '../../src/game/data/waves';
-import { applyMeta, applyTraining, widenMeta } from '../../src/game/meta/loadout';
+import { applyMeta, applyTraining, sidearmOk, widenMeta } from '../../src/game/meta/loadout';
 import { bonusesOf, buyBench, buyMeta, canBench, canBuy, masteryOf, medalsFor, newMeta, settleRun, totalMetaCost, unlockedDifficulties, type MetaState } from '../../src/game/meta/progress';
 import { MASTERY_XP, MASTERY_MAX } from '../../src/game/data/mastery';
 import { WEAPON_ORDER } from '../../src/game/data/weapons';
@@ -10,9 +10,10 @@ import { WEAPON_ORDER } from '../../src/game/data/weapons';
 /** 每把枪都练到某一级熟练度 */
 const masteredAll = (lv = MASTERY_MAX): MetaState['mastery'] => Object.fromEntries(WEAPON_ORDER.map((k) => [k, MASTERY_XP[k][lv - 1] as number]));
 import { RUN_KEY, applyCheckpoint, loadCheckpoint, parseCheckpoint, serialize } from '../../src/game/save/checkpoint';
-import { EPOCH_KEY, SAVE_KEY, SAVE_KEY_V1, defaultSave } from '../../src/game/save/schema';
+import { SAVE_KEY, SAVE_KEY_V1, defaultSave } from '../../src/game/save/schema';
 import { MemoryStorage } from '../../src/game/save/storage';
-import { loadSave, resetOnUpdate, writeSave } from '../../src/game/save/store';
+import * as storeModule from '../../src/game/save/store';
+import { loadSave, writeSave } from '../../src/game/save/store';
 import { Game, STEP } from '../../src/game/sim';
 import { tryPlace } from '../../src/game/systems/building';
 import { chooseCard, nightsSurvived, rerollCards, skipDay, startRun } from '../../src/game/systems/run';
@@ -64,9 +65,8 @@ console.log('\n== 存档：坏档 ==');
     ['类型不对', JSON.stringify({ ...good(), volume: 'loud' })],
     ['NaN', JSON.stringify({ ...good(), sensitivity: null })],
     ['枚举不对', JSON.stringify({ ...good(), quality: 'ultra' })],
-    ['局外项目级数越界', JSON.stringify({ ...good(), meta: { ...newMeta(), levels: { 'turret-cap': 99 } } })],
     ['勋章为负', JSON.stringify({ ...good(), meta: { ...newMeta(), medals: -5 } })],
-    ['难度不合法', JSON.stringify({ ...good(), meta: { ...newMeta(), cleared: ['easy'] } })],
+    ['通关记录不是数组', JSON.stringify({ ...good(), meta: { ...newMeta(), cleared: 'normal' } })],
   ];
   let rejected = 0;
   for (const [name, raw] of cases) {
@@ -200,28 +200,41 @@ console.log('\n== 军衔 ==');
   check(pre, '有前置的项目，军衔要求不低于前置');
 }
 
-console.log('\n== 版本更新重置进度 ==');
+console.log('\n== 版本更新不清进度（旧档宽松读取）==');
 {
+  check(!('resetOnUpdate' in storeModule), '没有「版本更新重置进度」这个函数了：更新游戏不会清玩家数据');
+  // 一份"别的版本留下的"存档：有现在已经没有的项目、超过现在上限的级数、认不出的难度和武器
+  const old = JSON.parse(JSON.stringify(defaultSave())) as { runs: number; totalKills: number; volume: number; meta: Record<string, unknown> };
+  old.runs = 31;
+  old.totalKills = 4800;
+  old.volume = 0.3;
+  old.meta.medals = 800;
+  old.meta.medalsEarned = 2400;
+  old.meta.levels = { 'unlock-smg': 1, 'unlock-shotgun': 1, sidearm: 1, 'turret-cap': 99, 'item-from-the-future': 2, 'max-hp': 'many' };
+  old.meta.cleared = ['normal', 'easy'];
+  old.meta.lastDifficulty = 'impossible';
+  old.meta.lastSidearm = 'smg';
   const st = new MemoryStorage();
-  check(!resetOnUpdate(st, RUN_KEY, 5) && st.get(EPOCH_KEY) === '5', '第一次打开（没有存档）只记下纪元，不提示重置');
-  const s = defaultSave();
-  s.runs = 9;
-  s.volume = 0.3;
-  s.quality = 'low';
-  s.sensitivity = 1.7;
-  s.meta.medals = 800;
-  s.meta.levels = { 'unlock-shotgun': 1 };
-  writeSave(st, s);
-  st.set(RUN_KEY, '{}');
-  check(!resetOnUpdate(st, RUN_KEY, 5) && loadSave(st).save.runs === 9, '同一个版本再打开：不重置');
-  check(resetOnUpdate(st, RUN_KEY, 6), '版本号变了：重置');
-  const n = loadSave(st).save;
-  check(n.runs === 0 && n.meta.medals === 0 && Object.keys(n.meta.levels).length === 0 && n.codex.done.length === 0, '统计、勋章、解锁、成就全部清零');
-  check(n.volume === 0.3 && n.quality === 'low' && n.sensitivity === 1.7, '音量、画质、灵敏度保留');
-  check(st.get(RUN_KEY) === null && st.get(EPOCH_KEY) === '6', '检查点删掉，记下新纪元');
+  st.set(SAVE_KEY, JSON.stringify(old));
+  const r = loadSave(st);
+  const m = r.save.meta;
+  check(r.warning === '' && r.save.runs === 31 && r.save.totalKills === 4800 && r.save.volume === 0.3, '统计和设置原样保留，不报「存档损坏」');
+  check(m.medals === 800 && m.medalsEarned === 2400, '勋章原样保留');
+  check(m.levels['unlock-smg'] === 1 && m.levels['unlock-shotgun'] === 1 && m.levels.sidearm === 1, '已经买的解锁（含随身武器）原样保留');
+  check(m.levels['turret-cap'] === 5, '级数超过现在的上限：按上限算，不丢档');
+  check(!('item-from-the-future' in m.levels) && !('max-hp' in m.levels), '认不出的项目、坏掉的级数：只忽略这一项');
+  check(m.cleared.join() === 'normal' && m.lastDifficulty === 'normal', '认不出的难度：忽略，回到默认');
+  check(m.lastSidearm === 'smg', '上次选的随身武器保留');
+
+  // 没有 lastSidearm 字段的存档（升级上来的旧档）：按没选过处理
+  const noSide = JSON.parse(JSON.stringify(defaultSave())) as Record<string, unknown> & { meta: Record<string, unknown> };
+  delete noSide.meta.lastSidearm;
   const st2 = new MemoryStorage();
-  st2.set(SAVE_KEY, '{"bad":');
-  check(resetOnUpdate(st2, RUN_KEY, 6) && loadSave(st2).warning === '', '旧存档坏了也照样重置，不报错');
+  st2.set(SAVE_KEY, JSON.stringify(noSide));
+  check(loadSave(st2).warning === '' && loadSave(st2).save.meta.lastSidearm === null, '没有 lastSidearm 字段的旧存档：照样能读，按没选处理');
+  noSide.meta.lastSidearm = 'railgun';
+  st2.set(SAVE_KEY, JSON.stringify(noSide));
+  check(loadSave(st2).warning === '' && loadSave(st2).save.meta.lastSidearm === null, '认不出的武器名：忽略');
 }
 
 console.log('\n== 开局应用加成 ==');
@@ -344,6 +357,59 @@ console.log('\n== 开局应用加成 ==');
   }
   check(gt.zombies.length === n0, '打死 2 秒后原地复活');
   check(gt.run.phase === 'training' && gt.stats.kills === 1, '训练场不进入白天 / 夜晚流程');
+}
+
+console.log('\n== 随身武器 ==');
+{
+  const item = META_BY_ID['sidearm'];
+  const price = item?.prices[0] ?? 0;
+  check(!!item && item.section === 'armory' && item.prices.length === 1, '军械库里有「随身武器」，只有一级');
+  check(item?.requires?.id === 'unlock-shotgun' && item.requires.level === 1, '前置：要先解锁霰弹枪');
+  check(price > (META_BY_ID['unlock-shotgun']?.prices[0] ?? 0) && price < (META_BY_ID['unlock-rifle']?.prices[0] ?? 0), `价格 ${price} 勋章：比解锁霰弹枪贵、比解锁突击步枪便宜，攒一阵子才买得起`);
+  check(!baseBonuses().sidearm, '默认没有随身武器');
+
+  const rich: MetaState = { ...newMeta(), medals: 5000, medalsEarned: 10000 };
+  check(canBuy(rich, 'sidearm') === 'requires', '没解锁霰弹枪：勋章再多也买不了');
+  const withSg: MetaState = { ...rich, levels: { 'unlock-smg': 1, 'unlock-shotgun': 1 } };
+  check(canBuy(withSg, 'sidearm') === 'ok', '解锁了霰弹枪：能买');
+  check(canBuy({ ...withSg, medals: price - 1 }, 'sidearm') === 'medals', '勋章不够：买不了');
+  const [bought, res] = buyMeta(withSg, 'sidearm');
+  check(res === 'ok' && bought.medals === withSg.medals - price && bonusesOf(bought).sidearm, `买下扣 ${price} 勋章，加成立刻生效`);
+
+  // 哪些枪能当随身武器带
+  const b = bonusesOf(bought);
+  check(sidearmOk(b, 'smg') && sidearmOk(b, 'shotgun') && !sidearmOk(b, 'pistol') && !sidearmOk(b, 'rifle') && !sidearmOk(b, 'bogus') && !sidearmOk(b, null), '解锁过的冲锋枪、霰弹枪能带；手枪、没解锁的、不认识的都不能带');
+  check(!sidearmOk(bonusesOf(withSg), 'smg'), '没买「随身武器」时什么枪都不能带');
+
+  // 开局
+  const g = new Game(5);
+  applyMeta(g, b, { difficulty: 'normal', sidearm: 'shotgun' });
+  startRun(g);
+  check(g.loadout.shotgun.owned && g.loadout.shotgun.carried && g.player.weapon === 'shotgun' && g.player.tier === 0, '开局手里拿的就是随身武器');
+  check(g.loadout.shotgun.mag === g.statsOf('shotgun', 0).mag, '弹匣是满的');
+  g.scrap = 9999;
+  const sc = g.scrap;
+  check(!g.buyWeapon('shotgun') && g.scrap === sc, '随身带的枪不能在工坊里再买一次（不扣零件）');
+  for (let i = 0; i < 9; i++) g.upgradeWeapon('shotgun');
+  check(g.loadout.shotgun.tier === 5 && g.player.tier === 5, `随身武器能升到它自己的上限 5 级（${g.loadout.shotgun.tier}）`);
+
+  // 第一个白天的自动存档在 startRun 里就存了：读档继续时手里还是随身武器
+  const gs = new Game(5);
+  applyMeta(gs, b, { difficulty: 'normal', sidearm: 'smg' });
+  startRun(gs);
+  const gr = new Game(5);
+  check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.player.weapon === 'smg' && gr.loadout.smg.owned, '带冲锋枪出征，读第 1 天的检查点继续：手里还是冲锋枪');
+
+  // 没买 / 手枪 / 没解锁：什么都不变
+  const g0 = new Game(5);
+  applyMeta(g0, bonusesOf(withSg), { difficulty: 'normal', sidearm: 'smg' });
+  check(!g0.loadout.smg.owned && g0.player.weapon === 'pistol', '没买「随身武器」时选了也带不上');
+  const gp = new Game(5);
+  applyMeta(gp, b, { difficulty: 'normal', sidearm: 'pistol' });
+  check(gp.player.weapon === 'pistol' && gp.loadout.pistol.owned, '选手枪当随身武器时什么都不变');
+  const gu = new Game(5);
+  applyMeta(gu, b, { difficulty: 'normal', sidearm: 'rifle' });
+  check(!gu.loadout.rifle.owned, '没解锁的突击步枪带不上');
 }
 
 console.log('\n== 卡牌重抽 / 四选一 ==');
