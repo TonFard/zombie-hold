@@ -5,6 +5,7 @@ import { CARD_BY_ID } from '../data/cards';
 import { isDifficulty } from '../data/difficulty';
 import { STRUCTURES, STRUCTURE_ORDER, type StructureKind } from '../data/structures';
 import { MAX_TIER, WEAPON_ORDER, effectiveStats, type WeaponKind } from '../data/weapons';
+import { GUN_BY_ID, defaultGuns, gunFits } from '../data/guns';
 import { FINAL_NIGHT } from '../data/waves';
 import { ZOMBIES, type ZombieKind } from '../data/zombies';
 import type { Bullet } from '../entities/bullet';
@@ -72,6 +73,26 @@ const plain = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 
 /** 僵尸里不进存档的字段：def 由 kind 推出来 */
 const ZOMBIE_SKIP = new Set(['def']);
+
+/** 枪械型号（config.guns / trialGuns）是后来才加的：旧存档里没有就按默认型号、没有试用枪 */
+function withGuns(c: unknown): unknown {
+  if (!isObj(c)) return c;
+  // 删掉的榴弹发射器：从解锁列表里去掉（shaped 按模板重建，tierCap / stars / guns 里多出来的 launcher 会自动丢掉）
+  const weapons = Array.isArray(c.weapons) ? c.weapons.filter((k) => k !== GONE_WEAPON) : c.weapons;
+  return { ...c, weapons, ...('guns' in c ? {} : { guns: defaultGuns() }), ...('trialGuns' in c ? {} : { trialGuns: [] }) };
+}
+
+/** 已经删掉的武器（旧检查点里可能还在用） */
+const GONE_WEAPON = 'launcher';
+
+/** 旧检查点：手里拿着榴弹发射器就换回手枪（等级用手枪自己的）；别的字段（loadout.launcher 等）按模板重建时自然丢掉 */
+function withoutGone(p: unknown, loadout: unknown): unknown {
+  if (!isObj(p) || p.weapon !== GONE_WEAPON) return p;
+  const pistol = isObj(loadout) && isObj(loadout.pistol) ? loadout.pistol : null;
+  return { ...p, weapon: 'pistol', tier: typeof pistol?.tier === 'number' ? pistol.tier : 0 };
+}
+/** 后来才加的僵尸字段：读旧存档时缺了不算错 */
+const ZOMBIE_ADDED = ['leapState', 'leapT', 'leapDur', 'leapX0', 'leapZ0', 'leapX1', 'leapZ1', 'leapCd', 'pounce', 'airY', 'minion', 'plateHp', 'skill', 'skillStage', 'skillT', 'skillDX', 'skillDZ', 'hookCd', 'cleaveCd', 'lobCd', 'shriekCd', 'summonCd', 'broodT', 'sacs', 'sacDmg', 'rage'];
 
 export function serialize(g: Game, savedAt = 0): RunCheckpoint {
   const zombies = g.zombies
@@ -166,6 +187,9 @@ function shaped<T>(template: T, v: unknown, path: string): T {
 function parseStats(g: Game, v: unknown): GameStats {
   if (!isObj(v)) throw new SaveError('stats 缺失');
   const { nights: _n, ...rest } = g.stats;
+  // 后来才加的僵尸种类：旧存档的击杀统计里没有这个键，按 0 补上
+  if (isObj(v.killsBy)) v = { ...v, killsBy: { ...Object.fromEntries(Object.keys(rest.killsBy).map((k) => [k, 0])), ...v.killsBy } };
+  if (!isObj(v)) throw new SaveError('stats 缺失');
   const out = shaped(rest, v, 'stats') as Omit<GameStats, 'nights'>;
   if (!Array.isArray(v.nights) || v.nights.length > 1000) throw new SaveError('stats.nights 不合法');
   const tpl: NightLog = { night: 0, kills: 0, coreLow: 0, lost: 0, hurt: 0, boss: 0, elite: 0, challenge: 0, mod: '' };
@@ -192,11 +216,15 @@ function parseHazards(g: Game, v: unknown): HazardState {
     return a.map((x) => shaped(t, x, `hz.${key}`));
   };
   const hazards = list('hazards', { kind: '', x: 0, z: 0, r: 0, life: 0 });
-  if (!hazards.every((h) => h.kind === 'fire' || h.kind === 'acid')) throw new SaveError('hz.hazards 种类不合法');
+  if (!hazards.every((h) => h.kind === 'fire' || h.kind === 'acid' || h.kind === 'gas')) throw new SaveError('hz.hazards 种类不合法');
   const explosives = list('explosives', { kind: '', x0: 0, y0: 0, x1: 0, y1: 0, x: 0, z: 0, hp: 0, alive: false });
   if (!explosives.every((e) => e.kind === 'barrel' || e.kind === 'pump' || e.kind === 'car')) throw new SaveError('hz.explosives 种类不合法');
   const expected = g.map.props.filter((p) => p.kind === 'barrel' || p.kind === 'pump' || p.kind === 'car').length;
   if (explosives.length !== 0 && explosives.length !== expected) throw new SaveError('爆炸物数量和地图不一致');
+  // 首领的预警圈、尖啸震慑是后来加的：旧存档里没有就是空的
+  const marks = Array.isArray(v.marks) ? list('marks', { kind: '', x: 0, z: 0, r: 0, t: 0, damage: 0 }) : [];
+  if (!marks.every((m) => m.kind === 'rock' || m.kind === 'acid')) throw new SaveError('hz.marks 种类不合法');
+  const dazeT = typeof v.dazeT === 'number' && Number.isFinite(v.dazeT) ? Math.max(0, Math.min(10, v.dazeT)) : 0;
   return {
     ...base,
     throwT,
@@ -205,6 +233,8 @@ function parseHazards(g: Game, v: unknown): HazardState {
     explosives: explosives as HazardState['explosives'],
     spits: list('spits', { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0 }),
     thrown: list('thrown', { fire: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, fuse: 0 }),
+    marks: marks as HazardState['marks'],
+    dazeT,
   };
 }
 
@@ -223,9 +253,9 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     tick: num(v, 'tick', 0, 1e9, true),
     scrap: num(v, 'scrap', 0, 1e7),
     scrapEarned: num(v, 'scrapEarned', 0, 1e8),
-    config: shaped(g.config, v.config, 'config'),
+    config: shaped(g.config, withGuns(v.config), 'config'),
     run: shaped(g.run, v.run, 'run'),
-    player: shaped(g.player, v.player, 'player'),
+    player: shaped(g.player, withoutGone(v.player, v.loadout), 'player'),
     input: shaped(g.input, v.input, 'input'),
     mods: shaped(g.mods, v.mods, 'mods'),
     stats: parseStats(g, v.stats),
@@ -265,6 +295,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   range(c.cardChoices, 1, 6, 'config.cardChoices');
   if (c.training) throw new SaveError('训练场不存档');
   if (c.daily) throw new SaveError('每日挑战不存档');
+  for (const k of WEAPON_ORDER) if (!gunFits(k, c.guns[k])) throw new SaveError(`config.guns.${k} 不是这一类的型号`);
+  if (!c.trialGuns.every((id) => id in GUN_BY_ID)) throw new SaveError('config.trialGuns 里有未知的型号');
   const r = out.run;
   if (!['day', 'night', 'cards'].includes(r.phase)) throw new SaveError(`run.phase 不能存档（${r.phase}）`);
   range(r.night, 1, r.endless ? 999 : FINAL_NIGHT, 'run.night');
@@ -282,7 +314,7 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     const s = out.loadout[k];
     range(s.tier, 0, MAX_TIER, `loadout.${k}.tier`);
     if (!Number.isInteger(s.tier)) throw new SaveError(`loadout.${k}.tier 不是整数`);
-    range(s.mag, 0, effectiveStats(k, s.tier, out.config.weaponMods?.[k], out.config.dual).mag, `loadout.${k}.mag`);
+    range(s.mag, 0, effectiveStats(k, s.tier, out.config.weaponMods?.[k], GUN_BY_ID[out.config.guns[k]]).mag, `loadout.${k}.mag`);
   }
   if (!out.loadout[p.weapon].owned) throw new SaveError('当前武器没有拥有');
   if (out.config.extras && WEAPON_ORDER.filter((k) => out.loadout[k].owned && out.loadout[k].carried).length > CARRY_MAX) throw new SaveError('身上的枪超过上限');
@@ -325,7 +357,10 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   const zTemplate: Fields = {};
   for (const [k, x] of Object.entries(new Zombie(1, 'walker', 0, 0, 1, 1))) if (!ZOMBIE_SKIP.has(k)) zTemplate[k] = x;
   for (const raw of v.zombies) {
-    const z = shaped(zTemplate, raw, 'zombie');
+    // 跳跃者 / 裂殖者加的字段：更早的存档里没有，按新建僵尸的值补上
+    const filled = isObj(raw) ? { ...raw } : raw;
+    if (isObj(filled)) for (const k of ZOMBIE_ADDED) if (!(k in filled)) filled[k] = zTemplate[k];
+    const z = shaped(zTemplate, filled, 'zombie');
     if (!isZombie(z.kind)) throw new SaveError('未知的僵尸种类');
     out.zombies.push(z);
   }

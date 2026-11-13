@@ -21,7 +21,8 @@ import { updateBullets, updateProjectiles, updateStatus } from './systems/combat
 import { newAirdrop, updateAirdrop, type AirdropState } from './systems/airdrop';
 import { newRisk, updateRisk, type RiskState } from './systems/events';
 import { newLoot, toxicTick, updateLoot, type LootState } from './systems/loot';
-import { newHazards, updateHazards, type HazardState } from './systems/hazards';
+import { gasBurst, newHazards, updateHazards, type HazardState } from './systems/hazards';
+import { GUN_BY_ID, type GunDef } from './data/guns';
 import { updatePlayer } from './systems/player';
 import { newRunState, updateRun, type Phase, type RunState } from './systems/run';
 import { stepZombies } from './systems/zombie-ai';
@@ -236,8 +237,9 @@ export interface NightLog {
 export interface GameEvents {
   zombieSpawned: Zombie;
   zombieAttack: { zombie: Zombie; target: AttackTarget };
-  zombieDied: { zombie: Zombie; head: boolean };
-  zombieHit: { zombie: Zombie; amount: number; crit: boolean; head: boolean };
+  /** mine = 玩家自己打的（枪、近战、榴弹、手雷、电击脉冲、灼烧、连锁爆炸）；炮塔、地刺、油桶、队友是 false。准星上的命中 / 击杀标记只认 mine */
+  zombieDied: { zombie: Zombie; head: boolean; mine: boolean };
+  zombieHit: { zombie: Zombie; amount: number; crit: boolean; head: boolean; mine: boolean };
   structureAdded: Structure;
   structureDamaged: { structure: Structure; amount: number };
   structureRemoved: { structure: Structure; destroyed: boolean };
@@ -253,6 +255,14 @@ export interface GameEvents {
   impact: { x: number; y: number; z: number; nx: number; nz: number; flesh: boolean; zone: 'head' | 'body' | 'wall' | 'ground'; kind: WeaponKind };
   explosion: { x: number; z: number; radius: number; big: boolean };
   acid: { x: number; z: number; radius: number };
+  /** 毒雾者死后留下毒雾；ignite = 毒气被火 / 爆炸点着，变成爆燃 */
+  gas: { x: number; z: number; radius: number; ignite: boolean };
+  /** 裂殖者裂开 */
+  split: { x: number; z: number; n: number };
+  /** 跳跃者：蹲下蓄力 / 起跳 / 落地（hit = 落地时扑中了玩家） */
+  leap: { zombie: Zombie; stage: 'windup' | 'jump' | 'land'; hit: boolean };
+  /** 空投里拿到一把试用枪：这一局 kind 这一类换成型号 id */
+  trialGun: { kind: WeaponKind; id: string };
   scrap: { x: number; z: number; amount: number };
   reload: { kind: WeaponKind; start: boolean };
   weaponSwitch: { kind: WeaponKind };
@@ -292,6 +302,21 @@ export interface GameEvents {
   airdrop: { stage: 'land' | 'taken' | 'gone'; x: number; z: number };
   bossCharge: { id: number; stage: 'windup' | 'go' | 'stun'; x: number; z: number; dx: number; dz: number; len: number };
   bossSlam: { x: number; z: number; r: number };
+  /**
+   * 首领技能：windup = 开始蓄力（地上画预警：钩子是一条线、横扫是扇形、尖啸是一圈），go = 放出去，
+   * hit = 打中了玩家，end = 结束 / 被打断。(dx, dz) 是锁定的方向，r / arc 是范围
+   */
+  bossSkill: { id: number; skill: 'hook' | 'cleave' | 'shriek' | 'howl' | 'brood'; stage: 'windup' | 'go' | 'hit' | 'end'; x: number; z: number; dx: number; dz: number; r: number; arc: number };
+  /** 首领进入二阶段（狂暴） */
+  bossPhase: { zombie: Zombie };
+  /** 首领扔出碎石 / 酸弹（落点在 hz.marks 里） */
+  bossLob: { id: number; kind: 'rock' | 'acid'; x: number; z: number };
+  /** 母巢的卵囊被打爆一个（left = 还剩几个） */
+  bossSac: { zombie: Zombie; x: number; z: number; left: number };
+  /** 碎石 / 酸弹落地 */
+  markHit: { kind: 'rock' | 'acid'; x: number; z: number; r: number };
+  /** 重装感染者的钢板被打掉 */
+  plateBreak: { zombie: Zombie };
   /** 持续回血结算了一口（嗜血池 / 脱战回血），HUD 用来弹 +N */
   healed: { amount: number };
 }
@@ -437,12 +462,12 @@ export class Game {
     headshotKills: 0,
     challenges: 0,
     bestCombo: 0,
-    killsBy: { walker: 0, runner: 0, bloater: 0, breaker: 0, colossus: 0, spitter: 0, screamer: 0, crawler: 0, armored: 0 },
-    weaponKills: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
-    weaponHeads: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
-    bonusXp: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
-    weaponDamage: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
-    fireTime: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    killsBy: { walker: 0, runner: 0, bloater: 0, breaker: 0, colossus: 0, spitter: 0, screamer: 0, crawler: 0, armored: 0, leaper: 0, splitter: 0, gasser: 0, reaper: 0, brood: 0, siren: 0 },
+    weaponKills: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
+    weaponHeads: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
+    bonusXp: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
+    weaponDamage: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
+    fireTime: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
     srcDamage: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
     srcKills: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
     structDamage: 0,
@@ -661,8 +686,9 @@ export class Game {
       z.burnBy = o.weapon ?? '';
     }
     const head = !!o.head;
+    const mine = o.weapon !== undefined || !!o.chain || o.src === 'grenade' || o.src === 'pulse';
     if (head) this.stats.headshots++;
-    if (!o.silent) this.events.emit('zombieHit', { zombie: z, amount, crit: !!o.crit, head });
+    if (!o.silent) this.events.emit('zombieHit', { zombie: z, amount, crit: !!o.crit, head, mine });
     if (z.hp > 0) return false;
 
     z.alive = false;
@@ -695,17 +721,41 @@ export class Game {
       if (this.combo > this.stats.bestCombo) this.stats.bestCombo = this.combo;
       if (this.combo >= 3) this.events.emit('combo', { count: this.combo, mult: comboK });
     }
-    const reward = Math.round(z.def.reward * (z.elite ? ELITE_REWARD : 1) * this.mods.scrap * this.run.modScrap * comboK);
+    const reward = Math.round(z.def.reward * (z.elite ? ELITE_REWARD : 1) * (z.minion ? 0.25 : 1) * this.mods.scrap * this.run.modScrap * comboK);
     this.scrap += reward;
     this.scrapEarned += reward;
     // 嗜血：不是一下回满，记进回血池，由 updateRun 每 0.25 秒回一点
     if (this.mods.lifesteal > 0 && this.player.alive) this.healPool = Math.min(HEAL_POOL_MAX, this.healPool + this.mods.lifesteal);
-    this.events.emit('zombieDied', { zombie: z, head });
+    this.events.emit('zombieDied', { zombie: z, head, mine });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
+    if (!z.dummy && (z.def.split || z.def.gas)) {
+      const blastKill = o.src === 'grenade' || o.src === 'explosive' || !!o.chain;
+      if (z.def.split && !head && !blastKill) this.splitZombie(z);
+      if (z.def.gas) gasBurst(this, z, blastKill || o.src === 'fire' || (o.burn ?? 0) > 0 || z.burnT > 0);
+    }
     // 卡牌「连锁反应」：武器击杀（不是爆炸本身造成的）在尸体处炸一下，可以连锁
     if (this.mods.chainBlast > 0 && !o.chain) this.chainBlasts.push({ x: z.x, z: z.z });
     return true;
+  }
+
+  /** 裂殖者死了：裂成几只小爬行者，从尸体往四周窜出去（生命跟着这一夜的倍率走） */
+  private splitZombie(z: Zombie): void {
+    const sp = z.def.split as NonNullable<Zombie['def']['split']>;
+    const hp = (z.maxHp / z.def.hp) * sp.hp;
+    let n = 0;
+    for (let i = 0; i < sp.count; i++) {
+      const a = (i / sp.count) * Math.PI * 2 + z.yaw + 0.5;
+      const c = this.spawnZombie(sp.kind, z.x + Math.sin(a) * 0.3, z.z + Math.cos(a) * 0.3, hp);
+      if (!c) break;
+      c.minion = true;
+      c.yaw = a;
+      c.kbx = Math.sin(a) * 3;
+      c.kbz = Math.cos(a) * 3;
+      c.stunT = 0.35;
+      n++;
+    }
+    if (n > 0) this.events.emit('split', { x: z.x, z: z.z, n });
   }
 
   /** 胖子死亡时爆开酸液：伤害范围内的玩家和建筑。M12 起范围加大（沙盒保持原值，旧的 sim 结果不变） */
@@ -770,23 +820,33 @@ export class Game {
 
   // ---------------- 武器 ----------------
 
-  /** 这把枪现在的实际属性：局内等级 + 大厅工作台强化 + 双持（正式局） */
+  /** 这把枪现在的实际属性：局内等级 + 型号 + 大厅工作台强化 */
   statsOf(kind: WeaponKind, tier = this.loadout[kind].tier): WeaponStats {
     const c = this.config;
-    return effectiveStats(kind, tier, c.weaponMods[kind], c.dual);
+    return effectiveStats(kind, tier, c.weaponMods[kind], this.gunOf(kind));
   }
 
-  /** 后坐力倍率（工作台的制退器；双持手枪稍微稳一点） */
+  /** 这一类枪现在用的型号 */
+  gunOf(kind: WeaponKind): GunDef | undefined {
+    return GUN_BY_ID[this.config.guns?.[kind] ?? ''];
+  }
+
+  /** 界面上显示的枪名：型号名（没有型号时用这一类的名字） */
+  weaponName(kind: WeaponKind): string {
+    return this.gunOf(kind)?.name ?? WEAPONS[kind].name;
+  }
+
+  /** 后坐力倍率（型号；工作台的制退器） */
   recoilOf(kind: WeaponKind): number {
-    return this.config.weaponMods[kind].recoil * (this.config.dual && kind === 'pistol' ? 0.8 : 1);
+    return (this.gunOf(kind)?.recoil ?? 1) * this.config.weaponMods[kind].recoil;
   }
 
   /** 身上的重量带来的影响（只在正式局生效；沙盒恒为 1） */
   weightNow(): { speed: number; stamina: number; handling: number; hand: number; back: number } {
     const c = this.config;
-    const hand = weightOf(this.player.weapon, c.weaponMods[this.player.weapon], c.dual);
+    const hand = weightOf(this.player.weapon, c.weaponMods[this.player.weapon], this.gunOf(this.player.weapon));
     const other = this.carried().find((k) => k !== this.player.weapon);
-    const back = other ? weightOf(other, c.weaponMods[other], c.dual) : 0;
+    const back = other ? weightOf(other, c.weaponMods[other], this.gunOf(other)) : 0;
     if (!c.extras) return { speed: 1, stamina: 1, handling: 1, hand, back };
     return { ...weightEffects(hand, back), hand, back };
   }

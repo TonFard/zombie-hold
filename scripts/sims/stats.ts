@@ -112,9 +112,8 @@ console.log('\n== 随机组合 200 次 ==');
 console.log('\n== 武器面板 = statsOf() ==');
 {
   const bad: string[] = [];
-  for (const dual of [false, true]) {
+  {
     const meta = fullMeta();
-    if (!dual) delete meta.levels.dual;
     meta.supplies = 1e6;
     meta.bench = Object.fromEntries(WEAPON_ORDER.flatMap((k) => ['damage', 'recoil', 'rate', 'lighter', 'mag'].map((l) => [`${k}.${l}`, 3])));
     const g = new Game(4);
@@ -128,13 +127,13 @@ console.log('\n== 武器面板 = statsOf() ==');
         const st = g.statsOf(k, tier);
         const w = weaponBreakdown(g, k, tier);
         const get = (id: string) => w.find((x) => x.id === id)?.final ?? NaN;
-        const want = { damage: st.damage * st.pellets * g.mods.damage, rate: st.rate * 60 * g.mods.fireRate, mag: st.mag, reload: st.reload / g.mods.reload, weight: weightOf(k, g.config.weaponMods[k], g.config.dual) };
-        for (const [id, v] of Object.entries(want)) if (Math.abs(get(id) - v) > 1e-6 * Math.max(1, v)) bad.push(`${k} ${tier} 级${dual ? '（双持）' : ''} ${id}：面板 ${get(id).toFixed(3)} / 实际 ${v.toFixed(3)}`);
+        const want = { damage: st.damage * st.pellets * g.mods.damage, rate: st.rate * 60 * g.mods.fireRate, mag: st.mag, reload: st.reload / g.mods.reload, weight: weightOf(k, g.config.weaponMods[k], g.gunOf(k)) };
+        for (const [id, v] of Object.entries(want)) if (Math.abs(get(id) - v) > 1e-6 * Math.max(1, v)) bad.push(`${k} ${tier} 级 ${id}：面板 ${get(id).toFixed(3)} / 实际 ${v.toFixed(3)}`);
       }
     }
   }
   for (const b of bad.slice(0, 8)) console.log(`     ${b}`);
-  check(bad.length === 0, '7 把枪 × 3 个等级 × 有无双持，伤害 / 射速 / 弹匣 / 换弹 / 重量和实际一致（含背着的枪）');
+  check(bad.length === 0, '6 把枪 × 3 个等级，伤害 / 射速 / 弹匣 / 换弹 / 重量和实际一致（含背着的枪）');
 }
 
 console.log('\n== 重量和截断 ==');
@@ -189,7 +188,8 @@ console.log('\n== 战斗复盘：伤害来源加起来 = 僵尸失去的总生�
     if (best) {
       g.input.aimX = best.x;
       g.input.aimZ = best.z;
-      g.input.aimPitch = Math.atan2(1.2 - g.player.eye, Math.max(0.5, bd));
+      // 瞄胸口（0.9 米）：再高就打到驼背僵尸伸在前面的头了
+      g.input.aimPitch = Math.atan2(0.9 - g.player.eye, Math.max(0.5, bd));
     }
     if (t === 600 && best) {
       g.input.grenade = true;

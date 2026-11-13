@@ -12,17 +12,25 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
   const off: Array<() => void> = [];
   off.push(
     game.events.on('zombieHit', (e) => {
-      hud.hit = 1;
-      hud.hitCrit = e.crit;
-      hud.hitHead = e.head;
+      // 准星上的命中标记只认自己打的：炮塔、地刺、队友打中的不闪
+      if (e.mine) {
+        // 霰弹一枪多颗弹丸：同一下里有一颗打中头，标记就保持金色
+        hud.hitHead = e.head || (hud.hit > 0.9 && hud.hitHead);
+        hud.hitCrit = e.crit || (hud.hit > 0.9 && hud.hitCrit);
+        hud.hit = 1;
+      }
       if (e.crit) {
         procCard(game, 'crit');
         procCard(game, 'berserk');
       }
       if (e.head) procCard(game, 'weakspot');
     }),
-    game.events.on('zombieDied', () => {
-      hud.kill = 1;
+    game.events.on('zombieDied', (e) => {
+      if (e.mine) {
+        // 一枪穿两只：里面有一只是爆头打死的，击杀标记就按爆头的来
+        hud.killHead = e.head || (hud.kill > 0.9 && hud.killHead);
+        hud.kill = 1;
+      }
       if (game.mods.lifesteal > 0) procCard(game, 'lifesteal');
     }),
     // 持续回血（嗜血池 / 急救训练）：一小口一小口地回，HUD 上合并成一个 +N

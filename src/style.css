@@ -308,3 +308,27 @@ canvas.game-canvas {
   paint-order: stroke fill;
   text-shadow: 0 0 10px rgba(255, 170, 30, 0.55), 0 2px 3px #000;
 }
+/* 爆头的伤害数字：金色大字 + 上面一行小的「爆头」。暴击是橙色（floatingText.ts），两种一眼能分开 */
+.fx-text.fx-head {
+  color: #ffd84a;
+  font-family: var(--hud-num);
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  -webkit-text-stroke: 1px rgba(70, 16, 0, 0.9);
+  paint-order: stroke fill;
+  text-shadow: 0 0 12px rgba(255, 110, 20, 0.8), 0 2px 3px #000;
+}
+.fx-text.fx-head::before {
+  content: '爆头';
+  display: block;
+  margin-bottom: 2px;
+  font-family: 'Microsoft YaHei UI', sans-serif;
+  font-size: max(11px, 0.44em);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  color: #fff1c0;
+  -webkit-text-stroke: 0;
+  text-shadow: 0 0 4px #000, 0 1px 2px #000;
+}

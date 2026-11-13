@@ -1,7 +1,7 @@
 // 用本机 Edge 无头截图并收集浏览器控制台日志。
 // 用法：node scripts/tools/shots.mjs --url http://127.0.0.1:5173 --out .logs/shots/a.png [--wait 2500] [--eval "window.__dbg?.foo()"] [--w 1280] [--h 720]
 // --gpu：用本机显卡（ANGLE D3D11）而不是软件渲染，测帧率用
-// 多步骤：--steps 文件.json，格式 [{"wait":500},{"eval":"..."},{"key":"KeyW","hold":600},{"click":[x,y]},{"shot":"name"}]
+// 多步骤：--steps 文件.json，格式 [{"wait":500},{"eval":"..."},{"key":"KeyW","hold":600},{"click":[x,y]},{"shot":"name"}]；截图可以只截一块：{"shot":"name","clip":[x,y,宽,高]}
 import fs from 'node:fs';
 import path from 'node:path';
 import puppeteer from 'puppeteer-core';
@@ -48,9 +48,9 @@ try {
   page.on('requestfailed', (r) => logs.push(`[requestfailed] ${r.url()} ${r.failure()?.errorText ?? ''}`));
   await page.goto(url, { waitUntil: 'load', timeout: 60000 });
 
-  const shot = async (name) => {
+  const shot = async (name, clip) => {
     const file = path.join(outDir, `${name}.png`);
-    await page.screenshot({ path: file });
+    await page.screenshot({ path: file, ...(clip ? { clip: { x: clip[0], y: clip[1], width: clip[2], height: clip[3] } } : {}) });
     console.log('saved', file);
   };
 
@@ -72,7 +72,7 @@ try {
       }
       if (s.move) await page.mouse.move(s.move[0], s.move[1]);
       if (s.click) await page.mouse.click(s.click[0], s.click[1]);
-      if (s.shot) await shot(s.shot);
+      if (s.shot) await shot(s.shot, s.clip);
     }
   } else {
     await new Promise((r) => setTimeout(r, Number(args.wait ?? 2500)));

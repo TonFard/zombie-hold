@@ -23,7 +23,8 @@ import type { WeaponKind } from '../../game/data/weapons';
 import type { Lighting } from '../core/lighting';
 import { loadTacz, loadTaczManifest, TACZ_SCALE, type TaczRig } from '../tacz/rig';
 import { Arm } from './arms';
-import { buildWeapon, type WeaponModel } from './';
+import { handFits, type GunFit } from './hand-fit';
+import { buildWeapon, hasGunModel, type WeaponModel } from './';
 
 /**
  * 第一人称视角模型：枪和双臂挂在"相机空间"里，用单独的场景和相机、在世界之后再画一遍（先清深度），
@@ -48,18 +49,22 @@ const PLACE: Record<WeaponKind, { x: number; y: number; z: number; s: number }> 
   rifle: { x: 0.165, y: -0.165, z: -0.22, s: 0.92 },
   sniper: { x: 0.165, y: -0.175, z: -0.2, s: 0.86 },
   lmg: { x: 0.18, y: -0.185, z: -0.22, s: 0.88 },
-  launcher: { x: 0.2, y: -0.205, z: -0.25, s: 0.84 },
 };
 
 /** 枪口火光亮度（近距离点光源，数值比世界里的小得多） */
-const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 2.2, smg: 2, shotgun: 5.5, rifle: 3, sniper: 5, lmg: 3.2, launcher: 6.5 };
-const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun: 1.3, rifle: 0.95, sniper: 1.4, lmg: 1.05, launcher: 1.5 };
+const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 2.2, smg: 2, shotgun: 5.5, rifle: 3, sniper: 5, lmg: 3.2 };
+const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun: 1.3, rifle: 0.95, sniper: 1.4, lmg: 1.05 };
 /** FLASH_SIZE 按枪口离镜头这么远（米，程序模型腰射时大约的距离）调的；更近就按比例缩小 */
 const FLASH_REF_DIST = 0.55;
-/** 双持时枪口火焰的缩小系数：两把枪都在画面里，火光太大就挡住半个屏幕 */
-const DUAL_FLASH_K = 0.5;
+/**
+ * TACZ 枪上的程序手臂相对 TACZ_SCALE 再放大多少（手部调节面板的「大小」再乘在上面）：
+ * MC 方块手 4 像素宽（0.25 格），手套手掌 0.078 米 × 1.6 ≈ 0.125 格，约方块手一半宽
+ */
+const TACZ_ARM = 1.6;
+const PX = 1 / 16;
+const DEG = Math.PI / 180;
 /** 开火时整枪后坐的力度 */
-const KICK: Record<WeaponKind, number> = { pistol: 1, smg: 0.55, shotgun: 1.8, rifle: 0.75, sniper: 2.2, lmg: 0.7, launcher: 1.9 };
+const KICK: Record<WeaponKind, number> = { pistol: 1, smg: 0.55, shotgun: 1.8, rifle: 0.75, sniper: 2.2, lmg: 0.7 };
 
 /** 视角模型自己的视野（度）：腰射 / 完全瞄准。和世界相机分开，世界放大时枪不会被放大成一堵墙 */
 const VM_FOV_HIP = 68;
@@ -119,8 +124,8 @@ export interface ViewModelState {
   /** 前进 / 右移速度（米/秒，带符号；TACZ 枪选走路动画） */
   fwd: number;
   side: number;
-  /** 双持手枪：左手再拿一把，左右交替开火 */
-  dual?: boolean;
+  /** 这一类枪现在的型号（TACZ 枪包里的 id）；空 = 只用程序模型 */
+  gun?: string;
 }
 
 export class ViewModel {
@@ -132,25 +137,22 @@ export class ViewModel {
   readonly cameraAnim = new Quaternion();
   /** TACZ 枪的动画音效 */
   onSound: ((url: string, gain: number) => void) | null = null;
-  /** 某种武器的 TACZ 模型加载好了（音频层据此预加载音效、关掉合成的枪声） */
-  onTaczReady: ((kind: WeaponKind, urls: string[]) => void) | null = null;
+  /** 某个型号的 TACZ 模型加载好了（音频层据此预加载音效） */
+  onTaczReady: ((id: string, urls: string[]) => void) | null = null;
 
   private readonly root = new Group();
   private weapon: WeaponModel | null = null;
-  /** 双持时左手那把（镜像摆在左边，左手握住） */
-  private readonly rootL = new Group();
-  private weaponL: WeaponModel | null = null;
-  private dualKey = '';
-  /** 下一发由哪只手打（双持交替） */
-  private leftNext = false;
-  private kickL = 0;
-  private readonly tacz = new Map<WeaponKind, TaczRig>();
+  /** TACZ 模型按型号缓存；清单里有的型号用到时才加载 */
+  private readonly tacz = new Map<string, TaczRig>();
+  private taczDirs: Record<string, string> = {};
+  private readonly taczLoading = new Set<string>();
   private taczRig: TaczRig | null = null;
   private readonly pre = new Matrix4();
   private readonly preRot = new Matrix4();
   private readonly preEuler = new Euler(0, 0, 0, 'YXZ');
   private key = '';
   private lastKindForRaise: WeaponKind | null = null;
+  private lastGun = '';
   private raise = 1;
 
   private readonly flash = new Group();
@@ -171,6 +173,24 @@ export class ViewModel {
   private readonly tmp = new Vector3();
   /** TACZ 枪的肩膀位置：每帧按手臂骨骼算（程序枪用上面固定的 shoulderR / shoulderL） */
   private readonly taczSh = new Vector3();
+  private readonly taczFwd = new Vector3();
+  private readonly taczPalm = new Vector3();
+  private readonly taczUp = new Vector3();
+  private readonly fitQ = new Quaternion();
+  private readonly fitE = new Euler(0, 0, 0, 'YXZ');
+
+  /**
+   * 手部调节面板（开发用）：
+   * fitOverride = 面板正在改的参数（不为空时代替 handFits 里存的）；
+   * freeze = 动画停在当前帧（方便对着一个姿势调）；forceAds = 强制举镜 0–1；ghost = 画出原版方块手臂当参照
+   */
+  readonly tune = { fitOverride: null as GunFit | null, freeze: false, forceAds: -1, ghost: false };
+  private ghostOn = false;
+
+  /** 当前 TACZ 枪的型号 id（不是 TACZ 枪时为空） */
+  get taczId(): string {
+    return this.taczRig ? this.lastGun : '';
+  }
 
   private t = 0;
   private bobT = 0;
@@ -209,7 +229,7 @@ export class ViewModel {
   constructor() {
     this.scene.add(this.camera);
     this.scene.add(this.hemi, this.sun, this.sun.target);
-    this.scene.add(this.root, this.rootL);
+    this.scene.add(this.root);
     this.scene.add(this.armR.root, this.armL.root);
     this.scene.add(this.flashLight);
 
@@ -229,28 +249,47 @@ export class ViewModel {
     this.flash.visible = false;
     this.root.rotation.order = 'YXZ';
 
-    // TACZ 模型异步加载（清单由 npm run tacz:import 生成）；加载好之前、加载失败、没启用时继续用程序模型
-    void loadTaczManifest().then((guns) => {
-      for (const [kind, id] of Object.entries(guns) as Array<[WeaponKind, string]>) {
-        loadTacz(id)
-          .then((rig) => {
-            if (this.disposed) {
-              rig.dispose();
-              return;
-            }
-            rig.onSound = (url, gain) => this.onSound?.(url, gain);
-            this.tacz.set(kind, rig);
-            this.onTaczReady?.(kind, rig.soundUrls());
-          })
-          .catch((e: unknown) => console.warn(`TACZ 模型 ${id} 加载失败，继续用程序模型：`, e));
-      }
+    // TACZ 模型清单（npm run tacz:import 生成）；模型本身等用到那个型号时才加载，加载好之前、失败、没启用时继续用程序模型
+    void loadTaczManifest().then((dirs) => {
+      this.taczDirs = dirs;
+      for (const id of this.taczWanted) this.ensureTacz(id);
     });
   }
 
   private disposed = false;
+  /** 清单还没读到时就被要过的型号 */
+  private readonly taczWanted = new Set<string>();
 
-  /** 调试 / 截图用：哪些武器的 TACZ 模型已经加载好了 */
-  taczLoaded(): WeaponKind[] {
+  /** 开始加载一个型号的 TACZ 模型（已经在加载 / 加载好 / 清单里没有就什么都不做） */
+  ensureTacz(id: string): void {
+    if (!id || this.tacz.has(id) || this.taczLoading.has(id)) return;
+    const dir = this.taczDirs[id];
+    if (!dir) {
+      this.taczWanted.add(id);
+      return;
+    }
+    this.taczLoading.add(id);
+    loadTacz(dir)
+      .then((rig) => {
+        if (this.disposed) {
+          rig.dispose();
+          return;
+        }
+        rig.onSound = (url, gain) => this.onSound?.(url, gain);
+        this.tacz.set(id, rig);
+        this.onTaczReady?.(id, rig.soundUrls());
+      })
+      .catch((e: unknown) => console.warn(`TACZ 模型 ${id} 加载失败，继续用程序模型：`, e))
+      .finally(() => this.taczLoading.delete(id));
+  }
+
+  /** 这个型号的 TACZ 模型加载好了没有 */
+  hasTacz(id: string | undefined): boolean {
+    return !!id && this.tacz.has(id);
+  }
+
+  /** 调试 / 截图用：哪些型号的 TACZ 模型已经加载好了 */
+  taczLoaded(): string[] {
     return [...this.tacz.keys()];
   }
 
@@ -287,21 +326,24 @@ export class ViewModel {
     this.sun.position.copy(this.dirCam).multiplyScalar(5);
   }
 
-  private setWeapon(kind: WeaponKind, tier: number): void {
-    const rig = this.tacz.get(kind) ?? null;
-    const key = `${kind}:${tier}:${rig ? 'tacz' : 'kit'}`;
+  private setWeapon(kind: WeaponKind, tier: number, gun = ''): void {
+    this.ensureTacz(gun);
+    const rig = this.tacz.get(gun) ?? null;
+    // Blender / TACZ 枪模是异步加载的：加载好以后 key 变了，这里会把程序枪模换掉
+    const key = `${kind}:${tier}:${rig ? `tacz-${gun}` : hasGunModel(kind) ? 'glb' : 'kit'}`;
     if (key === this.key) return;
     const first = this.key === '';
-    const newKind = first || kind !== this.lastKindForRaise;
+    const newKind = first || kind !== this.lastKindForRaise || gun !== this.lastGun;
     this.key = key;
     this.lastKindForRaise = kind;
+    this.lastGun = gun;
     // 火光是共用的，先摘下来再清理旧枪，免得把它的几何体一起释放
     this.flash.removeFromParent();
     if (this.weapon) {
       this.root.remove(this.weapon.group);
       this.weapon.group.traverse((o) => {
         const m = o as { geometry?: { dispose(): void } };
-        m.geometry?.dispose();
+        if (!o.userData.shared) m.geometry?.dispose();
       });
       this.weapon = null;
     }
@@ -353,24 +395,19 @@ export class ViewModel {
 
   /** 开火：枪口火光 + 近处补光 + 整枪后坐 + 机构动作。interval = 两发之间的秒数 */
   fire(kind: WeaponKind, interval = 0.3, last = false): void {
-    // 双持：两把枪轮流开火。先定这一发是哪只手，火光挂到那把枪的枪口上
-    //（以前火光一直挂在右手那把上，左手开火时火光也从右边冒出来）
-    const dual = !this.taczRig && !!this.weaponL && this.rootL.visible;
-    if (dual) this.leftNext = !this.leftNext;
-    const gun = dual && this.leftNext ? this.weaponL : this.weapon;
+    const gun = this.weapon;
     if (!this.taczRig && gun && this.flash.parent !== gun.group) {
       gun.group.add(this.flash);
       this.flash.position.copy(gun.muzzle);
     }
     this.flashGun = gun;
-    // 双持时两把枪都在画面里、射速又高，火光整体缩小，别糊满屏幕
-    const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3) * (dual ? DUAL_FLASH_K : 1);
+    const k = FLASH_SIZE[kind] * (0.85 + Math.random() * 0.3);
     const s = this.taczRig ? TACZ_SCALE : PLACE[kind].s;
     // 火光按"屏幕上看起来多大"来定：枪口离镜头越近（TACZ 手枪腰射只有 0.25 米、开镜时枪口就在眼前），
     // 同样的世界尺寸在屏幕上就越大，不按距离缩放会糊满全屏。开镜时再小一点，不挡准星
     this.root.updateMatrixWorld(true);
     this.taczRig?.root.updateMatrixWorld(true);
-    // 补光这一帧就放到开火那把的枪口（不然要等下一帧，双持时会在另一把枪那里亮一下）
+    // 补光这一帧就放到枪口（不然要等下一帧）
     if (!this.taczRig && gun) gun.group.localToWorld(this.flashLight.position.copy(gun.muzzle));
     this.flash.parent?.getWorldPosition(this.tmp);
     this.camera.worldToLocal(this.tmp);
@@ -379,15 +416,11 @@ export class ViewModel {
     this.flash.rotation.z = Math.random() * 6.28;
     this.flash.visible = true;
     this.flashT = 0.055;
-    // 补光也一样：离得近时手臂、袖子会被照成一大片橙色；双持时再压一档
-    this.flashPeak = FLASH_LIGHT[kind] * near * near * (dual ? DUAL_FLASH_K : 1);
+    // 补光也一样：离得近时手臂、袖子会被照成一大片橙色
+    this.flashPeak = FLASH_LIGHT[kind] * near * near;
     if (this.taczRig) {
       // 后坐、套筒都在 TACZ 的 shoot 动画里
       this.taczRig.fire(Math.max(0.06, interval), last);
-      return;
-    }
-    if (dual && this.leftNext) {
-      this.kickL = 1;
       return;
     }
     this.cycleT = 0;
@@ -396,7 +429,6 @@ export class ViewModel {
     this.kickV += 1.6 * kick;
     this.kickRotV += 9 * kick;
     this.kickSide = (Math.random() * 2 - 1) * 0.012 * kick;
-    if (kind === 'launcher') this.drumTarget += Math.PI / 3;
     if (kind === 'lmg') this.beltK = 1;
   }
 
@@ -437,40 +469,8 @@ export class ViewModel {
     }
   }
 
-  /** 双持：左手的第二把手枪（只用程序模型） */
-  private setDual(on: boolean, tier: number): void {
-    const key = on ? `pistol:${tier}` : '';
-    if (key === this.dualKey) return;
-    this.dualKey = key;
-    if (this.weaponL) {
-      // 火光可能正挂在左手那把上：先挪回右手那把，免得几何体被一起释放
-      if (this.flash.parent === this.weaponL.group) {
-        this.flash.removeFromParent();
-        if (this.weapon && !this.taczRig) {
-          this.weapon.group.add(this.flash);
-          this.flash.position.copy(this.weapon.muzzle);
-        }
-      }
-      if (this.flashGun === this.weaponL) this.flashGun = this.weapon;
-      this.rootL.remove(this.weaponL.group);
-      this.weaponL.group.traverse((o) => (o as { geometry?: { dispose(): void } }).geometry?.dispose());
-      this.weaponL = null;
-    }
-    if (!on) return;
-    const w = buildWeapon('pistol', tier);
-    w.group.traverse((o) => {
-      o.castShadow = false;
-      o.receiveShadow = false;
-    });
-    this.weaponL = w;
-    this.rootL.add(w.group);
-  }
-
   update(dt: number, s: ViewModelState): void {
-    this.setWeapon(s.kind, s.tier);
-    const dual = !!s.dual && s.kind === 'pistol' && !this.taczRig;
-    this.setDual(dual, s.tier);
-    this.rootL.visible = dual;
+    this.setWeapon(s.kind, s.tier, s.gun);
     if (this.taczRig) {
       this.updateTacz(dt, s, this.taczRig);
       return;
@@ -561,9 +561,10 @@ export class ViewModel {
     rx += 0.25 * this.sprintK;
     ry += 0.55 * this.sprintK;
     rz -= 0.5 * this.sprintK;
-    // 建造模式：放低
+    // 建造模式 / 扔手雷：整把枪收到画面下面。只放低一点的话长枪的枪管正好挡住屏幕下方那排建筑卡片；
+    // 也不能靠多往下转：枪口离镜头远，转得越多枪管在画面上反而越竖
     px -= 0.03 * this.lowerK;
-    py -= 0.13 * this.lowerK;
+    py -= 0.6 * this.lowerK;
     rx -= 0.28 * this.lowerK;
     // 换弹：枪向内侧倾斜、略微抬起，露出弹匣井
     px -= 0.05 * reloadK;
@@ -589,21 +590,9 @@ export class ViewModel {
     this.cycleT += dt;
     this.animateParts(w, s, dt);
 
-    // 双持：右手那把往右挪一点，左手那把镜像摆在左边，各自后坐
-    const dualOn = !!this.weaponL && this.rootL.visible;
-    if (dualOn) {
-      this.root.position.x += 0.035;
-      this.kickL = Math.max(0, this.kickL - dt * 9);
-      this.rootL.position.set(-this.root.position.x, this.root.position.y, this.root.position.z + 0.03 * this.kickL);
-      this.rootL.rotation.set(this.root.rotation.x + 0.1 * this.kickL, Math.PI - (this.root.rotation.y - Math.PI), -this.root.rotation.z);
-      this.rootL.scale.copy(this.root.scale);
-    }
     this.root.updateMatrixWorld(true);
-    if (dualOn) this.rootL.updateMatrixWorld(true);
 
-    // 火光衰减。补光的位置要在两把枪都摆好、矩阵更新之后再算：
-    // 以前在"右手那把往右挪 3.5 厘米"之前算，双持右手开火时补光落在枪身侧面几毫米处，
-    // 按距离平方衰减把枪面照到过曝，泛光糊成屏幕右边一大团
+    // 火光衰减。补光的位置要在枪摆好、矩阵更新之后再算
     if (this.flashT > 0) {
       this.flashT -= dt;
       this.flashLight.intensity = this.flashPeak * clamp(this.flashT / 0.055, 0, 1);
@@ -617,14 +606,6 @@ export class ViewModel {
 
     // 双手跟着枪的握点（IK）；换弹时左手去拿弹匣 / 塞子弹，泵动时左手跟着护木
     w.group.localToWorld(this.gripR.copy(w.gripR));
-    if (dualOn && this.weaponL) {
-      // 左手握住自己那把的握把（换弹时一起放低）
-      this.weaponL.group.localToWorld(this.gripL.copy(this.weaponL.gripR));
-      this.armR.solve(this.shoulderR, this.gripR, this.poleR);
-      this.armL.solve(this.shoulderL, this.gripL, this.poleL);
-      this.visible = s.alive;
-      return;
-    }
     this.leftHandTarget(w, s);
     w.group.localToWorld(this.gripL.copy(this.tmp));
     this.armR.solve(this.shoulderR, this.gripR, this.poleR);
@@ -637,7 +618,14 @@ export class ViewModel {
    * TACZ 枪：姿势、换弹、开火、走路晃动全由动画决定，这里只补动画里没有的东西——
    * 视角滞后、建造模式放低、近战挥枪、视野变化、火光衰减。
    */
-  private updateTacz(dt: number, s: ViewModelState, rig: TaczRig): void {
+  private updateTacz(dt0: number, s0: ViewModelState, rig: TaczRig): void {
+    const tune = this.tune;
+    const dt = tune.freeze ? 0 : dt0;
+    const s = tune.forceAds >= 0 ? { ...s0, ads: tune.forceAds } : s0;
+    if (tune.ghost !== this.ghostOn) {
+      this.ghostOn = tune.ghost;
+      for (const r of this.tacz.values()) r.model.showBlockArms(tune.ghost);
+    }
     this.t += dt;
     this.lowerK += ((s.lowered ? 1 : 0) - this.lowerK) * (1 - Math.exp(-8 * dt));
     this.adsK = ease(clamp(s.ads, 0, 1));
@@ -668,7 +656,7 @@ export class ViewModel {
 
     // 摄像机空间里的额外变换：先乘上一帧的摄像机动画（TACZ 里手和世界都跟着它转），再叠视角滞后 / 放低 / 近战
     const px = this.swayX * 0.6 - 0.03 * this.lowerK - 0.1 * meleeK;
-    const py = this.swayY * 0.6 - 0.12 * this.lowerK + 0.02 * meleeK;
+    const py = this.swayY * 0.6 - 0.55 * this.lowerK + 0.02 * meleeK;
     const pz = -0.1 * meleeK;
     this.preEuler.set(-this.swayY * 2.2 - 0.28 * this.lowerK, this.swayX * 2.2 - 0.6 * meleeK, 0.4 * meleeK);
     this.pre.makeRotationFromQuaternion(rig.cameraAnim);
@@ -691,26 +679,41 @@ export class ViewModel {
     });
     this.cameraAnim.copy(rig.cameraAnim);
 
-    // 程序手臂：手在 TACZ 手臂骨骼的手掌端，肩膀沿手臂方向往后延伸（镜头外）。
-    // TACZ 的整套视角模型缩小了 TACZ_SCALE 倍（1 格 = 0.2），手臂在同一比例下解 IK，再整体缩小
+    // 程序手臂：手套跟着 TACZ 手臂方块（会随动画动）的手掌端和朝向——手指沿方块指向手端，掌心朝方块贴着枪的那一面；
+    // 在这之上叠每把枪自己的摆放参数（hand-fit.ts，F9 手部调节面板里调）：位置偏移、旋转、手指弯曲、肩膀位置。
+    // 偏移的「右 / 上 / 前」是视角相机的方向，和屏幕上看到的一致；单位是 TACZ 像素
     rig.root.updateMatrixWorld(true);
-    const k = 1 / TACZ_SCALE;
+    const fit = tune.fitOverride ?? handFits.get(this.lastGun);
+    const ak = TACZ_SCALE * TACZ_ARM * fit.scale;
+    const k = 1 / ak;
+    const pxU = PX * TACZ_SCALE;
     for (const left of [false, true]) {
       const arm = left ? this.armL : this.armR;
       const grip = left ? this.gripL : this.gripR;
-      if (!rig.handEnds(left, grip, this.tmp)) {
+      if (!rig.handEnds(left, grip, this.tmp, this.taczPalm)) {
         arm.root.visible = false;
         continue;
       }
+      const h = left ? fit.L : fit.R;
       arm.root.visible = true;
-      arm.root.scale.setScalar(TACZ_SCALE);
+      arm.root.scale.setScalar(ak);
+      arm.setGrip(h.curl, h.thumb);
+      const fwd = this.taczFwd.subVectors(grip, this.tmp).normalize();
+      grip.x += h.x * pxU;
+      grip.y += h.y * pxU;
+      grip.z -= h.z * pxU;
+      // 肩膀：从方块的肘端沿手臂方向再往后一段，再加偏移（屏幕方向）
+      const sh = this.taczSh.copy(this.tmp).addScaledVector(fwd, -0.06);
+      sh.x += h.sx * pxU * 4;
+      sh.y += h.sy * pxU * 4;
+      sh.z -= h.sz * pxU * 4;
+      sh.multiplyScalar(k);
       grip.multiplyScalar(k);
-      this.tmp.multiplyScalar(k);
-      const sh = this.taczSh;
-      sh.subVectors(this.tmp, grip).normalize().multiplyScalar(0.2).add(this.tmp);
-      sh.x += left ? -0.1 : 0.1;
-      sh.y -= 0.15;
-      arm.solve(sh, grip, left ? this.poleL : this.poleR);
+      this.fitQ.setFromEuler(this.fitE.set(h.rx * DEG, h.ry * DEG, h.rz * DEG, 'YXZ'));
+      // 肘部朝向：默认朝外下方，elbow 往外 / 往里撇
+      const pole = this.taczUp.copy(left ? this.poleL : this.poleR);
+      pole.x += (left ? -1 : 1) * h.elbow;
+      arm.solve(sh, grip, pole, fwd, this.taczPalm, 0, this.fitQ);
     }
 
     if (this.flashT > 0) {

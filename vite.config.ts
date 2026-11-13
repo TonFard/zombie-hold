@@ -58,45 +58,12 @@ function konbiniAssetIndex(): Plugin {
   };
 }
 
-/**
- * 原子资产（assets/models/<region>/<site>/*.glb）在开发时直接从源目录读，
- * 不用先拷进 public/。打包时用下面的 copyAtoms 拷进 dist/models。
- */
-function atomsAssets(): Plugin {
-  const srcDir = fileURLToPath(new URL('./assets/models/', import.meta.url));
-  return {
-    name: 'atoms-assets',
-    apply: 'serve',
-    configureServer(server) {
-      server.middlewares.use('/models', (req, res, next) => {
-        const rel = decodeURIComponent((req.url ?? '/').split('?')[0]);
-        const target = path.join(srcDir, rel);
-        const norm = path.normalize(target);
-        if (!norm.startsWith(path.normalize(srcDir)) || !fs.existsSync(norm)) return next();
-        res.setHeader('Content-Type', 'model/gltf-binary');
-        res.setHeader('Cache-Control', 'no-store');
-        fs.createReadStream(norm).pipe(res);
-      });
-    },
-  };
-}
-
-/** 打包时把原子资产拷进 dist/models/。 */
-function copyAtoms(): Plugin {
-  const srcDir = fileURLToPath(new URL('./assets/models/', import.meta.url));
-  const outDir = fileURLToPath(new URL('./dist/models/', import.meta.url));
-  return {
-    name: 'copy-atoms',
-    apply: 'build',
-    closeBundle() {
-      if (!fs.existsSync(srcDir)) return;
-      fs.cpSync(srcDir, outDir, { recursive: true });
-    },
-  };
-}
-
 export default defineConfig({
-  plugins: [vue(), fullReload(), konbiniAssetIndex(), atomsAssets(), copyAtoms()],
+  plugins: [
+    vue(),
+    fullReload(),
+    konbiniAssetIndex(),
+  ],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   // .vendor 里是几百 MB 的枪包原始素材，不需要监听
   server: { host: '127.0.0.1', port: 5173, strictPort: true, watch: { ignored: ['**/.vendor/**', '**/.logs/**'] } },
@@ -104,13 +71,12 @@ export default defineConfig({
   build: {
     target: 'es2022',
     chunkSizeWarningLimit: 1200,
-    // 四个页面：游戏本体 + 雨夜便利店街角（konbini.html）+ 便利店资产库（assets.html）+ 原子预览（atoms.html）
+    // 三个页面：游戏本体 + 雨夜便利店街角 + 便利店资产库
     rolldownOptions: {
       input: {
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         konbini: fileURLToPath(new URL('./konbini.html', import.meta.url)),
         assets: fileURLToPath(new URL('./assets.html', import.meta.url)),
-        atoms: fileURLToPath(new URL('./atoms.html', import.meta.url)),
       },
     },
   },

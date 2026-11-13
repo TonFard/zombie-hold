@@ -5,7 +5,7 @@ import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { resolveCircleVsGrid } from '../world/collision';
 import type { Game } from '../sim';
 import { fireWeapon, melee } from './combat';
-import { shove, startPulse, throwGrenade } from './hazards';
+import { DAZE_SLOW, shove, startPulse, throwGrenade } from './hazards';
 
 const BASE_SPEED = 3.4;
 const SPRINT_MULT = 1.5;
@@ -29,9 +29,9 @@ function startReload(g: Game): void {
   const st = g.statsOf(p.weapon, p.tier);
   const tactical = g.loadout[p.weapon].mag > 0;
   // 重的枪换弹也慢一点（重量的"操控"系数）
-  // 升星：手枪 ★2 换弹 −25%，★3 双持时再 −25%
+  // 升星：手枪 ★2 换弹 −25%
   const sp = g.config.stars.pistol;
-  const starK = p.weapon === 'pistol' ? (sp >= 2 ? STAR_FX.pistolReload : 1) * (sp >= 3 && g.config.dual ? STAR_FX.pistolDualReload : 1) : 1;
+  const starK = p.weapon === 'pistol' && sp >= 2 ? STAR_FX.pistolReload : 1;
   p.reloadTotal = Math.max(0.01, st.reload * (tactical ? TACTICAL_RELOAD : 1) * g.weightNow().handling * starK);
   p.reloadTimer = p.reloadTotal;
   g.events.emit('reload', { kind: p.weapon, start: true });
@@ -128,11 +128,9 @@ export function updatePlayer(g: Game, dt: number): void {
   p.sprinting = wantSprint;
   p.sprintOut = Math.max(0, p.sprintOut - dt);
   const wantAds = adsHeld && !wantSprint && !sliding && p.reloadTimer <= 0 && p.meleeTimer <= 0;
-  // 双持手枪不能举镜；重的枪举镜慢
-  const canAds = !(g.config.dual && p.weapon === 'pistol');
-  // 步枪 ★2：举镜时间 −30%
+  // 重的枪举镜慢。步枪 ★2：举镜时间 −30%
   const adsK = p.weapon === 'rifle' && g.config.stars.rifle >= 2 ? STAR_FX.rifleAds : 1;
-  p.ads = clamp(p.ads + ((wantAds && canAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime * wt.handling * adsK), 0, 1);
+  p.ads = clamp(p.ads + ((wantAds ? 1 : -1) * dt) / Math.max(0.03, st.adsTime * wt.handling * adsK), 0, 1);
   const crouchTarget = inp.crouch || sliding ? 1 : 0;
   p.crouch = clamp(p.crouch + (crouchTarget - p.crouch) * Math.min(1, dt * 12), 0, 1);
   p.eye = EYE_HEIGHT + (CROUCH_EYE - EYE_HEIGHT) * p.crouch;
@@ -163,7 +161,8 @@ export function updatePlayer(g: Game, dt: number): void {
       g.mods.speed *
       (wantSprint ? SPRINT_MULT : 1) *
       (1 - st.adsSlow * p.ads) *
-      (1 - (1 - CROUCH_MULT) * (inp.crouch ? 1 : 0));
+      (1 - (1 - CROUCH_MULT) * (inp.crouch ? 1 : 0)) *
+      (g.hz.dazeT > 0 ? DAZE_SLOW : 1);
     const k = Math.min(1, 14 * dt);
     p.vx += (mx * speed - p.vx) * k;
     p.vz += (mz * speed - p.vz) * k;

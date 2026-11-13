@@ -2,16 +2,19 @@ import { angleDiff, clamp, lerp } from '../core/math';
 import { STAR_FX } from '../data/stars';
 import { BARRICADE_HEIGHT, BULLET_GRAVITY, MUZZLE_OFFSET, TURRET_HEIGHT, WALL_HEIGHT, zeroPitch } from '../data/ballistics';
 import { isTurret } from '../data/structures';
-import { WEAPONS, falloffAt, type WeaponKind, type WeaponStats } from '../data/weapons';
+import { WEAPONS, falloffAt, type WeaponKind } from '../data/weapons';
 import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Zombie } from '../entities/zombie';
 import type { Game } from '../sim';
 import { damageExplosive, explosiveAt } from './hazards';
+import { SAC_MULT, hitSac } from './boss';
 import { segmentVsZombie } from './hitvolume';
 import { tdmDamage, tdmPlayerShot, tdmSegHit } from './tdm';
 
 const DEG = Math.PI / 180;
+/** 母巢的卵囊长在背上：子弹从背后 ±70° 内打在身上算打中卵囊 */
+const SAC_ARC = 70 * DEG;
 /** 榴弹的重力（米/秒²）。比子弹用的小得多：榴弹慢，要有明显的抛物线 */
 const GRENADE_GRAVITY = 9.8;
 
@@ -57,6 +60,9 @@ export function obstruction(g: Game, x0: number, y0: number, z0: number, dx: num
       const post = grid.post[idx] as number;
       // 细障碍：只有真的打在柱子上才算
       if (post > 0 && Math.hypot(x - grid.centerX(cx), z - grid.centerZ(cy)) > post) h = 0;
+      // 栅栏、单排沙袋：只有打在中间那一道上才算
+      const slab = grid.slab[idx] as number;
+      if (slab > 0 && Math.abs(slab === 1 ? z - grid.centerZ(cy) : x - grid.centerX(cx)) > (grid.slabHalf[idx] as number)) h = 0;
     } else {
       const sid = grid.structure[idx] as number;
       if (sid >= 0) h = isTurret(g.structures.get(sid)?.kind ?? 'barricade') ? TURRET_HEIGHT : BARRICADE_HEIGHT;
@@ -68,26 +74,6 @@ export function obstruction(g: Game, x0: number, y0: number, z0: number, dx: num
 
 // ---------------------------------------------------------------- 开火
 
-
-function launchGrenade(g: Game, st: WeaponStats, ox: number, oy: number, oz: number, yaw: number, pitch: number): void {
-  const cp = Math.cos(pitch);
-  const p: Projectile = {
-    x: ox,
-    y: oy,
-    z: oz,
-    vx: Math.sin(yaw) * cp * st.speed,
-    vy: Math.sin(pitch) * st.speed,
-    vz: Math.cos(yaw) * cp * st.speed,
-    life: st.range / st.speed,
-    damage: st.damage * g.mods.damage,
-    // 榴弹 ★1：爆炸半径 +15%
-    aoe: st.aoe * (g.config.stars.launcher >= 1 ? STAR_FX.launcherAoe : 1),
-    split: st.split,
-    bomblet: false,
-    weapon: g.player.weapon,
-  };
-  g.projectiles.push(p);
-}
 
 export function fireWeapon(g: Game): void {
   const p = g.player;
@@ -122,7 +108,7 @@ export function fireWeapon(g: Game): void {
 
   // 瞄准越充分，散布越小；蹲下再小 20%，滑铲 / 移动时腰射更散
   const moveK = Math.min(1, Math.hypot(p.vx, p.vz) / 3.4);
-  const hip = 1 + 0.35 * moveK * (1 - p.ads) + (p.slide > 0 ? 0.6 : 0);
+  const hip = 1 + 0.35 * (def.moveSpread ?? 1) * moveK * (1 - p.ads) + (p.slide > 0 ? 0.6 : 0);
   // 升星：冲锋枪 ★2 移动中散布 −30%；轻机枪 ★1 持续开火 2 秒后散布 −40%
   const stars = g.config.stars;
   const starSpread = (kind === 'smg' && stars.smg >= 2 ? lerp(1, STAR_FX.smgMoveSpread, moveK) : 1) * (kind === 'lmg' && stars.lmg >= 1 && p.sustainT >= 2 ? STAR_FX.lmgSustainSpread : 1);
@@ -130,12 +116,6 @@ export function fireWeapon(g: Game): void {
   // 两个均匀随机数相加：偏向中心的散布
   const jitter = () => (g.rng.next() + g.rng.next() - 1) * spread;
 
-  if (st.speed > 0) {
-    // 榴弹 ★2：射程和弹速 +20%；★1 / ★3 在 launchGrenade 里
-    const reach = kind === 'launcher' && stars.launcher >= 2 ? STAR_FX.launcherReach : 1;
-    launchGrenade(g, { ...st, speed: st.speed * reach, range: st.range * reach }, ox, oy, oz, aimYaw + jitter(), pitch + jitter());
-    return;
-  }
   // 发射时就定下来的伤害加成：冲锋枪 ★3 连杀 ≥ 5、轻机枪 ★3 弹链最后 20 发
   const starDmg = (kind === 'smg' && stars.smg >= 3 && g.combo >= STAR_FX.smgCombo.combo && g.comboT > 0 ? STAR_FX.smgCombo.damage : 1) * (kind === 'lmg' && stars.lmg >= 3 && slot.mag < STAR_FX.lmgTail.last ? STAR_FX.lmgTail.damage : 1);
   const lift = zeroPitch(kind);
@@ -230,17 +210,27 @@ export function updateBullets(g: Game, dt: number): void {
     const stars = g.config.stars;
     const own = b.owner === undefined || b.owner < 0;
     // 步枪 ★1：爆头伤害 +20%（乘在爆头加成上）
-    const headBonus = (WEAPONS[b.kind].headMult - 1) * g.mods.head * (own && b.kind === 'rifle' && stars.rifle >= 1 ? STAR_FX.rifleHead : 1);
+    const headBonus = (WEAPONS[b.kind].headMult - 1) * g.mods.head * (own && b.kind === 'rifle' && stars.rifle >= 1 ? STAR_FX.rifleHead : 1) * (own && b.kind === 'pistol' && stars.pistol >= 3 ? STAR_FX.pistolHead : 1);
+    // 穿甲（狙击枪）：重装正面的钢板、破墙者的头盔挡不住；首领（大体型）头上的装甲照旧
+    const ap = !!WEAPONS[b.kind].ap;
     for (const c of cands) {
       let dmg = b.damage * falloffAt(b.kind, b.traveled + len * c.t, b.range);
-      if (c.head) dmg *= 1 + headBonus * c.z.def.headVuln;
+      if (c.head) dmg *= 1 + headBonus * (ap && !c.z.def.large ? Math.max(1, c.z.def.headVuln) : c.z.def.headVuln);
       // 首领弱点：硬直时打胸口的核心，按弱点倍率（替代爆头）
       if (c.core && c.z.def.charge) dmg *= c.z.def.charge.core.mult * (own && b.kind === 'sniper' && stars.sniper >= 1 ? STAR_FX.sniperCore : 1);
-      // 重装感染者：子弹从正面 ±60° 打在身上，只有四成伤害（头不算，背后照常）
+      // 重装感染者：子弹从正面 ±60° 打在身上，只有四成伤害（头不算，背后照常）。
+      // 钢板吃掉的是原始伤害，累计到耐久就掉下来，之后正面也照常
       const arm = c.z.def.armor;
-      if (arm && !c.head) {
-        // 子弹从哪个方向来（-u）和僵尸的朝向比
-        if (Math.abs(angleDiff(c.z.yaw, Math.atan2(-ux, -uz))) < arm.arc) dmg *= arm.front;
+      const from = Math.atan2(-ux, -uz);
+      if (arm && !c.head && !ap && c.z.plateHp > 0 && Math.abs(angleDiff(c.z.yaw, from)) < arm.arc) {
+        c.z.plateHp = Math.max(0, c.z.plateHp - dmg);
+        dmg *= arm.front;
+        if (c.z.plateHp <= 0) g.events.emit('plateBreak', { zombie: c.z });
+      }
+      // 母巢：从背后打身体打的是卵囊（弱点）
+      if (c.z.sacs > 0 && !c.head && Math.abs(angleDiff(c.z.yaw + Math.PI, from)) < SAC_ARC) {
+        dmg *= SAC_MULT;
+        hitSac(g, c.z, dmg);
       }
       // 吐酸者：打破酸囊一枪毙命
       if (c.head && c.z.def.headInstakill) dmg = Math.max(dmg, c.z.hp + 1);
@@ -263,7 +253,7 @@ export function updateBullets(g: Game, dt: number): void {
         dmg *= 1 + STAR_FX.rifleFocus.step * p.focusN;
       }
       // 霰弹 ★2：击退 +50%
-      const kb = knockback(dmg, c.z) * (own && b.kind === 'shotgun' && stars.shotgun >= 2 ? STAR_FX.shotgunKnock : 1);
+      const kb = knockback(dmg, c.z) * (WEAPONS[b.kind].knock ?? 1) * (own && b.kind === 'shotgun' && stars.shotgun >= 2 ? STAR_FX.shotgunKnock : 1);
       const killed = g.damageZombie(c.z, dmg, { crit, head: c.head, kx: ux * kb, kz: uz * kb, burn: b.burn, ...(b.owner === undefined || b.owner < 0 ? { weapon: b.kind } : {}) });
       if (b.slowHit > 0 && !killed) {
         c.z.slowT = 1.2;
@@ -334,7 +324,7 @@ export function updateBullets(g: Game, dt: number): void {
   }
 }
 
-// ---------------------------------------------------------------- 爆炸与榴弹
+// ---------------------------------------------------------------- 爆炸与抛射体（迫击炮）
 
 export function explode(g: Game, x: number, z: number, aoe: number, damage: number, direct: Zombie | null, split: number, bomblet: boolean, y = 0.4, weapon?: WeaponKind): void {
   for (const zb of g.zombies) {
@@ -349,7 +339,7 @@ export function explode(g: Game, x: number, z: number, aoe: number, damage: numb
     g.damageZombie(zb, damage * f, { kx: (dx / len) * kb, kz: (dz / len) * kb, ...(weapon ? { weapon } : {}) });
   }
   g.events.emit('explosion', { x, z, radius: aoe, big: !bomblet });
-  // 榴弹 / 迫击炮也能引爆附近的爆炸物
+  // 迫击炮也能引爆附近的爆炸物
   if (g.config.extras) for (const e of g.hz.explosives) if (e.alive && Math.hypot(e.x - x, e.z - z) < aoe + 0.8) damageExplosive(g, e, damage);
   if (split > 0 && !bomblet) {
     for (let i = 0; i < split; i++) {
@@ -363,8 +353,7 @@ export function explode(g: Game, x: number, z: number, aoe: number, damage: numb
         vy: g.rng.range(2.5, 4),
         vz: Math.sin(a) * sp,
         life: g.rng.range(0.45, 0.6),
-        // 榴弹 ★3：集束子弹伤害 +30%（只算玩家的榴弹；迫击炮不分裂）
-        damage: damage * 0.28 * (weapon === 'launcher' && g.config.stars.launcher >= 3 ? STAR_FX.launcherSplit : 1),
+        damage: damage * 0.28,
         aoe: Math.max(1.2, aoe * 0.55),
         split: 0,
         bomblet: true,

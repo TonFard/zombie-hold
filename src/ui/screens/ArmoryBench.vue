@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { BENCH_LINES, BENCH_MAX, BENCH_NAME, benchDesc, benchMods, benchPrice, type BenchLine } from '../../game/data/bench';
-import { AMMO_LIMITED, DUAL, WEAPONS, WEAPON_ORDER, effectiveStats, sustainedDps, weightOf, type WeaponKind } from '../../game/data/weapons';
-import { benchLevel, bonusesOf, canBench, masteryOf } from '../../game/meta/progress';
+import { AMMO_LIMITED, WEAPONS, WEAPON_ORDER, effectiveStats, sustainedDps, weightOf, type WeaponKind } from '../../game/data/weapons';
+import { benchLevel, bonusesOf, canBench, gunState, gunsFor, masteryOf } from '../../game/meta/progress';
+import { GUN_BY_ID, gunsOf } from '../../game/data/guns';
 import { MASTERY_MAX, MASTERY_PERKS, benchNeeds, masteryProgress, masteryTierCap } from '../../game/data/mastery';
 import { STAR_COLOR, STAR_MAX, STAR_TEXT, starXp, starsOf } from '../../game/data/stars';
 import { ui } from '../store';
@@ -15,21 +16,29 @@ const meta = computed(() => ui.save.meta);
 const bonuses = computed(() => bonusesOf(meta.value));
 const pick = ref<WeaponKind>('pistol');
 const unlocked = (k: WeaponKind) => k === 'pistol' || bonuses.value.weapons.has(k);
-type Tab = 'stats' | 'bench' | 'mastery';
+type Tab = 'stats' | 'guns' | 'bench' | 'mastery';
 const tab = ref<Tab>('stats');
 const TABS: Array<{ id: Tab; name: string }> = [
   { id: 'stats', name: '属性' },
+  { id: 'guns', name: '型号' },
   { id: 'bench', name: '强化' },
   { id: 'mastery', name: '熟练度' },
 ];
 
-/** 一组属性的数值（当前强化等级，或者假设某条线多买一级） */
-function statsFor(k: WeaponKind, bench: Record<string, number>) {
+/** 出征时每一类用的型号 */
+const picked = computed(() => gunsFor(meta.value));
+
+/** 一组属性的数值（当前强化等级和型号，或者假设某条线多买一级 / 换一个型号） */
+function statsFor(k: WeaponKind, bench: Record<string, number>, gunId = picked.value[k]) {
   const mods = benchMods(bench)[k];
-  const dual = bonuses.value.dual && k === 'pistol';
-  const st = effectiveStats(k, 0, mods, dual);
-  return { st, dps: sustainedDps(st), weight: weightOf(k, mods, dual), recoil: WEAPONS[k].recoil.v * mods.recoil * (dual ? DUAL.recoil : 1) };
+  const gun = GUN_BY_ID[gunId];
+  const st = effectiveStats(k, 0, mods, gun);
+  return { st, dps: sustainedDps(st), weight: weightOf(k, mods, gun), recoil: WEAPONS[k].recoil.v * (gun?.recoil ?? 1) * mods.recoil };
 }
+
+/** 这一类的型号（第一把是默认的） */
+const models = computed(() => gunsOf(pick.value).map((g) => ({ g, state: gunState(meta.value, g.id), on: picked.value[pick.value] === g.id })));
+const gunName = computed(() => GUN_BY_ID[picked.value[pick.value]]?.name ?? '');
 
 const w = computed(() => {
   const k = pick.value;
@@ -44,7 +53,6 @@ const w = computed(() => {
   return {
     k,
     def,
-    dual: bonuses.value.dual && k === 'pistol',
     on: unlocked(k),
     stock: k === 'pistol' ? Infinity : meta.value.ammo[k] ?? 0,
     mastery: { ...p, xp, pct: p.to === null ? 1 : (xp - p.from) / (p.to - p.from), cap: masteryTierCap(p.lv), stars, starTo: sTo, starPct: Math.max(0, Math.min(1, starPct)) },
@@ -55,10 +63,12 @@ const w = computed(() => {
   };
 });
 
-// ---- 属性条：刻度按全部武器的范围定（伤害最高的榴弹 120、射速最高的冲锋枪 13 发/秒……）----
+// ---- 属性条：刻度按全部武器的范围定（伤害最高的狙击 130、射速最高的冲锋枪 13 发/秒……）----
 const hoverLine = ref<BenchLine | null>(null);
+const hoverGun = ref<string | null>(null);
 const cur = computed(() => statsFor(pick.value, meta.value.bench));
 const next = computed(() => {
+  if (hoverGun.value && hoverGun.value !== picked.value[pick.value]) return statsFor(pick.value, meta.value.bench, hoverGun.value);
   const line = hoverLine.value;
   if (!line) return null;
   const lv = benchLevel(meta.value, pick.value, line);
@@ -95,11 +105,11 @@ onMounted(() => {
   preview = ui.gfx.preview(Math.max(2, el.clientWidth), Math.max(2, el.clientHeight));
   if (!preview) return;
   el.appendChild(preview.canvas);
-  preview.setWeapon(pick.value, 0, w.value.dual);
+  preview.setWeapon(pick.value, 0);
   ro = new ResizeObserver(() => preview?.resize(el.clientWidth, el.clientHeight));
   ro.observe(el);
 });
-watch([pick, () => w.value.dual], ([k, dual]) => preview?.setWeapon(k, 0, dual));
+watch(pick, (k) => preview?.setWeapon(k, 0));
 onBeforeUnmount(() => {
   ro?.disconnect();
   preview?.dispose();
@@ -131,7 +141,7 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
       <div ref="stageEl" class="canvas" title="拖动旋转 · 滚轮缩放" aria-label="武器 3D 展示"></div>
       <div class="cap">
         <div class="name">
-          <h3>{{ w.def.name }}<em v-if="w.dual">双持</em></h3>
+          <h3>{{ gunName || w.def.name }}</h3>
           <span v-if="!w.on" class="lock">🔒 未解锁 · 在军械库解锁</span>
         </div>
         <p class="role">{{ w.def.role }}</p>
@@ -175,6 +185,23 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
           <button class="t-btn gold" :disabled="!w.on || meta.supplies < (w.def.ammo?.price ?? 0) * 5" @click="ui.actions.buyAmmo(w.k, 5)">+{{ (w.def.ammo?.pack ?? 0) * 5 }} 发 · ▣ {{ (w.def.ammo?.price ?? 0) * 5 }}</button>
         </div>
         <p v-else-if="w.k !== 'pistol'" class="note">目前所有武器子弹无限。</p>
+      </div>
+
+      <!-- 型号 -->
+      <div v-else-if="tab === 'guns'" class="pane" role="tabpanel">
+        <p class="note top">同一类枪的不同型号：熟练度、升星、强化、局内升级都按这一类算，型号只改手感和数值的取舍。悬停一个型号，「属性」里的数值会显示变化；空投里也能捡到没解锁的型号试用一局。</p>
+        <div v-for="m in models" :key="m.g.id" class="line" :class="{ maxed: m.on }" @mouseenter="hoverGun = m.g.id" @mouseleave="hoverGun = null" @focusin="hoverGun = m.g.id" @focusout="hoverGun = null">
+          <div class="lh">
+            <b>{{ m.g.name }}</b>
+            <span v-if="m.on" class="eq">使用中</span>
+          </div>
+          <div class="ld">{{ m.g.desc }}</div>
+          <div v-if="hoverGun === m.g.id && next" class="ld gain">DPS {{ cur.dps.toFixed(0) }} → <b>{{ next.dps.toFixed(0) }}</b> · {{ next.weight.toFixed(1) }} kg</div>
+          <button v-if="m.state === 'owned' && !m.on" class="t-btn" @click="ui.actions.pickGun(w.k, m.g.id)">装备</button>
+          <button v-else-if="m.state !== 'owned'" class="t-btn gold" :disabled="m.state !== 'ok'" @click="ui.actions.unlockGun(m.g.id)">
+            ✦ {{ m.g.medals }}<template v-if="m.state === 'class'"> · 先在军械库解锁这一类</template><template v-else-if="m.state === 'mastery'"> · 需要熟练度 {{ m.g.mastery }}</template><template v-else-if="m.state === 'medals'"> · 还差 {{ m.g.medals - meta.medals }}</template>
+          </button>
+        </div>
       </div>
 
       <!-- 强化 -->
@@ -271,7 +298,7 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   filter: brightness(1.6) contrast(1.1);
 }
 .locked .ic {
-  filter: grayscale(1) brightness(0.6);
+  filter: grayscale(1) brightness(1.2);
 }
 .tx {
   display: flex;
@@ -529,6 +556,11 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   align-items: center;
   font-size: 14px;
   letter-spacing: 2px;
+}
+.eq {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--t-gold);
 }
 .pips {
   display: flex;

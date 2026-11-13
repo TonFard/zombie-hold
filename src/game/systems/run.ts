@@ -4,7 +4,7 @@ import { RISK_FX, nightRisk, planRisk, riskOn } from './events';
 import { WEAPON_ORDER } from '../data/weapons';
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { ALIVE_CAP, DAY_FIRST, DAY_LEN, FINAL_NIGHT, START_SCRAP, batchInterval, batchSize, bossFor, hpScale, nightBonus, nightCount, pickKind } from '../data/waves';
-import { CHALLENGES, CHALLENGE_ORDER, CHALLENGE_SCRAP, ELITE_HP, NIGHT_MOD_ORDER, nightMod } from '../data/modifiers';
+import { CHALLENGES, CHALLENGE_ORDER, CHALLENGE_SCRAP, ELITE_HP, NIGHT_MOD_ORDER, nightMod, type NightMod } from '../data/modifiers';
 import type { ZombieKind } from '../data/zombies';
 import type { Game } from '../sim';
 import { HEAL_TICK, POOL_PER_TICK, REGEN_DELAY } from '../data/heal';
@@ -132,10 +132,11 @@ export function checkChallenge(g: Game, final: boolean): boolean {
   return true;
 }
 
-/** 每个白天：预告下一夜的词缀（第 2 夜起）和挑战 */
+/** 每个白天：预告下一夜的词缀（第 2 夜起，主题夜更晚）和挑战 */
 function planNight(g: Game): void {
   const r = g.run;
-  r.mod = r.night >= 2 ? (NIGHT_MOD_ORDER[g.rng.int(0, NIGHT_MOD_ORDER.length - 1)] as string) : '';
+  const pool = NIGHT_MOD_ORDER.filter((id) => r.night >= nightMod(id).minNight);
+  r.mod = r.night >= 2 ? (pool[g.rng.int(0, pool.length - 1)] as string) : '';
   if (g.config.fixedMod && r.night >= 2) r.mod = g.config.fixedMod;
   r.challenge = CHALLENGE_ORDER[g.rng.int(0, CHALLENGE_ORDER.length - 1)] as string;
 }
@@ -194,14 +195,14 @@ function startNight(g: Game): void {
   r.bossId = -1;
   g.buildMode = false;
   setPhase(g, 'night');
-  const boss = bossFor(r.night);
+  const boss = bossFor(r.night, g.config.chapter);
   g.events.emit('banner', { text: `第 ${r.night} 夜`, sub: boss ? `首领来袭 · ${boss.title}` : r.mod ? `${m.name} · ${m.desc}` : '尸潮来袭' });
   if (boss) {
     // 首领和随从一起从同一个入口出现
     const gate = g.rng.int(0, g.map.spawns.length - 1);
     const b = g.spawnAtGate(boss.kind, gate, boss.hpScale * g.config.zombieHp);
     if (b) r.bossId = b.id;
-    for (let i = 0; i < boss.escorts; i++) g.spawnAtGate(i % 2 ? 'breaker' : 'bloater', gate, hpScale(r.night) * g.config.zombieHp);
+    for (let i = 0; i < boss.escorts; i++) g.spawnAtGate(boss.escort[i % 2] as ZombieKind, gate, hpScale(r.night) * g.config.zombieHp);
   }
 }
 
@@ -304,7 +305,7 @@ function updateNight(g: Game, dt: number): void {
       const m = nightMod(r.mod);
       const hp = hpScale(r.night) * g.config.zombieHp * (r.mod ? m.hp : 1);
       for (let i = 0; i < want; i++) {
-        const kind = g.config.extras ? pickKindExtra(g, r.night, m.runner) : pickKind(r.night, g.rng.next());
+        const kind = g.config.extras ? pickKindExtra(g, r.night, m.runner, r.mod ? m.theme : undefined) : pickKind(r.night, g.rng.next());
         // 精英夜：每批第一只是精英
         const elite = g.config.extras && ((r.mod === 'elite' && i === 0) || (riskOn(g, 'broadcast') && i === 0 && !g.ev.eliteDone));
         const z = g.spawnAtGate(kind, gates[i % gates.length] as number, hp * (elite ? ELITE_HP : 1));
@@ -324,10 +325,14 @@ function updateNight(g: Game, dt: number): void {
 }
 
 /** 测试用：按正式出场表抽一种普通僵尸（sim:zombies 统计出场比例） */
-export const pickKindForTest = (g: Game, n: number): ZombieKind => pickKindExtra(g, n, 1);
+export const pickKindForTest = (g: Game, n: number, theme?: NightMod['theme']): ZombieKind => pickKindExtra(g, n, 1, theme);
 
-/** 带新僵尸的出场表：第 3 夜起吐酸者、第 6 夜起尖啸者；浓雾夜奔袭者更多 */
-function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
+/**
+ * 带新僵尸的出场表：第 3 夜起吐酸者、第 4 夜起爬行者和毒雾者、第 5 夜起跳跃者和裂殖者、第 6 夜起尖啸者和重装感染者。
+ * 浓雾夜奔袭者更多；主题夜（theme）先按它的比例抽一次
+ */
+function pickKindExtra(g: Game, n: number, runnerK: number, theme?: NightMod['theme']): ZombieKind {
+  if (theme && g.rng.next() < theme.share) return theme.kind;
   // 章节的额外构成：按权重先抽一次（第 2 夜以后）
   const mix = CHAPTER_BY_ID[g.config.chapter]?.mix ?? {};
   if (n >= 2) {
@@ -344,11 +349,23 @@ function pickKindExtra(g: Game, n: number, runnerK: number): ZombieKind {
   // M17：爬行者第 4 夜起、重装感染者第 6 夜起
   const crawler = n >= 4 ? Math.min(0.05 + (n - 4) * 0.015, 0.12) : 0;
   const armored = n >= 6 ? Math.min(0.03 + (n - 6) * 0.012, 0.09) : 0;
-  if (r < spitter) return 'spitter';
-  if (r < spitter + screamer) return 'screamer';
-  if (r < spitter + screamer + crawler) return 'crawler';
-  if (r < spitter + screamer + crawler + armored) return 'armored';
-  const used = spitter + screamer + crawler + armored;
+  const gasser = n >= 4 ? Math.min(0.025 + (n - 4) * 0.008, 0.06) : 0;
+  const leaper = n >= 5 ? Math.min(0.03 + (n - 5) * 0.01, 0.07) : 0;
+  const splitter = n >= 5 ? Math.min(0.025 + (n - 5) * 0.008, 0.06) : 0;
+  const table: Array<[ZombieKind, number]> = [
+    ['spitter', spitter],
+    ['screamer', screamer],
+    ['crawler', crawler],
+    ['armored', armored],
+    ['gasser', gasser],
+    ['leaper', leaper],
+    ['splitter', splitter],
+  ];
+  let used = 0;
+  for (const [kind, w] of table) {
+    used += w;
+    if (r < used) return kind;
+  }
   const k = pickKind(n, (r - used) / (1 - used));
   if (k === 'walker' && runnerK > 1 && g.rng.next() < (runnerK - 1) * 0.25) return 'runner';
   return k;

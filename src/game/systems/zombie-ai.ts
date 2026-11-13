@@ -6,12 +6,17 @@ import { GRID_H, GRID_W, HALF_H, HALF_W } from '../world/grid';
 import type { Game } from '../sim';
 import { FLASHLIGHT } from '../data/modifiers';
 import { spitAt } from './hazards';
+import { bossStep, cancelSkill } from './boss';
 
 /** 沿路径向前看几格，找最远的看得见的路点（拉直路径） */
 const LOOK = 6;
 /** 攻击够得着的距离（在体型半径之外） */
 const REACH = 0.45;
 const SEP_GAIN = 1.8;
+/** 走路时和墙保持的距离（米，在体型半径之外）：模型的手臂、肩膀比碰撞圆宽，贴着墙走就插进墙里 */
+const WALL_CLEAR = 0.24;
+/** 离墙太近时往外推的速度（米 / 秒，贴墙时最大） */
+const WALL_GAIN = 1.1;
 const chain = new Int32Array(LOOK);
 
 function setWp(z: Zombie, x: number, zz: number): void {
@@ -153,7 +158,8 @@ function think(g: Game, z: Zombie): void {
     const c = chain[k] as number;
     const wx = (c % GRID_W) - HALF_W + 0.5;
     const wz = ((c / GRID_W) | 0) - HALF_H + 0.5;
-    if (k === 0 || grid.sweptClear(z.x, z.z, wx, wz, z.radius * 0.9)) {
+    // 拉直路径时留出离墙的余量：按体型半径 + 0.12 米扫，不然走的直线擦着墙角，伸出去的手臂插进墙里
+    if (k === 0 || grid.sweptClear(z.x, z.z, wx, wz, z.radius + WALL_CLEAR * 0.5)) {
       setWp(z, wx, wz);
       return;
     }
@@ -196,10 +202,56 @@ function move(g: Game, z: Zombie, i: number, dt: number): void {
       if (dl > 1e-4) {
         const here = grid.indexAt(z.x, z.z);
         const under = z.def.crawl && grid.crawl[here] === 1 ? z.def.crawl.slow : 1;
-        const slow = (grid.slow[here] ? 0.6 : 1) * (z.slowT > 0 ? 1 - z.slowK : 1) * (z.hasteT > 0 ? 1 + z.hasteK : 1) * g.run.modSpeed * under;
+        const rage = z.rage && z.def.boss ? z.def.boss.rage : 1;
+        const slow = (grid.slow[here] ? 0.6 : 1) * (z.slowT > 0 ? 1 - z.slowK : 1) * (z.hasteT > 0 ? 1 + z.hasteK : 1) * g.run.modSpeed * under * rage;
         const sp = z.speed * slow * Math.min(1, dl / 0.15 + 0.3);
         dvx = (dx / dl) * sp;
         dvz = (dz / dl) * sp;
+        // 离墙太近：往外推一点，并去掉朝墙走的那部分速度（沿墙滑），保持肩膀和手臂不插进墙里。
+        // 两边都有墙的窄口（1 格宽的门、通道）里两边的推力互相抵消，只剩"不往墙里走"；
+        // 但推力的大小要按通道的宽度收：1 格宽通道里半径 0.42 的重装两边各只剩 0.08 米，满推力会把它弹来弹去
+        const crawler = !!z.def.crawl;
+        const cx0 = grid.cellX(z.x);
+        const cy0 = grid.cellY(z.z);
+        const reach = z.radius + WALL_CLEAR;
+        let wx = 0;
+        let wz = 0;
+        for (let cy = cy0 - 1; cy <= cy0 + 1; cy++) {
+          for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
+            if (crawler ? !grid.blocksCrawler(cx, cy) : !grid.isBlocked(cx, cy)) continue;
+            // 要拆的建筑不推：僵尸得走到它跟前
+            if (!grid.isStaticSolid(cx, cy)) continue;
+            // 按整格算，不用车的外沿（padX / padZ）：试过，车头外沿 0.6 米盖住了车旁那一格的路点，僵尸走不到路点卡住（sim:nav 卡 106 秒）
+            const x0 = cx - HALF_W;
+            const x1 = x0 + 1;
+            const z0 = cy - HALF_H;
+            const z1 = z0 + 1;
+            const ox = z.x - clamp(z.x, x0, x1);
+            const oz = z.z - clamp(z.z, z0, z1);
+            const d = Math.hypot(ox, oz);
+            if (d >= reach || d < 1e-4) continue;
+            const nx = ox / d;
+            const nz = oz / d;
+            const into = -(dvx * nx + dvz * nz);
+            // 只去掉朝墙走的分量：路点就在这面墙的另一侧时（拐角）照样能绕过去，因为切向分量还在
+            if (into > 0) {
+              dvx += nx * into * 0.85;
+              dvz += nz * into * 0.85;
+            }
+            const k = 1 - Math.max(0, d - z.radius) / WALL_CLEAR;
+            wx += nx * k;
+            wz += nz * k;
+          }
+        }
+        const wl = Math.hypot(wx, wz);
+        if (wl > 1) {
+          wx /= wl;
+          wz /= wl;
+        }
+        // 推力不超过自己速度的 45%：慢的重装在窄通道口被推得比走得还快就会原地打转
+        const push = Math.min(WALL_GAIN, sp * 0.45);
+        dvx += wx * push;
+        dvz += wz * push;
       }
     }
   }
@@ -228,6 +280,15 @@ function move(g: Game, z: Zombie, i: number, dt: number): void {
                 const s = 1 - d / range;
                 sx += (ox / d) * s;
                 sz += (oz / d) * s;
+                // 已经贴上了：去掉朝它挤的那部分速度，沿着人堆边绕过去，而不是硬往里钻（不然发电机边上叠成一团）
+                const touch = (z.radius + o.radius) * 1.08;
+                if (d < touch) {
+                  const into = -(dvx * ox + dvz * oz) / d;
+                  if (into > 0) {
+                    dvx += (ox / d) * into;
+                    dvz += (oz / d) * into;
+                  }
+                }
               }
             }
           }
@@ -281,22 +342,24 @@ function separate(g: Game, z: Zombie, i: number): void {
   const cy = grid.cellY(z.z);
   const zs = g.zombies;
   const mi = z.radius * z.radius * (z.state === 'attack' ? 3 : 1);
-  for (let ny = cy - 1; ny <= cy + 1; ny++) {
+  // 大体型（首领半径 0.6–0.95）会和 2 格外的僵尸重叠，要多看一圈
+  const span = z.radius > 0.5 ? 2 : 1;
+  for (let ny = cy - span; ny <= cy + span; ny++) {
     if (ny < 0 || ny >= GRID_H) continue;
-    for (let nx = cx - 1; nx <= cx + 1; nx++) {
+    for (let nx = cx - span; nx <= cx + span; nx++) {
       if (nx < 0 || nx >= GRID_W) continue;
       let j = g.hashHead[ny * GRID_W + nx] as number;
       while (j >= 0) {
         if (j > i) {
           const o = zs[j]!;
-          if (o.alive) {
+          if (o.alive && o.leapState !== 2) {
             const ox = z.x - o.x;
             const oz = z.z - o.z;
             const d = Math.hypot(ox, oz);
             const min = z.radius + o.radius;
             if (d < min && d > 1e-4) {
               const mo = o.radius * o.radius * (o.state === 'attack' ? 3 : 1);
-              const k = (min - d) * 0.8;
+              const k = (min - d) * 0.95;
               const wi = mo / (mi + mo);
               const nxv = ox / d;
               const nzv = oz / d;
@@ -547,31 +610,230 @@ export function stepZombies(g: Game, dt: number): void {
       if (z.hitFlash > 0) z.hitFlash -= dt;
       continue;
     }
+    // 在空中的跳跃者：谁也拦不住，落地前不受硬直影响
+    if (z.leapState === 2) {
+      leapAir(g, z, dt);
+      continue;
+    }
     if (z.hasteT > 0) z.hasteT -= dt;
-    // 硬直 / 眩晕：原地不动、不攻击，击退照样生效
+    // 硬直 / 眩晕：原地不动、不攻击，击退照样生效（蹲着蓄力的跳跃者被打断）
     if (z.stunT > 0) {
       z.stunT -= dt;
       z.vx = z.vz = 0;
       z.state = 'move';
       z.attackTarget = 'none';
       z.hasWp = false;
+      if (z.leapState === 1) z.leapState = 0;
+      if (z.skill) cancelSkill(g, z);
       move(g, z, i, dt);
       continue;
     }
     if (z.def.charge && g.config.extras && charge(g, z, i, dt)) continue;
+    if (z.def.boss && g.config.extras && bossStep(g, z, dt)) continue;
+    if (z.leapState === 1) {
+      leapWindup(g, z, dt);
+      continue;
+    }
     think(g, z);
     if (z.def.spitRange) spitter(g, z, dt);
     if (z.def.scream) screamer(g, z, dt);
+    if (z.def.leap) leaper(g, z, dt);
+    if (z.def.gas) gasAura(g, z, dt);
     move(g, z, i, dt);
   }
-  for (let i = 0; i < n; i++) {
-    const z = zs[i]!;
-    if (z.alive) separate(g, z, i);
+  // 分离和推出墙交替做 2 轮：只分离一轮人堆里还会互相穿模；
+  // 贴墙的人堆分离完又被墙推回去重叠，所以每轮都要再推一次墙
+  for (let pass = 0; pass < 2; pass++) {
+    for (let i = 0; i < n; i++) {
+      const z = zs[i]!;
+      if (z.alive && z.leapState !== 2) separate(g, z, i);
+    }
+    if (pass === 1) break;
+    for (let i = 0; i < n; i++) {
+      const z = zs[i]!;
+      if (z.alive && z.leapState !== 2) resolveCircleVsGrid(grid, z, z.radius, false, !!z.def.crawl);
+    }
   }
+  const p = g.player;
   for (let i = 0; i < n; i++) {
     const z = zs[i]!;
-    if (!z.alive) continue;
+    if (!z.alive || z.leapState === 2) continue;
+    // 不许钻进玩家身体（镜头里会看到僵尸的内部）：玩家不被推，僵尸退到身体外沿
+    if (p.alive) {
+      const ox = z.x - p.x;
+      const oz = z.z - p.z;
+      const d = Math.hypot(ox, oz);
+      const min = z.radius + p.radius;
+      if (d < min) {
+        if (d > 1e-4) {
+          z.x = p.x + (ox / d) * min;
+          z.z = p.z + (oz / d) * min;
+        } else z.x = p.x + min;
+      }
+    }
     resolveCircleVsGrid(grid, z, z.radius, false, !!z.def.crawl);
-    track(g, z, i, dt);
+    if (z.leapState === 0) track(g, z, i, dt);
   }
+  // 被墙顶住、退不开的僵尸（玩家把它挤在墙角）：改成玩家被推开。僵尸是实心的，玩家也穿不过尸群
+  if (p.alive) {
+    for (let i = 0; i < n; i++) {
+      const z = zs[i]!;
+      if (!z.alive || z.leapState === 2) continue;
+      const ox = p.x - z.x;
+      const oz = p.z - z.z;
+      const d = Math.hypot(ox, oz);
+      const min = z.radius + p.radius;
+      if (d >= min - 0.01 || d < 1e-4) continue;
+      p.x += (ox / d) * (min - d);
+      p.z += (oz / d) * (min - d);
+    }
+    resolveCircleVsGrid(grid, p, p.radius, true);
+  }
+}
+
+// ---------------------------------------------------------------- 跳跃者
+
+/** 跳跃者能不能沿直线跳过去：墙、房子、炮塔挡住，路障跳得过去；落脚的那一格必须是空的 */
+function leapClear(g: Game, x0: number, z0: number, x1: number, z1: number): boolean {
+  const grid = g.grid;
+  const n = Math.max(1, Math.ceil(Math.hypot(x1 - x0, z1 - z0) / 0.4));
+  for (let k = 1; k <= n; k++) {
+    const cx = grid.cellX(x0 + ((x1 - x0) * k) / n);
+    const cy = grid.cellY(z0 + ((z1 - z0) * k) / n);
+    if (!grid.inBounds(cx, cy) || grid.isStaticSolid(cx, cy)) return false;
+    const sid = grid.structure[grid.idx(cx, cy)] as number;
+    if (sid >= 0 && (k === n || g.structures.get(sid)?.kind !== 'barricade')) return false;
+  }
+  return true;
+}
+
+function startLeap(g: Game, z: Zombie, tx: number, tz: number, pounce: boolean): void {
+  z.leapState = 1;
+  z.leapT = 0;
+  z.leapX1 = tx;
+  z.leapZ1 = tz;
+  z.pounce = pounce;
+  z.vx = z.vz = 0;
+  z.attackTarget = 'none';
+  z.hasWp = false;
+  z.state = 'move';
+  z.yaw = Math.atan2(tx - z.x, tz - z.z);
+  g.events.emit('leap', { zombie: z, stage: 'windup', hit: false });
+}
+
+/** 要不要跳：玩家在扑击距离内就扑；路上挡着路障就跳过去（落脚点要离目标更近） */
+function leaper(g: Game, z: Zombie, dt: number): void {
+  const L = z.def.leap!;
+  z.leapCd -= dt;
+  if (z.leapCd > 0 || z.attackTarget === 'player' || z.attackTarget === 'core') return;
+  const p = g.player;
+  if (z.goal === 'player' && p.alive) {
+    const d = Math.hypot(p.x - z.x, p.z - z.z);
+    if (d >= L.min && d <= L.range && leapClear(g, z.x, z.z, p.x, p.z)) {
+      startLeap(g, z, p.x, p.z, true);
+      return;
+    }
+  }
+  if (z.attackTarget !== 'structure' || g.structures.get(z.targetStructure)?.kind !== 'barricade') return;
+  const dx = z.aimX - z.x;
+  const dz = z.aimZ - z.z;
+  const d = Math.hypot(dx, dz) || 1;
+  const here = g.grid.indexAt(z.x, z.z);
+  const field = g.nav.field(z.goal, false, here);
+  for (const ahead of [1.1, 2.1]) {
+    const tx = z.aimX + (dx / d) * ahead;
+    const tz = z.aimZ + (dz / d) * ahead;
+    const land = g.grid.indexAt(tx, tz);
+    if ((field.dist[land] as number) < (field.dist[here] as number) && leapClear(g, z.x, z.z, tx, tz)) {
+      startLeap(g, z, tx, tz, false);
+      return;
+    }
+  }
+}
+
+/** 蹲下蓄力：原地不动，扑人时一直盯着玩家；蓄满起跳。落点停在玩家身前，路被挡了就不跳 */
+function leapWindup(g: Game, z: Zombie, dt: number): void {
+  const L = z.def.leap!;
+  const p = g.player;
+  z.vx = z.vz = 0;
+  if (z.hitFlash > 0) z.hitFlash -= dt;
+  if (z.pounce && p.alive) {
+    z.leapX1 = p.x + p.vx * 0.25;
+    z.leapZ1 = p.z + p.vz * 0.25;
+  }
+  z.yaw = Math.atan2(z.leapX1 - z.x, z.leapZ1 - z.z);
+  z.leapT += dt;
+  if (z.leapT < L.windup) return;
+  let tx = z.leapX1;
+  let tz = z.leapZ1;
+  let d = Math.hypot(tx - z.x, tz - z.z);
+  if (z.pounce) {
+    const stop = Math.min(d, z.radius + p.radius + 0.1);
+    tx -= ((tx - z.x) / (d || 1)) * stop;
+    tz -= ((tz - z.z) / (d || 1)) * stop;
+    d = Math.min(Math.hypot(tx - z.x, tz - z.z), L.range + 1);
+  }
+  if (!leapClear(g, z.x, z.z, tx, tz)) {
+    z.leapState = 0;
+    z.leapCd = 1;
+    return;
+  }
+  z.leapState = 2;
+  z.leapT = 0;
+  z.leapX0 = z.x;
+  z.leapZ0 = z.z;
+  z.leapX1 = tx;
+  z.leapZ1 = tz;
+  z.leapDur = Math.max(0.45, d / L.speed);
+  g.events.emit('leap', { zombie: z, stage: 'jump', hit: false });
+}
+
+/** 在空中：沿直线飞，离地高度走抛物线；落地时玩家在身边就扑中（伤害 + 把人撞开），然后缓一下 */
+function leapAir(g: Game, z: Zombie, dt: number): void {
+  const L = z.def.leap!;
+  if (z.hitFlash > 0) z.hitFlash -= dt;
+  z.leapT += dt;
+  const k = Math.min(1, z.leapT / z.leapDur);
+  z.vx = (z.leapX1 - z.leapX0) / z.leapDur;
+  z.vz = (z.leapZ1 - z.leapZ0) / z.leapDur;
+  z.x = z.leapX0 + (z.leapX1 - z.leapX0) * k;
+  z.z = z.leapZ0 + (z.leapZ1 - z.leapZ0) * k;
+  // 跳路障跳得低一些
+  z.airY = 4 * (z.pounce ? L.height : L.height * 0.8) * k * (1 - k);
+  z.walkPhase += dt * 2;
+  if (k < 1) return;
+  z.airY = 0;
+  z.leapState = 0;
+  z.leapCd = z.pounce ? L.cd : L.hop;
+  z.vx = z.vz = 0;
+  z.sampleX = z.x;
+  z.sampleZ = z.z;
+  z.sampleTimer = 0;
+  const p = g.player;
+  const d = Math.hypot(p.x - z.x, p.z - z.z);
+  const hit = z.pounce && p.alive && d < z.radius + p.radius + 0.55;
+  if (hit) {
+    g.damagePlayer(L.damage * g.config.zombieDamage);
+    p.vx += ((p.x - z.x) / (d || 1)) * 4;
+    p.vz += ((p.z - z.z) / (d || 1)) * 4;
+    z.everAttacked = true;
+  }
+  // 首领跳扑落地：周围一圈震荡（没扑中也要躲远一点）
+  const q = z.def.boss?.quake;
+  if (q && z.pounce) {
+    if (!hit && p.alive && d < q.r) g.damagePlayer(q.damage * g.config.zombieDamage * (1 - 0.5 * (d / q.r)));
+    g.events.emit('bossSlam', { x: z.x, z: z.z, r: q.r });
+  }
+  // 落地缓一下：反击的空档
+  z.stunT = q ? 0.6 : 0.35;
+  g.events.emit('leap', { zombie: z, stage: 'land', hit });
+}
+
+// ---------------------------------------------------------------- 毒雾者
+
+/** 毒雾者身边的毒气：贴近了的玩家持续掉血 */
+function gasAura(g: Game, z: Zombie, dt: number): void {
+  const gas = z.def.gas!;
+  const p = g.player;
+  if (p.alive && Math.hypot(p.x - z.x, p.z - z.z) < gas.aura + p.radius) g.damagePlayer(gas.auraDps * dt);
 }

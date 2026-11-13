@@ -1,11 +1,16 @@
-import { AdditiveBlending, CanvasTexture, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, Scene, SphereGeometry, SpotLight, Sprite, SpriteMaterial } from 'three';
+import { AdditiveBlending, BoxGeometry, CanvasTexture, CircleGeometry, Group, Mesh, MeshBasicMaterial, MeshStandardMaterial, Object3D, PlaneGeometry, RingGeometry, Scene, SphereGeometry, SpotLight, Sprite, SpriteMaterial, Vector3 } from 'three';
 import { Rng } from '../../game/core/rng';
 import { FLASHLIGHT, nightMod } from '../../game/data/modifiers';
-import type { Game } from '../../game/sim';
+import type { Game, GameEvents } from '../../game/sim';
+import { coreCenter, hitScale } from '../../game/systems/hitvolume';
 import type { CameraRig } from '../core/cameraRig';
 import type { Lighting } from '../core/lighting';
 import type { Effects } from '../fx/effects';
 import { Builder, toGroup } from '../kit';
+
+const _core = { x: 0, y: 0, z: 0 };
+const _from = new Vector3();
+const _to = new Vector3();
 
 /**
  * M12 玩法的画面：炸掉的爆炸物（盖一个焦黑残骸）、地面火焰 / 酸池、飞行中的手雷和酸团、
@@ -37,6 +42,15 @@ export class ExtrasView {
   private readonly cores = new Map<number, Mesh>();
   private readonly warnGeo = new PlaneGeometry(1, 1);
   private readonly coreGeo = new SphereGeometry(1, 14, 10);
+  /** 首领技能的地面预警（钩子的线、横扫的扇形、尖啸的圈），每个首领一个；钩子飞出去时的铁链 */
+  private readonly skillWarn = new Map<number, { mesh: Mesh; skill: string }>();
+  private readonly chains = new Map<number, Mesh>();
+  private readonly chainGeo = new BoxGeometry(0.05, 0.05, 1);
+  private readonly chainMat = new MeshStandardMaterial({ color: 0x4e5052, roughness: 0.5, metalness: 0.8 });
+  /** 碎石 / 酸弹的落点预警圈（外圈 + 越来越满的内圆） */
+  private readonly markMeshes: Array<{ ring: Mesh; fill: Mesh }> = [];
+  private readonly markRing = new RingGeometry(0.9, 1, 48);
+  private readonly markFill = new CircleGeometry(1, 40);
 
   constructor(
     private readonly scene: Scene,
@@ -80,6 +94,7 @@ export class ExtrasView {
     });
 
     const e = game.events;
+    const g0 = game;
     this.off.push(
       e.on('riskFlare', (f) => {
         this.flare = f.on ? { x: f.x, z: f.z } : null;
@@ -122,6 +137,29 @@ export class ExtrasView {
         }
       }),
       e.on('scream', (s) => this.ring(s.x, s.z, 0.3, s.radius, 0.7, 0xff5af0)),
+      e.on('bossSkill', (s) => this.onSkill(s)),
+      e.on('bossPhase', ({ zombie }) => {
+        this.ring(zombie.x, zombie.z, 0.5, 9, 0.9, 0xff2a1a);
+        this.ring(zombie.x, zombie.z, 0.3, 5, 0.6, 0xffa040);
+        this.rig.addShake(0.5);
+      }),
+      e.on('markHit', (m) => {
+        if (m.kind === 'rock') {
+          this.ring(m.x, m.z, 0.3, m.r * 1.3, 0.35, 0xffa060);
+          this.fx.chips(m.x, m.z, [0.42, 0.38, 0.32], 18, 1.2);
+          this.fx.smoke(m.x, 0.4, m.z);
+          const p = g0.player;
+          if (Math.hypot(p.x - m.x, p.z - m.z) < 10) this.rig.addShake(0.25);
+        }
+      }),
+      e.on('plateBreak', ({ zombie }) => {
+        this.fx.chips(zombie.x + Math.sin(zombie.yaw) * 0.4, zombie.z + Math.cos(zombie.yaw) * 0.4, [0.55, 0.57, 0.6], 22, 1.1);
+        for (let i = 0; i < 6; i++) this.fx.spark(zombie.x + Math.sin(zombie.yaw) * 0.45, 1.2, zombie.z + Math.cos(zombie.yaw) * 0.45, 4, 2.5, 0.35);
+      }),
+      e.on('bossSac', (s) => {
+        this.fx.chips(s.x, s.z, [0.6, 0.75, 0.25], 26, 1.3);
+        this.ring(s.x, s.z, 0.2, 1.6, 0.4, 0xb8e040);
+      }),
       e.on('chainBlast', (c) => this.ring(c.x, c.z, 0.3, 2.2, 0.35, 0xffa040)),
       e.on('shove', ({ hits }) => {
         if (hits > 0) this.rig.addShake(0.12);
@@ -141,6 +179,55 @@ export class ExtrasView {
     g.position.set(x, 0, z);
     this.wrecks.add(g);
     if (loud) this.rig.addShake(0.5);
+  }
+
+  /** 首领技能：蓄力时在地上画出会打到的范围，放出去 / 被打断就撤掉 */
+  private onSkill(s: GameEvents['bossSkill']): void {
+    const old = this.skillWarn.get(s.id);
+    if (s.stage !== 'windup') {
+      if (old) old.mesh.visible = false;
+      if (s.stage === 'go' && (s.skill === 'shriek' || s.skill === 'howl')) {
+        this.ring(s.x, s.z, 0.5, s.skill === 'shriek' ? s.r : 4, 0.6, s.skill === 'shriek' ? 0xc08aff : 0xff3a2a);
+        this.rig.addShake(s.skill === 'shriek' ? 0.25 : 0.2);
+      }
+      if (s.stage === 'go' && s.skill === 'cleave') this.fx.chips(s.x + s.dx * s.r * 0.6, s.z + s.dz * s.r * 0.6, [0.4, 0.36, 0.3], 14, 1);
+      if (s.stage === 'hit' && s.skill === 'shriek') this.rig.addShake(0.7);
+      if (s.stage === 'hit' && s.skill !== 'shriek') this.rig.addShake(0.4);
+      if (s.stage === 'go' && s.skill === 'brood') this.ring(s.x + s.dx * 1.2, s.z + s.dz * 1.2, 0.2, 2, 0.5, 0xb8e040);
+      return;
+    }
+    if (old && old.skill !== s.skill) {
+      this.scene.remove(old.mesh);
+      old.mesh.geometry.dispose();
+      this.skillWarn.delete(s.id);
+    }
+    let w = this.skillWarn.get(s.id);
+    if (!w) {
+      // 扇形：从朝向往两边各张开 arc；线：宽 1.4 米的长条；圈：尖啸 / 咆哮的范围
+      const geo = s.skill === 'cleave' ? new CircleGeometry(1, 32, Math.PI / 2 - s.arc, s.arc * 2) : s.skill === 'hook' ? new PlaneGeometry(1, 1) : new RingGeometry(0.94, 1, 64);
+      const color = s.skill === 'shriek' ? 0xc08aff : 0xff2a1a;
+      const mesh = new Mesh(geo, new MeshBasicMaterial({ color, transparent: true, opacity: 0.45, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: 2 }));
+      mesh.rotation.order = 'YXZ';
+      this.scene.add(mesh);
+      w = { mesh, skill: s.skill };
+      this.skillWarn.set(s.id, w);
+    }
+    const m = w.mesh;
+    m.visible = true;
+    const yaw = Math.atan2(s.dx, s.dz);
+    if (s.skill === 'hook') {
+      m.scale.set(1.4, s.r, 1);
+      m.rotation.set(-Math.PI / 2, yaw, 0);
+      m.position.set(s.x + (s.dx * s.r) / 2, 0.07, s.z + (s.dz * s.r) / 2);
+    } else if (s.skill === 'cleave') {
+      m.scale.setScalar(s.r);
+      m.rotation.set(-Math.PI / 2, yaw + Math.PI, 0);
+      m.position.set(s.x, 0.07, s.z);
+    } else {
+      m.scale.setScalar(s.skill === 'howl' ? 3 : s.r);
+      m.rotation.set(-Math.PI / 2, 0, 0);
+      m.position.set(s.x, 0.07, s.z);
+    }
   }
 
   private ring(x: number, z: number, r0: number, r1: number, life: number, color: number): void {
@@ -199,17 +286,28 @@ export class ExtrasView {
     for (const s of h.spits) this.fx.spark(s.x, s.y, s.z, 0.5, 1.6, 0.3);
     for (const t of h.thrown) if (t.fire) this.fx.spark(t.x, t.y + 0.05, t.z, 3, 1.2, 0.3);
 
-    // 地面火焰 / 酸池：持续冒火星和气泡（限流）
+    // 地面火焰 / 酸池 / 毒雾：持续冒火星、气泡和烟（限流）
     this.emberT -= dt;
     if (this.emberT <= 0) {
       this.emberT = 0.05;
       for (const hz of h.hazards) {
+        if (hz.kind === 'gas' && this.rng.next() < 0.45) continue;
         const a = this.rng.range(0, Math.PI * 2);
         const rr = Math.sqrt(this.rng.next()) * hz.r;
         const x = hz.x + Math.cos(a) * rr;
         const z = hz.z + Math.sin(a) * rr;
         if (hz.kind === 'fire') this.fx.flameLick(x, z);
+        else if (hz.kind === 'gas') this.fx.gas(x, this.rng.range(0.2, 1.1), z, true);
         else this.fx.spark(x, 0.05, z, 0.5, 1.8, 0.25);
+      }
+      // 毒雾者身边一圈毒气（大致就是会掉血的范围）
+      const p = g.player;
+      for (const z of g.zombies) {
+        const gas = z.def.gas;
+        if (!gas || !z.alive || this.rng.next() < 0.4 || Math.hypot(z.x - p.x, z.z - p.z) > 40) continue;
+        const a = this.rng.range(0, Math.PI * 2);
+        const rr = Math.sqrt(this.rng.next()) * gas.aura * 0.8;
+        this.fx.gas(z.x + Math.cos(a) * rr, this.rng.range(0.3, 1.6), z.z + Math.sin(a) * rr, false);
       }
     }
 
@@ -290,13 +388,63 @@ export class ExtrasView {
           this.cores.set(z.id, m);
         }
         m.visible = true;
-        m.scale.setScalar(ch.core.r * (1 + 0.15 * Math.sin(this.time * 12)));
-        m.position.set(z.x + Math.sin(z.yaw) * z.radius * 0.7, ch.core.y, z.z + Math.cos(z.yaw) * z.radius * 0.7);
+        m.scale.setScalar(ch.core.r * hitScale(z) * (1 + 0.15 * Math.sin(this.time * 12)));
+        coreCenter(z, _core);
+        m.position.set(_core.x, _core.y, _core.z);
       } else if (m) m.visible = false;
       const w = this.warn.get(z.id);
       if (w?.visible) (w.material as MeshBasicMaterial).opacity = 0.3 + 0.35 * Math.abs(Math.sin(this.time * 14));
       if (w && (!z.alive || z.chargeState !== 1)) w.visible = false;
     }
+
+    // 首领技能预警闪烁；首领死了 / 没在蓄力就藏掉。钩子飞出去和拽人时画一根铁链
+    for (const [id, w] of this.skillWarn) {
+      if (!w.mesh.visible) continue;
+      const z = g.zombies.find((q) => q.id === id);
+      if (!z || !z.alive || !z.skill || z.skillStage > 0) w.mesh.visible = false;
+      else (w.mesh.material as MeshBasicMaterial).opacity = 0.25 + 0.35 * Math.abs(Math.sin(this.time * 12));
+    }
+    for (const [id, c] of this.chains) if (c.visible && !g.zombies.some((z) => z.id === id && z.alive && z.skill === 1 && z.skillStage > 0)) c.visible = false;
+    for (const z of g.zombies) {
+      if (!z.alive || z.skill !== 1 || z.skillStage === 0) continue;
+      let c = this.chains.get(z.id);
+      if (!c) {
+        c = new Mesh(this.chainGeo, this.chainMat);
+        this.scene.add(c);
+        this.chains.set(z.id, c);
+      }
+      const p = g.player;
+      const from = _from.set(z.x + Math.sin(z.yaw) * 0.5, 1.8, z.z + Math.cos(z.yaw) * 0.5);
+      const to = z.skillStage === 1 ? _to.set(z.x + z.skillDX * z.skillT, 1.3, z.z + z.skillDZ * z.skillT) : _to.set(p.x, 1.2, p.z);
+      const len = from.distanceTo(to);
+      c.visible = len > 0.2;
+      c.position.copy(from).add(to).multiplyScalar(0.5);
+      c.lookAt(to);
+      c.scale.set(1, 1, len);
+    }
+    // 碎石 / 酸弹的落点：外圈闪、内圆越来越满，满了就落下来
+    while (this.markMeshes.length < h.marks.length) {
+      const mk = (geo: RingGeometry | CircleGeometry, o: number) => {
+        const m = new Mesh(geo, new MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: o, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: 2 }));
+        m.rotation.x = -Math.PI / 2;
+        this.scene.add(m);
+        return m;
+      };
+      this.markMeshes.push({ ring: mk(this.markRing, 0.7), fill: mk(this.markFill, 0.25) });
+    }
+    this.markMeshes.forEach((mm, i) => {
+      const mark = h.marks[i];
+      mm.ring.visible = mm.fill.visible = !!mark;
+      if (!mark) return;
+      const col = mark.kind === 'acid' ? 0x9aff3a : 0xff3a1a;
+      (mm.ring.material as MeshBasicMaterial).color.setHex(col);
+      (mm.fill.material as MeshBasicMaterial).color.setHex(col);
+      (mm.ring.material as MeshBasicMaterial).opacity = 0.45 + 0.4 * Math.abs(Math.sin(this.time * 14));
+      mm.ring.position.set(mark.x, 0.075, mark.z);
+      mm.ring.scale.setScalar(mark.r);
+      mm.fill.position.set(mark.x, 0.07, mark.z);
+      mm.fill.scale.setScalar(Math.max(0.05, mark.r * (1 - Math.min(1, mark.t / 1.2))));
+    });
 
     // 手电筒：跟着相机走，指向视线前方；没电时闪两下
     const cam = this.rig.camera;

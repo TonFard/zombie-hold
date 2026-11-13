@@ -20,7 +20,8 @@ import type { Object3D } from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { Rng } from '../../game/core/rng';
-import { GRID_W, HALF_H, HALF_W } from '../../game/world/grid';
+import { PROP_HEIGHT } from '../../game/world/builder';
+import { GRID_W, HALF_H, HALF_W, SANDBAG_HALF } from '../../game/world/grid';
 import { FURN_IDS } from '../../game/world/modules';
 import type { FurnitureKind, MapData, Prop, PropKind } from '../../game/world/types';
 import { rectOf } from './props/kit';
@@ -100,6 +101,8 @@ const GROUND_PCT: Record<string, number> = {
   container_blue: 0.003,
 };
 
+const TRUNK_CENTERED = new Set(['tree_dead', 'tree_winter']);
+
 async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Model> {
   const gltf = await loader.loadAsync(`${BASE}${file}`);
   const root = gltf.scene;
@@ -111,6 +114,27 @@ async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Mod
   const swap = size.z > size.x;
   const turn = swap ? new Matrix4().makeRotationY(Math.PI / 2) : new Matrix4();
   const center = box.getCenter(new Vector3());
+  // 树：水平中心取树干（高度 12%–33% 那一截），不取整棵树的包围盒中心。树冠往一边歪时两者差几十厘米，
+  // 而碰撞圆柱在格子正中——差出来的那一截就是"看着没东西却被挡住"
+  if (TRUNK_CENTERED.has(id)) {
+    const lo = box.min.y + size.y * 0.12;
+    const hi = box.min.y + size.y * 0.33;
+    const band = new Box3();
+    const v = new Vector3();
+    root.traverse((o) => {
+      const m = o as Mesh;
+      if (!m.isMesh) return;
+      const pos = m.geometry.getAttribute('position');
+      for (let i = 0; i < pos.count; i++) {
+        v.fromBufferAttribute(pos, i).applyMatrix4(m.matrixWorld);
+        if (v.y >= lo && v.y <= hi) band.expandByPoint(v);
+      }
+    });
+    if (!band.isEmpty()) {
+      center.x = (band.min.x + band.max.x) / 2;
+      center.z = (band.min.z + band.max.z) / 2;
+    }
+  }
   const norm = turn.multiply(new Matrix4().makeTranslation(-center.x, -box.min.y, -center.z));
   const parts: Model['parts'] = [];
   root.traverse((o) => {
@@ -154,6 +178,8 @@ interface Place {
   y: number;
   z: number;
   ry: number;
+  /** 先绕自身 X 轴转（放倒，比如平放在桌上的手枪），再绕 Y 转 ry */
+  rx?: number;
   sx: number;
   sy: number;
   sz: number;
@@ -214,6 +240,7 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
     pallet: ['pallets'],
     dumpster: ['dumpster'],
     generator: ['generator_diesel'],
+    workbench: ['metal_office_desk', 'tool_cart'],
     furniture: ['painted_wooden_table'],
   };
   const replaced = new Set<PropKind>();
@@ -231,7 +258,7 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
         const s0 = size(id) as Vector3;
         const s = 0.92 / s0.y;
         put(id, uni(r.cx + rng.range(-0.06, 0.06), 0, r.cz + rng.range(-0.06, 0.06), rng.range(0, 6.28), s));
-        if (rng.chance(0.5)) put(rng.chance(0.5) ? 'metal_jerrycan' : 'trashbag', uni(r.cx + rng.range(-0.55, 0.55), 0, r.cz + rng.pick([-0.6, 0.6]), rng.range(0, 6.28)));
+        // 以前桶旁边 ±0.6 米还会摆一个油壶 / 垃圾袋：在旁边的空格里、没有碰撞，人和僵尸直接从里面穿过去，去掉了
         break;
       }
       case 'crate':
@@ -256,7 +283,7 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
             sz: Math.min(1, (r.T * 0.9) / s0.z),
           });
         }
-        if (rng.chance(0.4)) put('old_tyre', uni(r.cx + (r.horiz ? rng.range(-1, 1) : 0.75), 0, r.cz + (r.horiz ? 0.75 : rng.range(-1, 1)), rng.range(0, 6.28)));
+        // 以前隔离墩旁边 0.75 米还会扔一个旧轮胎：在空格里、没有碰撞，会被穿过去，去掉了
         break;
       }
       case 'rack': {
@@ -308,16 +335,30 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
         break;
       }
       case 'tree': {
-        const id = pickHas(['tree_dead', 'tree_winter', 'tree_dead'], p.variant) as string;
+        // 只用 tree_dead：tree_winter 的树干是斜的、还分叉，人身高范围内横跨 2 米，圆柱碰撞怎么放都对不上
+        const id = 'tree_dead';
         const s0 = size(id) as Vector3;
         const h = (p.h ?? 3) * 1.3;
         put(id, uni(r.cx, 0, r.cz, rng.range(0, 6.28), h / s0.y));
-        if (rng.chance(0.3)) put('tree_stump_01', uni(r.cx + rng.range(-1.6, 1.6), 0, r.cz + rng.range(-1.6, 1.6), rng.range(0, 6.28), 0.45));
+        // 以前 30% 的树旁边 1.6 米内还摆一个树桩：在空格里、没有碰撞，僵尸从树桩中间走过去，去掉了
         break;
       }
-      case 'sandbag':
-        fit(p, 'sandbags', size, put, { h: 0.9, keep: 1.6, inset: 0 });
+      case 'sandbag': {
+        // 和碰撞对齐：高度 = 挡子弹的高度，厚度 = 碰撞那一道的厚度，沿长度按段铺满（两头正好到碰撞范围的两端）。
+        // 以前整体等比缩进格子：2 格长的只有 0.52 米厚、0.72 米高（碰撞 1 米厚、0.85 米高），
+        // 竞技场 20 格长的沙袋墙模型只有 6.4 米，剩下 13 米是空气墙
+        const id = 'sandbags';
+        const s0 = size(id) as Vector3;
+        const sy = (p.h ?? PROP_HEIGHT.sandbag ?? 0.85) / s0.y;
+        const n = Math.max(1, Math.round(r.L / (s0.x * sy)));
+        const seg = r.L / n;
+        const sz = (r.T === 1 ? SANDBAG_HALF * 2 : r.T) / s0.z;
+        for (let i = 0; i < n; i++) {
+          const t = -r.L / 2 + seg * (i + 0.5);
+          put(id, { x: r.cx + (r.horiz ? t : 0), y: 0, z: r.cz + (r.horiz ? 0 : t), ry: (r.horiz ? 0 : Math.PI / 2) + (i % 2 ? Math.PI : 0), sx: seg / s0.x, sy, sz });
+        }
         break;
+      }
       case 'pump':
         fit(p, 'gas_pump', size, put, { keep: 1.3, inset: 0.3 });
         break;
@@ -351,6 +392,10 @@ function layout(map: MapData, has: (id: string) => boolean, size: Size): { place
         put(id, { x: r.cx, y: 0, z: r.cz, ry: (-(rot - 2) * Math.PI) / 2 + FURN_TURN[f], sx: Math.min(sx, k * 1.3), sy: Math.min(sy, k * 1.3), sz: Math.min(sz, k * 1.3) });
         break;
       }
+      case 'workbench':
+        // 竞技场把工坊塞在角落里当占位（高 0.01、不挡路）：不摆
+        if ((p.h ?? 1.1) > 0.2) workbenchSet(p, put, size);
+        break;
       case 'generator':
         // 能量核心（发光圆柱）仍由程序模型画在 1.3 米以上，机身压到这个高度以下
         fit(p, 'generator_diesel', size, put, { h: 1.3, keep: 1.3, inset: 0.15 });
@@ -394,6 +439,61 @@ const FURN_TURN: Record<FurnitureKind, number> = {
   desk: 0,
 };
 
+/**
+ * 武器工坊（3×1 格，碰撞高 1.1）：钢制办公桌当工作台 + 右边一辆工具推车，推车上放红色工具箱，
+ * 桌上是台钳、拆开的手枪和弹匣、弹药箱、工具箱、摇臂台灯。局部坐标：长边沿 X，正面朝 +Z（和程序模型一样）
+ */
+function workbenchSet(p: Prop, put: Put, size: Size): void {
+  const r = rectOf(p);
+  const yaw = r.horiz ? 0 : Math.PI / 2;
+  const c = Math.cos(yaw);
+  const sn = Math.sin(yaw);
+  const L = r.L - 0.1;
+  /** 局部 (x, y, z) 处放一个模型，底面中心落在这一点；s = 缩放（数字 = 等比），ry = 相对工坊的朝向，flat = 平放（绕 X 转 -90°） */
+  const at = (id: string, x: number, y: number, z: number, ry: number, s: number | [number, number, number], flat = false) => {
+    const s0 = size(id);
+    if (!s0) return;
+    const [sx, sy, sz] = typeof s === 'number' ? [s, s, s] : s;
+    // 平放 = 先绕 X 转 -90°：原来的高度方向变成 -Z、厚度方向变成高度。
+    // 补一个偏移让平放后仍然是"底面中心"对准 (x, y, z)；这个偏移在模型自己的朝向里，按 ry 转到工坊坐标
+    const lift = flat ? (s0.z * sz) / 2 : 0;
+    const back = flat ? (s0.y * sy) / 2 : 0;
+    const lx = x + back * Math.sin(ry);
+    const lz = z + back * Math.cos(ry);
+    put(id, { x: r.cx + lx * c + lz * sn, y: y + lift, z: r.cz - lx * sn + lz * c, ry: yaw + ry, rx: flat ? -Math.PI / 2 : 0, sx, sy, sz });
+  };
+
+  // 桌子：左边 1.9 米，桌面抬到 0.86（和程序模型、射击时的掩体高度一致）
+  const desk = size('metal_office_desk') as Vector3;
+  const deskW = Math.min(1.9, L - 1.0);
+  const deskX = -L / 2 + deskW / 2;
+  const top = 0.86;
+  at('metal_office_desk', deskX, 0, 0, 0, [deskW / desk.x, top / desk.y, 0.9 / desk.z]);
+
+  // 推车：右边剩下的宽度，托盘高约 0.73
+  const cart = size('tool_cart') as Vector3;
+  const cartW = L / 2 - (deskX + deskW / 2) - 0.04;
+  const cartX = L / 2 - cartW / 2;
+  const cs = cartW / cart.x;
+  const cartSy = Math.min(cs * 1.15, 0.85);
+  at('tool_cart', cartX, 0, 0.02, 0, [cs, cartSy, Math.min(cs * 1.15, 0.85)]);
+  // 推车托盘（原模型 0.86 米处）上放红色工具箱
+  at('metal_tool_chest', cartX, 0.862 * cartSy, 0, 0, Math.min(1, (cartW - 0.1) / (size('metal_tool_chest')?.x ?? 1)));
+
+  // 桌上：右前角台钳，中间平放手枪和弹匣，左后弹药箱和工具箱，后沿中间摇臂台灯
+  const right = deskX + deskW / 2;
+  at('bench_vice_01', right - 0.28, top, 0.2, Math.PI / 2, 1);
+  at('service_pistol', deskX + 0.15, top, 0.1, 0.25, 1.1, true);
+  at('ammo_box', deskX - deskW / 2 + 0.28, top, -0.22, 0.1, 1);
+  at('ammo_box', deskX - deskW / 2 + 0.3, top + (size('ammo_box')?.y ?? 0.18), -0.24, -0.05, 1);
+  at('ammo_box', deskX - deskW / 2 + 0.25, top, 0.18, Math.PI / 2 + 0.35, 1);
+  at('metal_toolbox', deskX - 0.3, top, -0.2, -0.15, 1);
+  at('desk_lamp_arm_01', deskX + 0.75, top, -0.32, 0, 1);
+  // 桌下：弹药箱码在容膝空间两边
+  at('ammo_box', deskX - 0.15, 0, -0.15, 0, 1);
+  at('ammo_box', deskX + 0.15, 0, -0.17, 0.08, 1);
+}
+
 /** 木箱：每格堆一摞，摞到设定高度 */
 function crates(p: Prop, rng: Rng, put: Put, size: Size, has: (id: string) => boolean): void {
   const h = p.h ?? 0.9;
@@ -429,21 +529,25 @@ function cliffs(put: Put, size: Size): void {
   // 每条边单独一组（键名带 #边），这样背后的那几条边能被视锥剔除
   // 以前一排、间距 4.6 米、朝向随机 ±0.5：岩壁是单面扫描，转个角度就露出缝，能从缝里看到外面的天。
   // 现在两排错开（里排矮、外排高）、间距 3.2 米、朝向只抖 ±0.2，后面再垫一圈实心岩墙（cliffBackdrop）
-  const edge = (side: string, x: number, z: number, out: number, h: number) => {
+  // 里排的岩脚正好压在可走范围的边线上（地图最外 2 格不能走）。以前岩石中心固定在地图边外 1.8 米，
+  // 岩脚离边线还有 1.5–2 米：人被一条看不见的线挡在岩壁前面（空气墙）。岩脚在模型的 +Z 一侧（size.z / 2）
+  const EDGE = 2;
+  const edge = (side: 'n' | 's' | 'w' | 'e', t: number, row: number) => {
     const id = rng.pick(ids);
     const s0 = size(id) as Vector3;
-    const s = rng.range(1.0, 1.25) * (h / s0.y);
-    put(`${id}#${side}`, uni(x, -0.4, z, out + rng.range(-0.2, 0.2), s));
+    const s = rng.range(1.0, 1.25) * ((row === 0 ? 4.6 : 7.5) / s0.y);
+    const d = (row === 0 ? (s * s0.z) / 2 - EDGE - 0.15 : 4.2);
+    const out = { n: 0, s: Math.PI, w: Math.PI / 2, e: -Math.PI / 2 }[side] + rng.range(-0.2, 0.2);
+    const [x, z] = side === 'n' ? [t, -HALF_H - d] : side === 's' ? [t, HALF_H + d] : side === 'w' ? [-HALF_W - d, t] : [HALF_W + d, t];
+    put(`${id}#${side}`, uni(x, -0.4, z, out, s));
   };
   for (let row = 0; row < 2; row++) {
-    const d = row === 0 ? 1.8 : 4.2;
-    const h = row === 0 ? 4.6 : 7.5;
     const off = row === 0 ? 0 : 1.6;
     for (let t = -HALF_W - 4 + off; t <= HALF_W + 4; t += 3.2) {
-      edge('n', t, -HALF_H - d, 0, h);
-      edge('s', t, HALF_H + d, Math.PI, h);
-      edge('w', -HALF_W - d, t, Math.PI / 2, h);
-      edge('e', HALF_W + d, t, -Math.PI / 2, h);
+      edge('n', t, row);
+      edge('s', t, row);
+      edge('w', t, row);
+      edge('e', t, row);
     }
   }
 }
@@ -492,6 +596,8 @@ const _q = new Quaternion();
 const _p = new Vector3();
 const _s = new Vector3();
 const _up = new Vector3(0, 1, 0);
+const _qx = new Quaternion();
+const _xAxis = new Vector3(1, 0, 0);
 
 export async function buildRealProps(map: MapData, manifest: PropsManifest, renderer: WebGLRenderer): Promise<RealProps> {
   const loader = new GLTFLoader();
@@ -533,6 +639,7 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
       const im = new InstancedMesh(part.geo, part.mat, list.length);
       list.forEach((pl, i) => {
         _q.setFromAxisAngle(_up, pl.ry);
+        if (pl.rx) _q.multiply(_qx.setFromAxisAngle(_xAxis, pl.rx));
         _m.compose(_p.set(pl.x, pl.y, pl.z), _q, _s.set(pl.sx, pl.sy, pl.sz)).multiply(part.local);
         im.setMatrixAt(i, _m);
       });

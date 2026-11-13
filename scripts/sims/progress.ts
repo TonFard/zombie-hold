@@ -1,4 +1,4 @@
-// 长线成长模拟：npm run sim:progress [-- --runs 60 --seed 1]
+// 长线成长模拟：npm run sim:progress [-- --runs 60 --seed 1 --seeds 3]
 // 机器人连续打很多局，每局结束按真实规则结算勋章 / 补给 / 熟练度，再在大厅里花掉，
 // 用来回答：每局能拿多少、每把枪要练几局、带哪把枪收益最高、整张表买满要多久。
 import { CARD_BY_ID } from '../../src/game/data/cards';
@@ -18,6 +18,8 @@ const arg = (k: string, d: number): number => {
 };
 const RUNS = arg('runs', 40);
 const SEED = arg('seed', 1);
+/** 连打几个种子（SEED、SEED+1…）：断言看它们的中位数 */
+const SEEDS = Math.max(1, arg('seeds', 3));
 /**
  * 机器人瞄胸口、不会爆头，人会。熟练度按「击杀 + 爆头击杀」算，普通玩家大约 15% 的击杀是爆头，
  * 这里把机器人的击杀 ×1.15 当成人类玩家的经验（勋章也按 15% 爆头补上）
@@ -217,20 +219,28 @@ function shop(m: MetaState): [MetaState, string[]] {
   return [m, bought];
 }
 
-console.log(`\n== 长线成长：${RUNS} 局（普通难度第一章，机器人 + 15% 爆头）==`);
-let meta = newMeta();
-const logs: RunLog[] = [];
-const t0 = Date.now();
-for (let i = 1; i <= RUNS; i++) {
-  const { outcome, main } = playRun(meta, SEED * 1000 + i);
-  const medals = medalsFor(outcome).total;
-  const supplies = suppliesFor(outcome);
-  [meta] = settleRun(meta, outcome);
-  let bought: string[];
-  [meta, bought] = shop(meta);
-  logs.push({ i, nights: outcome.nights, won: outcome.won, kills: outcome.kills, main, wk: outcome.weaponKills as Record<WeaponKind, number>, medals, supplies, bought });
+/** 连打 RUNS 局：每局结束按真实规则结算，再去大厅花掉 */
+function series(seed: number): { logs: RunLog[]; meta: MetaState } {
+  let meta = newMeta();
+  const logs: RunLog[] = [];
+  for (let i = 1; i <= RUNS; i++) {
+    const { outcome, main } = playRun(meta, seed * 1000 + i);
+    const medals = medalsFor(outcome).total;
+    const supplies = suppliesFor(outcome);
+    [meta] = settleRun(meta, outcome);
+    let bought: string[];
+    [meta, bought] = shop(meta);
+    logs.push({ i, nights: outcome.nights, won: outcome.won, kills: outcome.kills, main, wk: outcome.weaponKills as Record<WeaponKind, number>, medals, supplies, bought });
+  }
+  return { logs, meta };
 }
-const short = (k: WeaponKind) => WEAPONS[k].name.replace(/^.*?(手枪|冲锋枪|霰弹枪|突击步枪|狙击步枪|轻机枪|榴弹发射器)$/, '$1');
+
+console.log(`\n== 长线成长：${RUNS} 局（普通难度第一章，机器人 + 15% 爆头）==`);
+const t0 = Date.now();
+// 第一个种子打印完整的表；其余种子只用来给「练了几局」取中位数
+const all = Array.from({ length: SEEDS }, (_, n) => series(SEED + n));
+const { logs, meta } = all[0] as { logs: RunLog[]; meta: MetaState };
+const short = (k: WeaponKind) => WEAPONS[k].name.replace(/^.*?(手枪|冲锋枪|霰弹枪|突击步枪|狙击步枪|轻机枪)$/, '$1');
 console.log('  局  夜 通关 击杀  主武器    本局武器击杀              勋章 补给  熟练度（手/冲/霰/步/狙/机/榴）  买了');
 let m2 = newMeta();
 for (const l of logs) {
@@ -245,24 +255,45 @@ for (const l of logs) {
 console.log(`  （模拟用时 ${((Date.now() - t0) / 1000).toFixed(0)} 秒）`);
 
 console.log('\n== 每把枪练到精通用了几局 ==');
-const firstAt = (k: WeaponKind, lv: number): number | null => {
+const firstAt = (k: WeaponKind, lv: number, ls: RunLog[] = logs): number | null => {
   let acc = newMeta();
-  for (const l of logs) {
+  for (const l of ls) {
     const [mm] = settleRun(acc, { difficulty: 'normal', nights: l.nights, won: l.won, kills: l.kills, headshotKills: 0, weaponKills: l.wk, weaponHeads: Object.fromEntries(WEAPON_ORDER.map((x) => [x, Math.round(l.wk[x] * HUMAN_HS)])) });
     acc = { ...acc, mastery: mm.mastery };
     if (masteryLevel(k, acc.mastery[k] ?? 0) >= lv) return l.i;
   }
   return null;
 };
-const startedAt = (k: WeaponKind): number | null => logs.find((l) => l.wk[k] > 0)?.i ?? null;
+const startedAt = (k: WeaponKind, ls: RunLog[] = logs): number | null => ls.find((l) => l.wk[k] > 0)?.i ?? null;
+const spanOf = (k: WeaponKind, ls: RunLog[]): number | undefined => {
+  const s = startedAt(k, ls);
+  const e = firstAt(k, MASTERY_MAX, ls);
+  return s && e ? e - s + 1 : undefined;
+};
+const median = (a: number[]): number => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)] as number;
+/**
+ * 判定用几个种子的中位数：机器人一局撑 2 夜还是 4 夜，武器击杀差 5 倍，单看一个种子「练了几局」上下能差 2 局
+ * （同一套数值，种子 1–5 的冲锋枪是 8 / 5 / 6 / 7 / 5 局，霰弹枪 7 / 9 / 5 / 7 / 8 局）
+ */
 const spans: Partial<Record<WeaponKind, number>> = {};
+for (const k of WEAPON_ORDER) {
+  const v = all.map((r) => spanOf(k, r.logs)).filter((x): x is number => x !== undefined);
+  // 多数种子都练到精通了才算数
+  if (v.length * 2 > all.length) spans[k] = median(v);
+}
 for (const k of WEAPON_ORDER) {
   const s = startedAt(k);
   const e = firstAt(k, MASTERY_MAX);
-  if (s && e) spans[k] = e - s + 1;
   const perRun = logs.filter((l) => l.main === k && l.wk[k] > 0).map((l) => l.wk[k] * (1 + HUMAN_HS));
   const avg = perRun.length ? perRun.reduce((a, b) => a + b, 0) / perRun.length : 0;
   console.log(`  ${WEAPONS[k].name.padEnd(8, '　')} 开始用：第 ${s ?? '—'} 局，精通：第 ${e ?? '—'} 局${s && e ? `（练了 ${e - s + 1} 局）` : ''}，当主武器时每局约 ${avg.toFixed(0)} 经验，精通要 ${MASTERY_XP[k][MASTERY_MAX - 1]}`);
+}
+
+if (all.length > 1) {
+  const row = (f: (k: WeaponKind) => number | undefined): string => WEAPON_ORDER.map((k) => [k, f(k)] as const).filter(([, v]) => v !== undefined).map(([k, v]) => `${short(k)} ${v}`).join('、');
+  console.log(`\n== 换种子重打：开始用到精通用了几局（判定取 ${all.length} 个种子的中位数）==`);
+  all.forEach((r, n) => console.log(`  种子 ${SEED + n}：${row((k) => spanOf(k, r.logs))}`));
+  console.log(`  中位数：${row((k) => spans[k])}`);
 }
 
 console.log('\n== 带什么枪收益最高（同一套局外加成，每把枪各打 3 局，取平均）==');
@@ -295,10 +326,13 @@ console.log('\n== 总结 ==');
   console.log(`  ${RUNS} 局累计勋章 ${earned}（每局约 ${avgMedals.toFixed(0)}），军衔 ${RANKS[rankOf(earned)]?.name}，整张表 ${total}，按这个速度约 ${(total / avgMedals).toFixed(0)} 局买满`);
   console.log(`  最远：第 ${Math.max(...logs.map((l) => l.nights))} 夜，通关 ${logs.filter((l) => l.won).length} 次`);
   console.log(`  熟练度：${WEAPON_ORDER.map((k) => `${WEAPONS[k].name} ${masteryOf(meta, k)}`).join('，')}`);
-  const pistolEnd = firstAt('pistol', MASTERY_MAX);
-  const smgStart = startedAt('smg');
-  check(pistolEnd !== null && pistolEnd >= 4 && pistolEnd <= 6, `手枪要打 4–6 局才精通（第 ${pistolEnd} 局）`);
-  check(smgStart === null || (pistolEnd !== null && smgStart > pistolEnd), `手枪精通之前用不上冲锋枪（冲锋枪第 ${smgStart ?? '—'} 局开始用）`);
+  const ends = all.map((r) => firstAt('pistol', MASTERY_MAX, r.logs));
+  const starts = all.map((r) => startedAt('smg', r.logs));
+  const pistolEnd = ends.every((e) => e !== null) ? median(ends as number[]) : null;
+  check(pistolEnd !== null && pistolEnd >= 4 && pistolEnd <= 6, `手枪要打 4–6 局才精通（第 ${pistolEnd ?? '—'} 局）`);
+  // 这条每个种子都得成立
+  const early = starts.some((st, n) => st !== null && (ends[n] === null || st <= (ends[n] as number)));
+  check(!early, `手枪精通之前用不上冲锋枪（冲锋枪第 ${starts.map((st) => st ?? '—').join(' / ')} 局开始用）`);
   const s = spans.smg;
   check(s === undefined || (s >= 3 && s <= 7), `冲锋枪从开始用到精通 3–7 局（${s ?? '没练到'}）`);
   // M16：每把练到了的枪，从开始用到精通都在 3–8 局（霰弹枪以前要 12 局）

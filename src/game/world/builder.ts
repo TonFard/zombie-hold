@@ -1,5 +1,5 @@
 import type { Rng } from '../core/rng';
-import { GRID_H, GRID_W, Grid } from './grid';
+import { GRID_H, GRID_W, Grid, SANDBAG_HALF, SLAB_HALF } from './grid';
 import type { Prop, PropKind, Side, WallStyle } from './types';
 
 /** 地图搭建工具：往网格上放道具（同时写入碰撞、子弹遮挡高度），以及一圈带门洞的墙 */
@@ -52,7 +52,21 @@ const POST_RADIUS: Partial<Record<PropKind, number>> = {
   lamp: 0.11,
   pillar: 0.2,
   barrel: 0.34,
+  // 断墙块：0.94 × 0.4 米、朝向随机，按外接圆算，不占满整格的四个角
+  chunk: 0.5,
 };
+
+/**
+ * 车的模型伸出格子多少（米）：[沿车长, 沿车宽]，按 variant（渲染层按它选模型：0 轿车、1 轿车（开着门）、2 撞毁的车、3 皮卡）。
+ * 车按真实长度摆（轿车 4.6 米、皮卡 5.3 米），比 4 格长；车宽算上开着的车门、后视镜。
+ * 在游戏里量的（.logs/clip，0.15–1.7 米高的顶点），取比最外沿略小的值：门板很薄，蹭到一点看不出来
+ */
+export const CAR_PAD: ReadonlyArray<readonly [number, number]> = [
+  [0.28, 0.34],
+  [0.15, 0.5],
+  [0.15, 0.42],
+  [0.6, 0.22],
+];
 
 /** [a,b) 去掉门洞之后剩下的段 */
 export function segments(a: number, b: number, gaps: Array<[number, number]>): Array<[number, number]> {
@@ -125,12 +139,25 @@ export class MapBuilder {
       this.markSolid(x0, y0, x1, y1);
       // 子弹 / 视线用的障碍高度，和渲染出来的模型高度一致
       const h = p.h ?? PROP_HEIGHT[kind] ?? 2.4;
-      const post = POST_RADIUS[kind] ?? 0;
+      // 树干粗细跟着树高走（模型按高度等比缩放）：矮树 0.2 米、最高的 0.42 米
+      const post = kind === 'tree' ? Math.min(0.42, Math.max(0.2, 0.083 * (p.h ?? 3))) : (POST_RADIUS[kind] ?? 0);
+      // 栅栏：只有中间一道薄墙挡人，不是整格
+      // 单排沙袋（1 格厚）同理：模型只有 0.6 米厚
+      const thin = kind === 'fence' ? SLAB_HALF : kind === 'sandbag' && Math.min(x1 - x0, y1 - y0) === 1 ? SANDBAG_HALF : 0;
+      const slab = thin === 0 ? 0 : (p.side ? p.side === 'N' || p.side === 'S' : x1 - x0 >= y1 - y0) ? 1 : 2;
+      const carPad = kind === 'car' ? CAR_PAD[p.variant % CAR_PAD.length] : undefined;
+      const long = x1 - x0 >= y1 - y0;
       for (let y = y0; y < y1; y++) {
         for (let x = x0; x < x1; x++) {
           const i = this.grid.idx(x, y);
           this.grid.height[i] = Math.max(this.grid.height[i] as number, h);
           this.grid.post[i] = post;
+          this.grid.slab[i] = slab;
+          this.grid.slabHalf[i] = thin;
+          if (carPad) {
+            this.grid.padX[i] = long ? carPad[0] : carPad[1];
+            this.grid.padZ[i] = long ? carPad[1] : carPad[0];
+          }
         }
       }
     }

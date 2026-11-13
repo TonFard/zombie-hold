@@ -1,5 +1,4 @@
 import { Euler, Group, Matrix3, Matrix4, Object3D, Quaternion, TextureLoader, Vector3 } from 'three';
-import type { WeaponKind } from '../../game/data/weapons';
 import { compileClip, CONSTRAINT, Pose, Track, type CompiledClip, type PlayMode, type Runner, type SfxFn } from './anim';
 import { TaczModel } from './model';
 import type { GunJson, TaczManifest } from './types';
@@ -528,8 +527,10 @@ export class TaczRig {
    * 手臂占位方块（lefthand_pos / righthand_pos，4×12×4 像素）两端在视角相机空间的位置：
    * hand = 手掌那头（方块 y 最小的一端），elbow = 另一头。视角模型用它们驱动程序手臂的 IK，
    * 方块本身不画（原版是 MC 的方块手臂，和写实场景不搭）。
+   * palm（可选）：方块贴着枪的那一面的朝向（方块自己的 -Z）。TACZ 的动画都把枪放在 MC 手臂的正面上，
+   * 程序手套的掌心朝这边，手指才会包住握把 / 护木，而不是手背对着枪
    */
-  handEnds(left: boolean, hand: Vector3, elbow: Vector3): boolean {
+  handEnds(left: boolean, hand: Vector3, elbow: Vector3, palm?: Vector3): boolean {
     const o = this.obj(left ? 'lefthand_pos' : 'righthand_pos');
     const mesh = o?.children[0] as import('three').Mesh | undefined;
     if (!o || !mesh) return false;
@@ -542,6 +543,7 @@ export class TaczRig {
     // 手掌那头往里收 2 像素：握点在手掌中间，不在方块顶端
     hand.set(cx, b.min.y + 2 / 16, cz).applyMatrix4(mesh.matrixWorld);
     elbow.set(cx, b.max.y, cz).applyMatrix4(mesh.matrixWorld);
+    palm?.set(0, 0, -1).transformDirection(mesh.matrixWorld);
     return true;
   }
 
@@ -557,11 +559,11 @@ export class TaczRig {
 }
 
 /**
- * 读 public/tacz/manifest.json（npm run tacz:import 生成）。
+ * 读 public/tacz/manifest.json（npm run tacz:import 生成），返回「型号 id → 目录」。
  * 配置里 enabled=false 时不启用；URL 加 ?tacz=1 强制启用、?tacz=0 强制关闭，方便预览。
  * 没导入过（文件不存在）就当作没有 TACZ 枪。
  */
-export async function loadTaczManifest(): Promise<Partial<Record<WeaponKind, string>>> {
+export async function loadTaczManifest(): Promise<Record<string, string>> {
   const q = new URLSearchParams(window.location.search).get('tacz');
   if (q === '0') return {};
   let m: TaczManifest;
@@ -573,8 +575,8 @@ export async function loadTaczManifest(): Promise<Partial<Record<WeaponKind, str
     return {};
   }
   if (!m.enabled && q !== '1') return {};
-  const out: Partial<Record<WeaponKind, string>> = {};
-  for (const [kind, w] of Object.entries(m.weapons)) out[kind as WeaponKind] = w.dir;
+  const out: Record<string, string> = {};
+  for (const [id, w] of Object.entries(m.weapons)) out[id] = w.dir;
   return out;
 }
 

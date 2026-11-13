@@ -182,6 +182,30 @@
     "electric_stove": {
       "file": "electric_stove/electric_stove.gltf",
       "tris": 3785
+    },
+    "bench_vice_01": {
+      "file": "bench_vice_01/bench_vice_01.gltf",
+      "tris": 2864
+    },
+    "service_pistol": {
+      "file": "service_pistol/service_pistol.gltf",
+      "tris": 8138
+    },
+    "ammo_box": {
+      "file": "ammo_box/ammo_box.gltf",
+      "tris": 4382
+    },
+    "metal_toolbox": {
+      "file": "metal_toolbox/metal_toolbox.gltf",
+      "tris": 4440
+    },
+    "metal_tool_chest": {
+      "file": "metal_tool_chest/metal_tool_chest.gltf",
+      "tris": 5994
+    },
+    "desk_lamp_arm_01": {
+      "file": "desk_lamp_arm_01/desk_lamp_arm_01.gltf",
+      "tris": 4998
     }
   },
   "textures": {
@@ -565,6 +589,42 @@
       "author": "Poly Haven",
       "license": "CC0",
       "url": "https://polyhaven.com/a/dikhololo_night"
+    },
+    "bench_vice_01": {
+      "name": "Bench Vice 01",
+      "author": "Yann Kervran, Antanas Kep",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bench_vice_01"
+    },
+    "service_pistol": {
+      "name": "Service Pistol",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/service_pistol"
+    },
+    "ammo_box": {
+      "name": "Ammo Box",
+      "author": "DanKit",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/ammo_box"
+    },
+    "metal_toolbox": {
+      "name": "Metal Toolbox",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_toolbox"
+    },
+    "metal_tool_chest": {
+      "name": "Metal Tool Chest",
+      "author": "Yann Kervran, John Hutcheson",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_tool_chest"
+    },
+    "desk_lamp_arm_01": {
+      "name": "Desk Lamp Arm 01",
+      "author": "Yann Kervran, Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/desk_lamp_arm_01"
     }
   }
 }

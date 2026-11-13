@@ -1,4 +1,5 @@
 import type { Difficulty } from './data/difficulty';
+import { GUNS, defaultGuns } from './data/guns';
 import { STRUCTURE_ORDER, type StructureKind } from './data/structures';
 import { MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind, type WeaponMod } from './data/weapons';
 import type { MapId } from './world/maps';
@@ -48,10 +49,12 @@ export interface RunConfig {
   ammo: boolean;
   /** 大厅工作台给每把枪的强化 */
   weaponMods: Record<WeaponKind, WeaponMod>;
-  /** 双持手枪 */
-  dual: boolean;
   /** 每把枪的星级 0–3（熟练度精通后继续累计；出征时冻结，见 data/stars.ts） */
   stars: Record<WeaponKind, number>;
+  /** 每一类枪用哪个型号（data/guns.ts）。空投里的试用枪会在局内换掉它 */
+  guns: Record<WeaponKind, string>;
+  /** 还没解锁的型号：空投的武器箱从里面抽一把给这一局试用 */
+  trialGuns: string[];
 }
 
 export interface MetaApplied {
@@ -93,8 +96,9 @@ export function sandboxConfig(): RunConfig {
     chapter: 'outpost',
     ammo: false,
     weaponMods: noMods(),
-    dual: false,
     // 字段顺序要和 configFor 一致：检查点按模板重建 config，顺序不同的话 JSON 逐字比较会对不上
-    stars: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0, launcher: 0 },
+    stars: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
+    guns: defaultGuns(),
+    trialGuns: GUNS.filter((g) => g.medals > 0).map((g) => g.id),
   };
 }

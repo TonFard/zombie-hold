@@ -120,6 +120,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
         <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ Math.max(1, Math.round(hud.healPop.n)) }}<small>回血</small></span>
       </div>
       <div class="hp">
+        <div class="lost" :style="{ width: hpPct + '%' }"></div>
         <div class="fill" :style="{ width: hpPct + '%' }"></div>
         <div class="ticks"></div>
       </div>
@@ -132,7 +133,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
         <div class="pips">
           <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
         </div>
-        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ hud.weaponName }}<small v-if="hud.dual"> ×2</small><small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
+        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ hud.weaponName }}<small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
       </div>
       <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
         <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
@@ -159,9 +160,9 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
     <!-- 受击方向：屏幕边缘的红色弧线指向打你的僵尸 -->
     <div v-for="(m, i) in hud.hurtMarks" :key="i" class="hurtdir" :style="{ transform: `translate(-50%, -50%) rotate(${m.a}rad)`, opacity: Math.min(1, m.life * 1.3) }"></div>
 
-    <!-- 命中 / 击杀标记 -->
-    <div v-if="hud.alive && (hud.hit > 0.02 || hud.kill > 0.02)" class="hitm" :class="{ crit: hud.hitCrit, head: hud.hitHead, kill: hud.kill > 0.02 }" :style="{ opacity: Math.max(hud.hit, hud.kill) }">
-      <i v-for="n in 4" :key="n" :style="{ transform: `rotate(${45 + (n - 1) * 90}deg) translateY(${hud.kill > 0.02 ? -15 : -12}px)` }"></i>
+    <!-- 命中 / 击杀标记：白 = 命中，橙 = 暴击，金 = 爆头；红 = 击杀，金叉 + 红光 = 爆头击杀 -->
+    <div v-if="hud.alive && (hud.hit > 0.02 || hud.kill > 0.02)" class="hitm" :class="{ crit: hud.hitCrit, head: hud.hitHead, kill: hud.kill > 0.02, khead: hud.kill > 0.02 && hud.killHead }" :style="{ opacity: Math.max(hud.hit, hud.kill) }">
+      <i v-for="n in 4" :key="n" :style="{ transform: `rotate(${45 + (n - 1) * 90}deg) translateY(${hud.kill > 0.02 ? (hud.killHead ? -15 - 5 * hud.kill : -15) : hud.hitHead ? -13 : -12}px)` }"></i>
     </div>
 
     <!-- 准星：固定在屏幕中心；建造模式下按能不能放置变色 -->
@@ -650,9 +651,20 @@ kbd {
   clip-path: polygon(5px 0, 100% 0, calc(100% - 5px) 100%, 0 100%);
 }
 .hp .fill {
+  position: relative;
   height: 100%;
   background: linear-gradient(90deg, #c9d3d8, #ffffff);
   transition: width 0.12s linear;
+}
+/* 刚掉的血：垫在血条下面，先停 0.35 秒再慢慢缩回来；回血时血条比它长，看不见 */
+.hp .lost {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: #ff5a3c;
+  opacity: 0.85;
+  transition: width 0.5s ease-out 0.35s;
 }
 .bl.low .hp .fill {
   background: linear-gradient(90deg, #a01010, #ff4a32);
@@ -901,10 +913,14 @@ kbd {
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 .hitm.crit i {
-  background: #ffd04a;
+  background: #ff9c3a;
 }
 .hitm.head i {
-  background: #ffcf3a;
+  background: #ffd84a;
+  width: 3px;
+  height: 11px;
+  left: -1.5px;
+  top: -5.5px;
   box-shadow: 0 0 6px rgba(255, 190, 40, 0.9);
 }
 .hitm.kill i {
@@ -914,6 +930,15 @@ kbd {
   left: -1.5px;
   top: -6px;
   box-shadow: 0 0 6px rgba(255, 40, 20, 0.7);
+}
+/* 爆头击杀：金色的粗叉，外面一圈红光，四条杠往外弹开再收回来 */
+.hitm.khead i {
+  background: #ffd84a;
+  width: 4px;
+  height: 15px;
+  left: -2px;
+  top: -7.5px;
+  box-shadow: 0 0 0 1px rgba(90, 10, 0, 0.85), 0 0 9px 1px rgba(255, 60, 20, 0.95);
 }
 .adsdot {
   position: fixed;

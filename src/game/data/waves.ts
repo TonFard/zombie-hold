@@ -44,14 +44,31 @@ export interface Boss {
   kind: ZombieKind;
   hpScale: number;
   escorts: number;
+  /** 护卫轮流出这两种 */
+  escort: [ZombieKind, ZombieKind];
   title: string;
 }
 
-/** 第 5、10 夜有首领；无尽模式里每 5 夜一个，越来越硬 */
-export function bossFor(n: number): Boss | null {
-  if (n === 5) return { kind: 'colossus', hpScale: 1, escorts: 4, title: '巨像·初代' };
-  if (n === 10) return { kind: 'colossus', hpScale: 6500 / 2400, escorts: 8, title: '巨像·终焉' };
-  if (n > 10 && n % 5 === 0) return { kind: 'colossus', hpScale: (6500 / 2400) * (1 + 0.35 * ((n - 10) / 5)), escorts: Math.min(16, 8 + (n - 10) / 5 * 2), title: `巨像·第 ${n} 夜` };
+/** 每张地图的首领和它的护卫（顺序 = 战役顺序，无尽模式从本章开始轮换） */
+export const MAP_BOSSES: Array<{ map: string; kind: ZombieKind; name: string; escort: [ZombieKind, ZombieKind] }> = [
+  { map: 'outpost', kind: 'colossus', name: '巨像', escort: ['breaker', 'bloater'] },
+  { map: 'farmland', kind: 'reaper', name: '收割者', escort: ['runner', 'leaper'] },
+  { map: 'lakeside', kind: 'brood', name: '母巢', escort: ['bloater', 'spitter'] },
+  { map: 'city', kind: 'siren', name: '哀嚎女王', escort: ['screamer', 'armored'] },
+];
+
+/** 第 5、10 夜有首领（哪一个看地图）；无尽模式里每 5 夜一个，四个首领轮着来，越来越硬 */
+export function bossFor(n: number, map = 'outpost'): Boss | null {
+  const at = Math.max(0, MAP_BOSSES.findIndex((b) => b.map === map));
+  if (n === 5 || n === 10) {
+    const b = MAP_BOSSES[at]!;
+    return n === 5 ? { kind: b.kind, hpScale: 1, escorts: 4, escort: b.escort, title: `${b.name}·初现` } : { kind: b.kind, hpScale: 6500 / 2400, escorts: 8, escort: b.escort, title: `${b.name}·终焉` };
+  }
+  if (n > 10 && n % 5 === 0) {
+    const k = (n - 10) / 5;
+    const b = MAP_BOSSES[(at + k) % MAP_BOSSES.length]!;
+    return { kind: b.kind, hpScale: (6500 / 2400) * (1 + 0.35 * k), escorts: Math.min(16, 8 + k * 2), escort: b.escort, title: `${b.name}·第 ${n} 夜` };
+  }
   return null;
 }
 

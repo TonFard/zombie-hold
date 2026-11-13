@@ -3,7 +3,7 @@ import { CHAPTER_BY_ID } from '../data/chapters';
 import { DIFFICULTIES } from '../data/difficulty';
 import { nightMod } from '../data/modifiers';
 import { WEAPONS, statsAt, type WeaponKind, type WeaponStats } from '../data/weapons';
-import { DUAL, weightOf } from '../data/weapons';
+import { weightOf } from '../data/weapons';
 import { defaultMods, type Game, type Mods } from '../sim';
 
 /**
@@ -15,7 +15,7 @@ import { defaultMods, type Game, type Mods } from '../sim';
  * 这样卡牌表以后怎么改都不用同步这里；sim:stats 检查"各来源乘起来 = 游戏里实际的 g.mods"，对不上就失败。
  */
 
-export type SourceKind = 'base' | 'meta' | 'card' | 'difficulty' | 'chapter' | 'mod' | 'bench' | 'weight' | 'dual' | 'tier';
+export type SourceKind = 'base' | 'meta' | 'card' | 'difficulty' | 'chapter' | 'mod' | 'bench' | 'weight' | 'tier';
 
 export interface Part {
   kind: SourceKind;
@@ -175,7 +175,6 @@ export interface WeaponLine {
 export function weaponBreakdown(g: Game, kind: WeaponKind, tier: number): WeaponLine[] {
   const c = g.config;
   const wm = c.weaponMods[kind];
-  const dual = c.dual && kind === 'pistol';
   const b0: WeaponStats = statsAt(kind, 0);
   const bt: WeaponStats = statsAt(kind, tier);
   const mods = liveBreakdown(g);
@@ -196,19 +195,16 @@ export function weaponBreakdown(g: Game, kind: WeaponKind, tier: number): Weapon
   line('rate', '射速', b0.rate * 60, 'RPM', 0, true, [
     ['tier', `工坊 ${tier + 1} 级`, bt.rate / b0.rate],
     ['bench', '武器台·枪机', wm.rate],
-    ['dual', '双持', dual ? DUAL.rate : 1],
     ...((rate?.parts ?? []).map((p) => [p.kind, p.name, p.value]) as Array<[SourceKind, string, number]>),
   ]);
   line('mag', '弹匣', b0.mag, '发', 0, true, [
     ['tier', `工坊 ${tier + 1} 级`, bt.mag / b0.mag],
     ['bench', '武器台·扩容', Math.max(1, Math.round(bt.mag * wm.mag)) / bt.mag],
-    ['dual', '双持', dual ? DUAL.mag : 1],
   ]);
   const rl = modOf('reload');
   // 换弹速度倍率越大越快：换弹时间 = 基础 ÷ 倍率
   line('reload', '换弹', b0.reload, '秒', 2, false, [
     ['tier', `工坊 ${tier + 1} 级`, bt.reload / b0.reload],
-    ['dual', '双持', dual ? DUAL.reload : 1],
     ...((rl?.parts ?? []).map((p) => [p.kind, p.name, 1 / p.value]) as Array<[SourceKind, string, number]>),
   ]);
   const def = WEAPONS[kind];
@@ -218,17 +214,15 @@ export function weaponBreakdown(g: Game, kind: WeaponKind, tier: number): Weapon
     base: def.weight,
     parts: [
       ...(wm.lighter > 0 ? [{ kind: 'bench' as const, name: '武器台·轻量化', value: weightOf(kind, wm) / def.weight }] : []),
-      ...(dual ? [{ kind: 'dual' as const, name: '双持', value: DUAL.weight }] : []),
     ],
     // 这把枪自己的重量（不是手上那把：背着的枪也要显示它自己的）
-    final: weightOf(kind, wm, c.dual),
+    final: weightOf(kind, wm, g.gunOf(kind)),
     higherBetter: false,
     unit: 'kg',
     digits: 1,
   });
   line('recoil', '后坐', def.recoil.v, '°', 2, false, [
     ['bench', '武器台·制退器', wm.recoil],
-    ['dual', '双持', dual ? DUAL.recoil : 1],
   ]);
   return out;
 }

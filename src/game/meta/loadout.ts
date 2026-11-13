@@ -7,6 +7,7 @@ import { AMMO_LIMITED, MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind } from '.
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { benchMods } from '../data/bench';
 import { starLevels } from '../data/stars';
+import { defaultGuns } from '../data/guns';
 import type { MapId } from '../world/maps';
 import type { Game } from '../sim';
 
@@ -23,10 +24,13 @@ export interface Deploy {
   mastery?: Partial<Record<WeaponKind, number>>;
   /** 带进这一局的子弹（库存整份带上） */
   ammo?: Partial<Record<WeaponKind, number>>;
+  /** 每一类用的型号（progress.gunsFor）和还没解锁、可以在空投里试用的型号；缺省默认型号、没有试用 */
+  guns?: Record<WeaponKind, string>;
+  trialGuns?: string[];
 }
 
 /** 按局外加成和难度生成这一局的规则 */
-export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpost', bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}): RunConfig {
+export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpost', bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}, guns: Record<WeaponKind, string> = defaultGuns(), trialGuns: string[] = []): RunConfig {
   const def = DIFFICULTIES[d];
   const ch = CHAPTER_BY_ID[chapter];
   return {
@@ -49,8 +53,9 @@ export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpo
     chapter,
     ammo: AMMO_LIMITED,
     weaponMods: benchMods(bench),
-    dual: b.dual,
     stars: starLevels(mastery),
+    guns: { ...guns },
+    trialGuns: [...trialGuns],
   };
 }
 
@@ -59,7 +64,7 @@ export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpo
  * 开局零件在这里加，startRun 再加上固定的 START_SCRAP。
  */
 export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
-  g.config = configFor(b, dep.difficulty, dep.chapter, dep.bench, dep.mastery);
+  g.config = configFor(b, dep.difficulty, dep.chapter, dep.bench, dep.mastery, dep.guns, dep.trialGuns);
   for (const k of WEAPON_ORDER) if (k !== 'pistol') g.ammo[k] = Math.max(0, Math.floor(dep.ammo?.[k] ?? 0));
   g.mods.turret *= b.turretDamage;
   g.mods.structHp *= b.structHp;
@@ -159,10 +164,10 @@ export function sidearmOk(b: MetaBonuses, k: string | null): k is WeaponKind {
   return !!k && b.sidearm && k !== 'pistol' && b.weapons.has(k as WeaponKind);
 }
 
-/** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限 */
-export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}): void {
+/** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限；型号用大厅里选的 */
+export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, number> = {}, mastery: Partial<Record<WeaponKind, number>> = {}, guns: Record<WeaponKind, string> = defaultGuns()): void {
   // 训练场：子弹无限，工作台强化照样生效（试枪用）
-  g.config = { ...configFor(b, 'normal', 'outpost', bench, mastery), training: true, ammo: false };
+  g.config = { ...configFor(b, 'normal', 'outpost', bench, mastery, guns), training: true, ammo: false };
   for (const k of WEAPON_ORDER) {
     if (!b.weapons.has(k)) continue;
     const slot = g.loadout[k];
@@ -180,7 +185,7 @@ export function applyTraining(g: Game, b: MetaBonuses, bench: Record<string, num
  */
 export function applyDaily(g: Game, d: Daily): void {
   const base = configFor(baseBonuses(), 'normal');
-  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4, ammo: false, weaponMods: noMods(), dual: false, stars: starLevels({}) };
+  g.config = { ...base, weapons: [d.weapon], endless: false, fixedMod: d.mod, daily: d.key, turretCap: 4, ammo: false, weaponMods: noMods(), stars: starLevels({}) };
   if (d.weapon !== 'pistol') {
     const slot = g.loadout[d.weapon];
     slot.owned = true;

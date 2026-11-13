@@ -6,7 +6,7 @@ import { ui } from '../store';
 const barColor = (f: number) => (f > 0.6 ? 'var(--hud-ok)' : f > 0.3 ? 'var(--hud-accent)' : 'var(--hud-danger)');
 const PAGES = ['属性', '武器', '战况'];
 /** 来源种类的短标签（不同颜色区分是哪一类加成） */
-const KIND: Record<string, string> = { meta: '局外', card: '卡牌', difficulty: '难度', chapter: '章节', mod: '词缀', bench: '武器台', weight: '重量', dual: '双持', tier: '工坊', base: '' };
+const KIND: Record<string, string> = { meta: '局外', card: '卡牌', difficulty: '难度', chapter: '章节', mod: '词缀', bench: '武器台', weight: '重量', tier: '工坊', base: '' };
 </script>
 
 <template>
@@ -215,8 +215,7 @@ h3 small {
 }
 .lp .weight em,
 .lp .bench em,
-.lp .tier em,
-.lp .dual em {
+.lp .tier em {
   color: #a8b4c0;
 }
 .tab {

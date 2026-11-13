@@ -17,7 +17,7 @@ const outDir = path.resolve('.logs/shots/tacz');
 fs.mkdirSync(outDir, { recursive: true });
 
 const manifest = JSON.parse(fs.readFileSync('public/tacz/manifest.json', 'utf8'));
-const ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg', 'launcher'];
+const ORDER = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg'];
 const kinds = Object.keys(manifest.weapons).filter((k) => !args.only || k === args.only);
 if (!kinds.length) {
   console.error('manifest 里没有可截图的武器，先运行 npm run tacz:import');

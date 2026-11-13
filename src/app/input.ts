@@ -55,7 +55,7 @@ export class InputController {
     // B：切换手雷种类（爆炸 / 燃烧）
     if (e.code === 'KeyB') this.game.hz.useFire = !this.game.hz.useFire;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') g.confirm = true;
-    if (e.code >= 'Digit1' && e.code <= 'Digit7') g.select = Number(e.code.slice(5));
+    if (e.code >= 'Digit1' && e.code <= 'Digit6') g.select = Number(e.code.slice(5));
   };
   private readonly onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
   /** E 键先问应用层要不要处理（例如打开工坊），返回 true 就不再当成修理 */

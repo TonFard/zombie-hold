@@ -64,7 +64,6 @@ try {
       ['shot.smg', (s) => s.shot('smg')],
       ['shot.shotgun', (s) => s.shot('shotgun')],
       ['shot.rifle', (s) => s.shot('rifle')],
-      ['shot.launcher', (s) => s.shot('launcher')],
       ['turretShot', (s) => s.turretShot(4, 0)],
       ['reload.start', (s) => s.reload(true, 'rifle')],
       ['reload.start.shotgun', (s) => s.reload(true, 'shotgun')],
@@ -72,7 +71,13 @@ try {
       ['weaponSwitch', (s) => s.weaponSwitch()],
       ['impact.flesh', (s) => s.impact(3, 0, true)],
       ['impact.wall', (s) => s.impact(3, 0, false)],
+      ['impact.concrete', (s) => s.impact(3, 0, false, 'concrete')],
+      ['impact.wood', (s) => s.impact(3, 0, false, 'wood')],
+      ['impact.dirt', (s) => s.impact(3, 0, false, 'dirt')],
+      ['impact.water', (s) => s.impact(3, 0, false, 'water')],
       ['crit', (s) => s.crit(3, 0)],
+      ['headshot', (s) => s.headshot()],
+      ['headshotKill', (s) => s.headshotKill()],
       ['explosion.big', (s) => s.explosion(5, 0, true)],
       ['explosion.small', (s) => s.explosion(5, 0, false)],
       ['acid', (s) => s.acid(4, 0)],
@@ -118,7 +123,7 @@ try {
     for (const [name, fn] of cases) out.push({ name, ...(await render(fn)) });
 
     // 极端情况：同一瞬间 300 个混合声音，看压缩器和音源上限能不能兜住
-    const kinds = ['pistol', 'smg', 'shotgun', 'rifle', 'launcher'];
+    const kinds = ['pistol', 'smg', 'shotgun', 'rifle', 'lmg'];
     out.push({
       name: 'STRESS.300mixed',
       ...(await render((s, e) => {

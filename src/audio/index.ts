@@ -2,6 +2,7 @@ import { ALIVE_CAP, bossFor } from '../game/data/waves';
 import type { WeaponKind } from '../game/data/weapons';
 import type { Game, GameEvents } from '../game/sim';
 import { HALF_H, HALF_W } from '../game/world/grid';
+import { surfaceAt } from '../game/world/surface';
 import { Ambience } from './ambience';
 import { AudioEngine, type Channel } from './engine';
 import { Sfx } from './sfx';
@@ -9,8 +10,10 @@ import { Sfx } from './sfx';
 export interface AudioSystem {
   engine: AudioEngine;
   sfx: Sfx;
-  /** 某种武器改用采样音效（TACZ 模型）：预加载这些 ogg，并停掉它的合成枪声 / 换弹声 */
-  useSamples(kind: WeaponKind, urls: string[]): void;
+  /** 预加载 TACZ 模型的采样音效（ogg） */
+  useSamples(urls: string[]): void;
+  /** 这一类枪现在是不是用着加载好的 TACZ 模型：是就停掉合成的枪声 / 换弹声（由渲染层接上） */
+  sampledBy: ((kind: WeaponKind) => boolean) | null;
   /** 播放一个采样（玩家自己的声音，不做空间化） */
   sample(url: string, gain: number): void;
   /** 在用户手势里调用：创建 / 恢复 AudioContext 并启动环境声 */
@@ -41,13 +44,14 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   const sx = (cx: number) => cx - HALF_W + 0.5;
   const sz = (cy: number) => cy - HALF_H + 0.5;
 
-  // 用 TACZ 模型的武器：枪声和换弹声由模型的动画音效负责，合成的就不放了
-  const sampled = new Set<WeaponKind>();
+  // 用 TACZ 模型的武器：枪声和换弹声由模型的动画音效负责，合成的就不放了。
+  // 哪一类枪是不是用着 TACZ 模型由渲染层告诉我们（型号在局内会换，换上的模型还没加载好时照样放合成声）
+  const sampled = (kind: WeaponKind): boolean => sys.sampledBy?.(kind) ?? false;
   on('shot', (e) => {
-    if (!sampled.has(e.kind)) sfx.shot(e.kind);
+    if (!sampled(e.kind)) sfx.shot(e.kind);
   });
   on('reload', (e) => {
-    if (!sampled.has(e.kind)) sfx.reload(e.start, e.kind);
+    if (!sampled(e.kind)) sfx.reload(e.start, e.kind);
   });
   on('weaponSwitch', () => sfx.weaponSwitch());
   on('slide', () => sfx.slide());
@@ -56,18 +60,49 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
     if (e.zombie) sfx.melee(true);
   });
   on('refund', () => sfx.refund());
-  on('impact', (e) => sfx.impact(e.x, e.z, e.flesh));
+  on('impact', (e) => sfx.impact(e.x, e.z, e.flesh, e.flesh ? undefined : surfaceAt(game, e.x, e.y, e.z, e.zone === 'ground')));
   on('zombieHit', (e) => {
     if (e.crit) sfx.crit(e.zombie.x, e.zombie.z);
+    // 这一下打死了的话只放击杀的那一声（zombieDied 里）
+    if (e.head && e.mine && e.zombie.hp > 0) sfx.headshot();
   });
   on('explosion', (e) => sfx.explosion(e.x, e.z, e.big));
   on('acid', (e) => sfx.acid(e.x, e.z));
+  // 毒气爆燃的声音来自它的爆炸（explosion 事件）
+  on('gas', (e) => {
+    if (!e.ignite) sfx.acid(e.x, e.z);
+  });
+  on('split', (e) => sfx.acid(e.x, e.z));
+  on('leap', (e) => {
+    if (e.stage === 'windup') sfx.growl(e.zombie.kind, e.zombie.x, e.zombie.z);
+  });
+  // 首领：蓄力时咆哮（听声音也能读招），砸地 / 碎石落地是闷响，钢板掉下来是金属碰撞
+  on('bossSkill', (e) => {
+    const z = game.zombies.find((q) => q.id === e.id);
+    if (!z) return;
+    if (e.stage === 'windup') sfx.growl(z.kind, e.x, e.z);
+    else if (e.stage === 'go' && (e.skill === 'cleave' || e.skill === 'hook')) sfx.melee(false);
+    else if (e.stage === 'hit') sfx.melee(true);
+  });
+  on('bossPhase', (e) => sfx.growl(e.zombie.kind, e.zombie.x, e.zombie.z));
+  on('bossSlam', (e) => sfx.explosion(e.x, e.z, false));
+  on('markHit', (e) => {
+    if (e.kind === 'rock') sfx.explosion(e.x, e.z, false);
+  });
+  on('bossSac', (e) => sfx.acid(e.x, e.z));
+  on('plateBreak', (e) => {
+    sfx.impact(e.zombie.x, e.zombie.z, false, 'metal');
+    sfx.structureBroken(e.zombie.x, e.zombie.z);
+  });
   on('turretShot', (e) => sfx.turretShot(e.x0, e.z0));
   // 一批僵尸同时出生时只有一部分会吼，否则入口处会变成一团噪音
   on('zombieSpawned', (z) => {
-    if (z.kind === 'colossus' || Math.random() > 0.45) sfx.growl(z.kind, z.x, z.z);
+    if (z.def.boss || Math.random() > 0.45) sfx.growl(z.kind, z.x, z.z);
   });
-  on('zombieDied', (e) => sfx.zombieDie(e.zombie.kind, e.zombie.x, e.zombie.z));
+  on('zombieDied', (e) => {
+    sfx.zombieDie(e.zombie.kind, e.zombie.x, e.zombie.z);
+    if (e.head && e.mine) sfx.headshotKill();
+  });
   on('zombieAttack', (e) => sfx.zombieAttack(e.zombie.kind, e.target, e.zombie.x, e.zombie.z));
   on('playerDamaged', (e) => sfx.playerHurt(e.amount));
   on('playerDied', () => sfx.playerDie());
@@ -107,11 +142,11 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   on('runEnded', (e) => (e.won ? sfx.win() : sfx.lose()));
 
   const pending: string[] = [];
-  return {
+  const sys: AudioSystem = {
     engine,
     sfx,
-    useSamples(kind, urls) {
-      sampled.add(kind);
+    sampledBy: null,
+    useSamples(urls) {
       for (const u of urls) {
         if (engine.ready) engine.load(u);
         else pending.push(u);
@@ -151,4 +186,5 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
       engine.dispose();
     },
   };
+  return sys;
 }

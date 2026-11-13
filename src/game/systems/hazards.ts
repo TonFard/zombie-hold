@@ -20,9 +20,10 @@ export type ExplosiveKind = keyof typeof EXPLOSIVE;
 /** 爆炸物对玩家的伤害倍率（站得近也不至于秒死） */
 export const EXPLOSIVE_PLAYER_MULT = 0.35;
 
-/** 火焰地面：每秒伤害；酸池：每秒伤害 */
+/** 火焰地面：每秒伤害；酸池：每秒伤害；毒雾（毒雾者死后留下的，只伤玩家）：每秒伤害 */
 export const FIRE_DPS = 18;
 export const ACID_DPS = 14;
+export const GAS_DPS = 9;
 
 /** 手雷：每个白天补到爆炸 2 颗、燃烧 1 颗；投掷速度、引信、爆炸 / 燃烧 */
 export const GRENADE = { max: 2, fireMax: 1, speed: 14, fuse: 1.6, windup: 0.45, cd: 1.6, frag: { radius: 3.6, damage: 160 }, fire: { radius: 3, damage: 40, burn: 4, dps: 22 } };
@@ -39,7 +40,7 @@ export const SPIT = { speed: 9, pool: 1.3, life: 4, hit: 12 };
 // ---------------------------------------------------------------- 状态
 
 export interface Hazard {
-  kind: 'fire' | 'acid';
+  kind: 'fire' | 'acid' | 'gas';
   x: number;
   z: number;
   r: number;
@@ -79,11 +80,24 @@ export interface Thrown {
   fuse: number;
 }
 
+/** 首领抛出来的东西的落点：地上先画预警圈，t 秒后落下。rock = 碎石（砸人、砸建筑），acid = 酸弹（留酸池） */
+export interface Mark {
+  kind: 'rock' | 'acid';
+  x: number;
+  z: number;
+  r: number;
+  t: number;
+  damage: number;
+}
+
 export interface HazardState {
   hazards: Hazard[];
   explosives: Explosive[];
   spits: Spit[];
   thrown: Thrown[];
+  marks: Mark[];
+  /** 被哀嚎女王的尖啸震住：剩余时间（移动变慢、画面晃） */
+  dazeT: number;
   /** 手雷数量（爆炸 / 燃烧） */
   frags: number;
   fires: number;
@@ -99,8 +113,11 @@ export interface HazardState {
 }
 
 export function newHazards(): HazardState {
-  return { hazards: [], explosives: [], spits: [], thrown: [], frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, shoveCd: 0, throwT: 0, throwCd: 0, pulseCharge: 0, pulseCd: 0 };
+  return { hazards: [], explosives: [], spits: [], thrown: [], marks: [], dazeT: 0, frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, shoveCd: 0, throwT: 0, throwCd: 0, pulseCharge: 0, pulseCd: 0 };
 }
+
+/** 被震慑时玩家的移动速度倍率 */
+export const DAZE_SLOW = 0.55;
 
 const GRAVITY = 9.8;
 
@@ -167,6 +184,7 @@ export function blast(g: Game, x: number, z: number, radius: number, damage: num
   for (const e of g.hz.explosives) {
     if (e.alive && Math.hypot(e.x - x, e.z - z) < radius + 0.6) e.hp = Math.min(e.hp, 0.5);
   }
+  igniteGas(g, x, z, radius * 0.6);
 }
 
 // ---------------------------------------------------------------- 手雷 / 推搡 / 脉冲
@@ -221,7 +239,7 @@ export function shove(g: Game): number {
     const mass = (z.radius / 0.32) ** 2;
     z.kbx += ((dx / (d || 1)) * SHOVE.push) / mass;
     z.kbz += ((dz / (d || 1)) * SHOVE.push) / mass;
-    z.stunT = Math.max(z.stunT, z.kind === 'colossus' ? SHOVE.stun * 0.3 : SHOVE.stun);
+    z.stunT = Math.max(z.stunT, z.def.boss ? SHOVE.stun * 0.3 : SHOVE.stun);
     n++;
   }
   g.events.emit('shove', { hits: n });
@@ -273,6 +291,65 @@ function landSpit(g: Game, s: Spit): void {
   }
 }
 
+// ---------------------------------------------------------------- 首领的抛射
+
+/** 落下：圈里的玩家吃满伤害（预警圈就是躲的提示），建筑吃双倍；酸弹留下酸池 */
+function landMark(g: Game, m: Mark): void {
+  const p = g.player;
+  const d = Math.hypot(p.x - m.x, p.z - m.z);
+  if (p.alive && d < m.r + p.radius) {
+    g.damagePlayer(m.damage * g.config.zombieDamage);
+    if (m.kind === 'rock') {
+      p.vx += ((p.x - m.x) / (d || 1)) * 4;
+      p.vz += ((p.z - m.z) / (d || 1)) * 4;
+    }
+  }
+  for (const s of [...g.structures.values()]) {
+    if (Math.hypot(s.cx - HALF_W + 0.5 - m.x, s.cy - HALF_H + 0.5 - m.z) < m.r + 0.5) g.damageStructure(s.id, m.damage * 2);
+  }
+  if (m.kind === 'acid') {
+    g.hz.hazards.push({ kind: 'acid', x: m.x, z: m.z, r: m.r * 0.85, life: 4 });
+    g.events.emit('acid', { x: m.x, z: m.z, radius: m.r });
+  }
+  g.events.emit('markHit', { kind: m.kind, x: m.x, z: m.z, r: m.r });
+}
+
+// ---------------------------------------------------------------- 毒雾者
+
+/**
+ * 毒雾者死了：平常留下一团毒雾（只伤玩家）。被烧死 / 炸死时毒气爆燃：一圈只伤僵尸的爆炸，地上留一小片火。
+ * 爆燃点着旁边的毒雾者会连锁（blast 内部的击杀又会走到这里）
+ */
+export function gasBurst(g: Game, z: Zombie, ignite: boolean): void {
+  const gas = z.def.gas;
+  if (!gas) return;
+  if (ignite) {
+    g.events.emit('gas', { x: z.x, z: z.z, radius: gas.ignite.r, ignite: true });
+    blast(g, z.x, z.z, gas.ignite.r, gas.ignite.damage, false);
+    g.hz.hazards.push({ kind: 'fire', x: z.x, z: z.z, r: gas.ignite.r * 0.4, life: 3 });
+    return;
+  }
+  g.hz.hazards.push({ kind: 'gas', x: z.x, z: z.z, r: gas.cloud, life: gas.life });
+  g.events.emit('gas', { x: z.x, z: z.z, radius: gas.cloud, ignite: false });
+}
+
+/** 毒雾被点着时爆燃的伤害（只伤僵尸） */
+export const GAS_FLARE = 110;
+
+/** 爆炸 / 地面火碰到毒雾：整团爆燃，变成一小片火 */
+function igniteGas(g: Game, x: number, z: number, r: number): void {
+  const list = g.hz.hazards;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const h = list[i] as Hazard;
+    if (h.kind !== 'gas' || Math.hypot(h.x - x, h.z - z) > h.r + r) continue;
+    list.splice(i, 1);
+    g.events.emit('gas', { x: h.x, z: h.z, radius: h.r * 1.2, ignite: true });
+    blast(g, h.x, h.z, h.r * 1.2, GAS_FLARE, false);
+    list.push({ kind: 'fire', x: h.x, z: h.z, r: h.r * 0.5, life: 3 });
+    i = Math.min(i, list.length);
+  }
+}
+
 // ---------------------------------------------------------------- 每帧
 
 export function updateHazards(g: Game, dt: number): void {
@@ -293,6 +370,16 @@ export function updateHazards(g: Game, dt: number): void {
       h.pulseCharge = 0;
       firePulse(g);
     }
+  }
+
+  if (h.dazeT > 0) h.dazeT = Math.max(0, h.dazeT - dt);
+  // 首领抛出来的碎石 / 酸弹：预警圈倒计时到了就落下
+  for (let i = h.marks.length - 1; i >= 0; i--) {
+    const m = h.marks[i] as Mark;
+    m.t -= dt;
+    if (m.t > 0) continue;
+    h.marks.splice(i, 1);
+    landMark(g, m);
   }
 
   // 被连锁标记的爆炸物在这里引爆
@@ -338,16 +425,19 @@ export function updateHazards(g: Game, dt: number): void {
     } else blast(g, t.x, t.z, GRENADE.frag.radius, GRENADE.frag.damage, false, 'grenade');
   }
 
-  // 地面危险区：站在里面的僵尸持续受伤；玩家踩酸池 / 火也会受伤
+  // 地面危险区：站在里面的僵尸持续受伤；玩家踩酸池 / 火 / 毒雾也会受伤。火碰到毒雾就把它点着
   const p = g.player;
+  if (h.hazards.some((k) => k.kind === 'gas')) for (const f of h.hazards.filter((k) => k.kind === 'fire')) igniteGas(g, f.x, f.z, f.r * 0.5);
   for (let i = h.hazards.length - 1; i >= 0; i--) {
-    const hz = h.hazards[i] as Hazard;
+    // 毒雾者被火烧死时（下面的 damageZombie）会往列表里加 / 删东西，索引可能越界
+    const hz = h.hazards[i];
+    if (!hz) continue;
     hz.life -= dt;
     if (hz.life <= 0) {
       h.hazards.splice(i, 1);
       continue;
     }
-    const dps = hz.kind === 'fire' ? FIRE_DPS : ACID_DPS;
+    const dps = hz.kind === 'fire' ? FIRE_DPS : hz.kind === 'gas' ? GAS_DPS : ACID_DPS;
     if (hz.kind === 'fire') {
       for (const z of g.zombies) if (z.alive && Math.hypot(z.x - hz.x, z.z - hz.z) < hz.r + z.radius) g.damageZombie(z, dps * dt, { silent: true, src: 'fire' });
     }

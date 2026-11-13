@@ -76,6 +76,45 @@ export class Zombie {
   /** 减速（轻机枪压制）：剩余时间和减速比例 */
   slowT = 0;
   slowK = 0;
+  /**
+   * 跳跃者：0 = 平常，1 = 蹲下蓄力，2 = 在空中。leapT 是这个阶段已经过了多久，leapDur 是滞空时间，
+   * 从 (leapX0, leapZ0) 跳到 (leapX1, leapZ1)；pounce = 扑人（落地时伤人），否则是跳路障
+   */
+  leapState = 0;
+  leapT = 0;
+  leapDur = 0;
+  leapX0 = 0;
+  leapZ0 = 0;
+  leapX1 = 0;
+  leapZ1 = 0;
+  leapCd = 2;
+  pounce = false;
+  /** 离地高度（跳跃者在空中时 > 0）：命中体积和模型都抬起来 */
+  airY = 0;
+  /** 裂殖者裂出来的小僵尸：零件只给四分之一 */
+  minion = false;
+  /** 重装感染者：钢板还剩多少耐久（0 = 掉了或者没有） */
+  plateHp = 0;
+  /**
+   * 首领技能：skill 0 = 没在放，1 钩子、2 横扫、3 尖啸、4 召唤；skillStage 是技能内的阶段（0 = 蓄力），
+   * skillT 是这个阶段的剩余时间（钩子飞行时是已经飞出的距离），skillDX/DZ 是锁定的方向
+   */
+  skill = 0;
+  skillStage = 0;
+  skillT = 0;
+  skillDX = 0;
+  skillDZ = 0;
+  hookCd = 4;
+  cleaveCd = 0;
+  lobCd = 5;
+  shriekCd = 5;
+  summonCd = 0;
+  /** 母巢：下一次孵化的倒计时、还剩几个卵囊、当前这个卵囊已经吃了多少伤害 */
+  broodT = 6;
+  sacs = 0;
+  sacDmg = 0;
+  /** 首领二阶段（狂暴） */
+  rage = false;
   /** 渲染层使用 */
   hitFlash = 0;
   walkPhase = 0;
@@ -101,5 +140,7 @@ export class Zombie {
     this.sampleX = x;
     this.sampleZ = z;
     this.seed = seed;
+    if (this.def.armor) this.plateHp = Math.round(this.maxHp * this.def.armor.plate);
+    this.sacs = this.def.boss?.brood?.sacs ?? 0;
   }
 }

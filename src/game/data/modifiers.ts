@@ -1,12 +1,16 @@
-/** 夜晚词缀：从第 2 夜起，每个白天预告下一夜的一个词缀 */
-export type NightModId = 'bloodmoon' | 'fog' | 'blackout' | 'horde' | 'elite';
+import type { ZombieKind } from './zombies';
 
-export const NIGHT_MOD_ORDER: NightModId[] = ['bloodmoon', 'fog', 'blackout', 'horde', 'elite'];
+/** 夜晚词缀：从第 2 夜起，每个白天预告下一夜的一个词缀 */
+export type NightModId = 'bloodmoon' | 'fog' | 'blackout' | 'horde' | 'elite' | 'leapers' | 'toxic' | 'brood';
+
+export const NIGHT_MOD_ORDER: NightModId[] = ['bloodmoon', 'fog', 'blackout', 'horde', 'elite', 'leapers', 'toxic', 'brood'];
 
 export interface NightMod {
   id: NightModId;
   name: string;
   desc: string;
+  /** 最早第几夜能抽到 */
+  minNight: number;
   /** 僵尸移动速度倍率 */
   speed: number;
   /** 零件收益倍率 */
@@ -20,12 +24,14 @@ export interface NightMod {
   runner: number;
   /** 每批带一只精英 */
   elite: boolean;
+  /** 主题夜：普通僵尸里有 share 是这一种 */
+  theme?: { kind: ZombieKind; share: number };
   /** 画面：雾浓度倍率；雷达范围倍率 */
   fog: number;
   radar: number;
 }
 
-const mod = (o: Partial<NightMod> & Pick<NightMod, 'id' | 'name' | 'desc'>): NightMod => ({ speed: 1, scrap: 1, count: 1, hp: 1, turretRate: 1, runner: 1, elite: false, fog: 1, radar: 1, ...o });
+const mod = (o: Partial<NightMod> & Pick<NightMod, 'id' | 'name' | 'desc'>): NightMod => ({ minNight: 2, speed: 1, scrap: 1, count: 1, hp: 1, turretRate: 1, runner: 1, elite: false, fog: 1, radar: 1, ...o });
 
 export const NIGHT_MODS: Record<NightModId, NightMod> = {
   bloodmoon: mod({ id: 'bloodmoon', name: '血月', desc: '僵尸速度 +25%，零件 +50%', speed: 1.25, scrap: 1.5 }),
@@ -33,6 +39,10 @@ export const NIGHT_MODS: Record<NightModId, NightMod> = {
   blackout: mod({ id: 'blackout', name: '停电', desc: '炮塔射速 −40%，路灯熄灭', turretRate: 0.6 }),
   horde: mod({ id: 'horde', name: '尸群', desc: '数量 +30%，生命 −20%', count: 1.3, hp: 0.8 }),
   elite: mod({ id: 'elite', name: '精英夜', desc: '每批带 1 只金色精英（生命 ×3，掉落 ×3）', elite: true }),
+  // 主题夜：一种新僵尸成群出现，逐渐把它的打法逼出来
+  leapers: mod({ id: 'leapers', name: '跳尸夜', desc: '跳跃者成群：路障拦不住，靠炮塔和地刺，蹲下蓄力时打它；零件 +25%', minNight: 3, scrap: 1.25, theme: { kind: 'leaper', share: 0.3 } }),
+  toxic: mod({ id: 'toxic', name: '毒雾夜', desc: '毒雾者成群：别贴脸，用燃烧弹把毒气点着；零件 +25%', minNight: 3, scrap: 1.25, fog: 1.5, theme: { kind: 'gasser', share: 0.25 } }),
+  brood: mod({ id: 'brood', name: '裂变夜', desc: '裂殖者成群：打身体会裂成小爬行者，爆头或炸死才干净；数量 −15%', minNight: 4, count: 0.85, theme: { kind: 'splitter', share: 0.22 } }),
 };
 
 /** 没有词缀时的系数 */
@@ -43,6 +53,8 @@ export const nightMod = (id: string): NightMod => NIGHT_MODS[id as NightModId] ?
 /** 精英：生命和掉落倍率 */
 export const ELITE_HP = 3;
 export const ELITE_REWARD = 3;
+/** 精英的个头：模型和命中体积（头球、身体圆柱）一起放大；走路、挤位置用的半径不变 */
+export const ELITE_SCALE = 1.15;
 
 // ---------------------------------------------------------------- 夜间挑战
 

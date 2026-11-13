@@ -19,11 +19,15 @@ export interface ParticleOpts {
   shrink?: boolean;
   /** 落地反弹系数，0 = 落地即停 */
   bounce?: number;
+  /** 大小不超过「离镜头的距离 × 这个数」，0 = 不限（默认）。朝镜头飞过来的血用：不限的话贴到眼前就是一大块红砖 */
+  cap?: number;
 }
 
 /** 一个 InstancedMesh 画所有小方块粒子：血、火花、酸液、火焰、弹壳 */
 export class Particles {
   readonly mesh: InstancedMesh;
+  /** 镜头的位置（Effects 每帧写进来），给 cap 算距离用 */
+  readonly eye = new Vector3();
   private n = 0;
   private readonly px: Float32Array;
   private readonly py: Float32Array;
@@ -41,6 +45,7 @@ export class Particles {
   private readonly drag: Float32Array;
   private readonly shrink: Uint8Array;
   private readonly bounce: Float32Array;
+  private readonly cap: Float32Array;
   private readonly _m = new Matrix4();
   private readonly _q = new Quaternion();
   private readonly _p = new Vector3();
@@ -69,6 +74,7 @@ export class Particles {
     this.grav = f();
     this.drag = f();
     this.bounce = f();
+    this.cap = f();
     this.shrink = new Uint8Array(max);
   }
 
@@ -94,6 +100,7 @@ export class Particles {
     this.drag[i] = o.drag ?? 1.2;
     this.shrink[i] = o.shrink === false ? 0 : 1;
     this.bounce[i] = o.bounce ?? 0;
+    this.cap[i] = o.cap ?? 0;
   }
 
   update(dt: number): void {
@@ -125,8 +132,10 @@ export class Particles {
         }
       }
       const k = (this.life[i] as number) / (this.maxLife[i] as number);
-      const s = (this.size[i] as number) * (this.shrink[i] ? 0.25 + 0.75 * k : 1);
+      let s = (this.size[i] as number) * (this.shrink[i] ? 0.25 + 0.75 * k : 1);
       this._p.set(this.px[i] as number, this.py[i] as number, this.pz[i] as number);
+      const cap = this.cap[i] as number;
+      if (cap > 0) s = Math.min(s, this._p.distanceTo(this.eye) * cap);
       this._s.set(s, s, s);
       this._m.compose(this._p, this._q, this._s);
       this.mesh.setMatrixAt(i, this._m);
@@ -145,7 +154,7 @@ export class Particles {
   private removeAt(i: number): void {
     const l = --this.n;
     if (i === l) return;
-    for (const a of [this.px, this.py, this.pz, this.vx, this.vy, this.vz, this.size, this.life, this.maxLife, this.cr, this.cg, this.cb, this.grav, this.drag, this.bounce, this.shrink] as Array<Float32Array | Uint8Array>) {
+    for (const a of [this.px, this.py, this.pz, this.vx, this.vy, this.vz, this.size, this.life, this.maxLife, this.cr, this.cg, this.cb, this.grav, this.drag, this.bounce, this.cap, this.shrink] as Array<Float32Array | Uint8Array>) {
       a[i] = a[l] as number;
     }
   }

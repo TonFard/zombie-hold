@@ -1,6 +1,7 @@
 import type { WeaponKind } from '../game/data/weapons';
-import type { ZombieKind } from '../game/data/zombies';
+import { BOSS_KINDS, type ZombieKind } from '../game/data/zombies';
 import type { StructureKind } from '../game/data/structures';
+import type { Surface } from '../game/world/surface';
 import type { AudioEngine } from './engine';
 
 /** 在 0.92–1.08 之间随机一点音高，连续的同一种声音不会像复制粘贴 */
@@ -65,14 +66,6 @@ export class Sfx {
         const out = e.flat(0.9) ?? undefined;
         e.noise({ dur: 0.1, vol: 0.55, filter: { type: 'bandpass', freq: 1300 * j, q: 0.7 }, out });
         e.tone({ freq: 180 * j, to: 52, dur: 0.14, vol: 0.5, out });
-        break;
-      }
-      case 'launcher': {
-        if (!e.gate('shot-launcher', 0.2)) return;
-        const out = e.flat(1) ?? undefined;
-        e.tone({ freq: 120 * j, to: 42, dur: 0.32, vol: 0.62, out });
-        e.noise({ dur: 0.38, vol: 0.5, filter: { type: 'lowpass', freq: 1100, to: 180 }, out });
-        e.tone({ freq: 640, to: 1400, dur: 0.18, vol: 0.08, type: 'sawtooth', delay: 0.05, filter: { type: 'lowpass', freq: 1800 }, out });
         break;
       }
     }
@@ -155,7 +148,8 @@ export class Sfx {
 
   // ---------------- 命中与爆炸 ----------------
 
-  impact(x: number, z: number, flesh: boolean): void {
+  /** surface：子弹打在什么上（不是打在僵尸身上时）。铁是尖的一声「叮」，混凝土 / 砖是闷一点的崩裂声，木头是敲一下，土和沙是噗的一声，水是一声水花 */
+  impact(x: number, z: number, flesh: boolean, surface: Surface = 'metal'): void {
     this.e.channel = 'weapons';
     const e = this.e;
     if (!e.gate(flesh ? 'hit-flesh' : 'hit-wall', 0.03)) return;
@@ -164,9 +158,21 @@ export class Sfx {
     if (flesh) {
       e.noise({ dur: 0.07, vol: 0.34, filter: { type: 'lowpass', freq: 800 * jit(0.2) }, out });
       e.tone({ freq: 160 * jit(0.2), to: 70, dur: 0.07, vol: 0.28, out });
-    } else {
+    } else if (surface === 'metal') {
       e.noise({ dur: 0.08, vol: 0.45, filter: { type: 'bandpass', freq: 3200 * jit(0.2), q: 2 }, out });
       e.tone({ freq: 1500 * jit(0.15), to: 600, dur: 0.09, vol: 0.16, type: 'triangle', out });
+    } else if (surface === 'concrete' || surface === 'brick') {
+      e.noise({ dur: 0.09, vol: 0.5, filter: { type: 'bandpass', freq: 1700 * jit(0.2), q: 0.9 }, out });
+      e.noise({ dur: 0.05, vol: 0.3, filter: { type: 'lowpass', freq: 420 }, out });
+    } else if (surface === 'wood') {
+      e.tone({ freq: 240 * jit(0.2), to: 130, dur: 0.06, vol: 0.34, type: 'triangle', out });
+      e.noise({ dur: 0.05, vol: 0.36, filter: { type: 'bandpass', freq: 1100 * jit(0.2), q: 1.2 }, out });
+    } else if (surface === 'water') {
+      e.noise({ dur: 0.14, vol: 0.4, filter: { type: 'bandpass', freq: 900, to: 2600, q: 1.4 }, out });
+      e.tone({ freq: 320 * jit(0.15), to: 760, dur: 0.08, vol: 0.14, out });
+    } else {
+      e.noise({ dur: 0.1, vol: 0.5, filter: { type: 'lowpass', freq: 520 * jit(0.2) }, out });
+      e.noise({ dur: 0.06, vol: 0.14, filter: { type: 'bandpass', freq: 2400, q: 1 }, out });
     }
   }
 
@@ -177,6 +183,34 @@ export class Sfx {
     const out = e.spatial(x, z, 0.5);
     if (!out) return;
     e.tone({ freq: 1500, to: 2300, dur: 0.08, vol: 0.3, type: 'triangle', out });
+  }
+
+  /** 自己打中头：一声又短又脆的「叮」+ 骨头的咔一下。是给玩家的确认音，不跟距离衰减 */
+  headshot(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('headshot', 0.05)) return;
+    const out = e.flat(0.55) ?? undefined;
+    if (!out) return;
+    const j = jit(0.04);
+    e.tone({ freq: 2500 * j, to: 1900 * j, dur: 0.1, vol: 0.34, type: 'sine', out });
+    e.tone({ freq: 5000 * j, to: 3800 * j, dur: 0.05, vol: 0.12, type: 'sine', out });
+    e.noise({ dur: 0.03, vol: 0.3, filter: { type: 'bandpass', freq: 2600, q: 1.2 }, out });
+  }
+
+  /** 爆头击杀：头炸开的闷响和湿的一声，上面叠两个往上走的金属音 */
+  headshotKill(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('headshot-kill', 0.08)) return;
+    const out = e.flat(0.75) ?? undefined;
+    if (!out) return;
+    const j = jit(0.05);
+    e.tone({ freq: 190 * j, to: 55, dur: 0.16, vol: 0.55, out });
+    e.noise({ dur: 0.2, vol: 0.42, filter: { type: 'lowpass', freq: 1900, to: 300, q: 0.8 }, out });
+    e.noise({ dur: 0.05, vol: 0.3, filter: { type: 'bandpass', freq: 3400, q: 1.5 }, out });
+    e.tone({ freq: 1760 * j, dur: 0.12, vol: 0.26, type: 'triangle', out });
+    e.tone({ freq: 2637 * j, dur: 0.2, vol: 0.24, type: 'triangle', delay: 0.055, out });
   }
 
   explosion(x: number, z: number, big: boolean): void {
@@ -209,9 +243,9 @@ export class Sfx {
     this.e.channel = 'zombies';
     const e = this.e;
     if (!e.ready) return;
-    const colossus = kind === 'colossus';
-    if (!e.gate(colossus ? 'growl-boss' : 'growl', colossus ? 0.6 : 0.42)) return;
-    const out = e.spatial(x, z, colossus ? 1.2 : 0.55);
+    const boss = BOSS_KINDS.includes(kind);
+    if (!e.gate(boss ? 'growl-boss' : 'growl', boss ? 0.6 : 0.42)) return;
+    const out = e.spatial(x, z, boss ? 1.2 : 0.55);
     if (!out) return;
     const j = jit(0.12);
     switch (kind) {
@@ -237,10 +271,43 @@ export class Sfx {
       case 'screamer':
         e.tone({ freq: 620 * j, to: 900 * j, dur: 0.4, vol: 0.12, type: 'sawtooth', vibrato: { rate: 14, depth: 0.06 }, filter: { type: 'bandpass', freq: 1800, q: 2 }, attack: 0.03, out });
         break;
+      case 'leaper':
+        // 尖利的嘶嘶声，尾音往上挑
+        e.noise({ dur: 0.35, vol: 0.16, filter: { type: 'bandpass', freq: 2600, q: 3 }, attack: 0.02, out });
+        e.tone({ freq: 230 * j, to: 340 * j, dur: 0.3, vol: 0.14, type: 'sawtooth', vibrato: { rate: 20, depth: 0.08 }, filter: { type: 'bandpass', freq: 1100, q: 3 }, attack: 0.03, out });
+        break;
+      case 'splitter':
+        // 水泡咕噜的低吼
+        e.tone({ freq: 78 * j, to: 55, dur: 0.9, vol: 0.24, type: 'sawtooth', vibrato: { rate: 13, depth: 0.15 }, filter: { type: 'lowpass', freq: 380, q: 5 }, attack: 0.08, out });
+        e.noise({ dur: 0.6, vol: 0.12, filter: { type: 'bandpass', freq: 600, q: 4 }, delay: 0.15, out });
+        break;
+      case 'gasser':
+        // 隔着防毒面具的粗重呼吸
+        e.noise({ dur: 0.7, vol: 0.18, filter: { type: 'bandpass', freq: 900, q: 1.5 }, attack: 0.15, out });
+        e.tone({ freq: 96 * j, to: 80 * j, dur: 0.7, vol: 0.12, type: 'square', filter: { type: 'lowpass', freq: 340, q: 2 }, attack: 0.15, out });
+        break;
       case 'colossus':
         e.tone({ freq: 56, to: 34, dur: 1.9, vol: 0.55, type: 'sawtooth', vibrato: { rate: 4.5, depth: 0.06 }, filter: { type: 'lowpass', freq: 260, to: 120, q: 3 }, attack: 0.25, out });
         e.noise({ dur: 1.7, vol: 0.3, filter: { type: 'lowpass', freq: 500, to: 120 }, attack: 0.2, out });
         e.tone({ freq: 28, to: 20, dur: 1.9, vol: 0.5, out });
+        break;
+      case 'reaper':
+        // 麻袋里闷着的喘息，尾巴拖一声铁链响
+        e.noise({ dur: 1.2, vol: 0.3, filter: { type: 'bandpass', freq: 420, to: 260, q: 2.5 }, attack: 0.2, out });
+        e.tone({ freq: 74 * j, to: 52, dur: 1.3, vol: 0.34, type: 'sawtooth', vibrato: { rate: 3, depth: 0.1 }, filter: { type: 'lowpass', freq: 360, q: 3 }, attack: 0.25, out });
+        for (let i = 0; i < 4; i++) e.tone({ freq: 2400 + i * 300, to: 1800, dur: 0.06, vol: 0.05, type: 'triangle', delay: 0.9 + i * 0.07, out });
+        break;
+      case 'brood':
+        // 湿漉漉的咽喉声和肚子里的哕噜
+        e.tone({ freq: 48 * j, to: 36, dur: 1.8, vol: 0.5, type: 'sawtooth', vibrato: { rate: 11, depth: 0.18 }, filter: { type: 'lowpass', freq: 240, q: 6 }, attack: 0.2, out });
+        e.noise({ dur: 1.4, vol: 0.28, filter: { type: 'bandpass', freq: 500, to: 180, q: 5 }, attack: 0.15, out });
+        e.tone({ freq: 24, to: 18, dur: 1.6, vol: 0.4, out });
+        break;
+      case 'siren':
+        // 拖长的女声哀嚎：高音滑下来、带着颤音
+        e.tone({ freq: 880 * j, to: 520 * j, dur: 1.4, vol: 0.18, type: 'sawtooth', vibrato: { rate: 7, depth: 0.05 }, filter: { type: 'bandpass', freq: 1500, q: 3 }, attack: 0.2, out });
+        e.tone({ freq: 440 * j, to: 260 * j, dur: 1.4, vol: 0.12, type: 'triangle', vibrato: { rate: 7, depth: 0.05 }, attack: 0.2, out });
+        e.noise({ dur: 1.0, vol: 0.08, filter: { type: 'bandpass', freq: 3200, q: 2 }, attack: 0.3, out });
         break;
     }
   }
@@ -248,11 +315,11 @@ export class Sfx {
   zombieDie(kind: ZombieKind, x: number, z: number): void {
     this.e.channel = 'zombies';
     const e = this.e;
-    const colossus = kind === 'colossus';
+    const colossus = BOSS_KINDS.includes(kind);
     if (!e.gate(colossus ? 'die-boss' : 'die', colossus ? 0.5 : 0.045)) return;
     const out = e.spatial(x, z, colossus ? 1.2 : 0.6);
     if (!out) return;
-    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46, spitter: 120, screamer: 260, crawler: 210, armored: 90 }[kind] * jit(0.1);
+    const base = { walker: 130, runner: 180, bloater: 80, breaker: 105, colossus: 46, spitter: 120, screamer: 260, crawler: 210, armored: 90, leaper: 200, splitter: 95, gasser: 115, reaper: 60, brood: 40, siren: 300 }[kind] * jit(0.1);
     const len = colossus ? 1.4 : kind === 'bloater' ? 0.5 : 0.34;
     e.tone({ freq: base * 1.3, to: base * 0.4, dur: len, vol: colossus ? 0.6 : 0.24, type: 'sawtooth', filter: { type: 'lowpass', freq: 700, to: 180, q: 1.5 }, out });
     e.noise({ dur: colossus ? 0.6 : 0.16, vol: colossus ? 0.5 : 0.24, filter: { type: 'lowpass', freq: 600, to: 200 }, out });
@@ -266,9 +333,9 @@ export class Sfx {
     this.e.channel = 'zombies';
     const e = this.e;
     if (!e.gate(`atk-${target}`, 0.07)) return;
-    const out = e.spatial(x, z, kind === 'colossus' ? 1.1 : 0.55);
+    const out = e.spatial(x, z, BOSS_KINDS.includes(kind) ? 1.1 : 0.55);
     if (!out) return;
-    const heavy = kind === 'colossus' ? 2 : kind === 'breaker' ? 1.4 : 1;
+    const heavy = BOSS_KINDS.includes(kind) ? 2 : kind === 'breaker' ? 1.4 : 1;
     e.noise({ dur: 0.12, vol: 0.14, filter: { type: 'bandpass', freq: 900, to: 400, q: 1 }, out });
     if (target === 'structure' || target === 'core') {
       // 砸在木头 / 金属上

@@ -56,6 +56,8 @@ export class TaczModel {
   private readonly armMaterial: MeshStandardMaterial;
   /** 隐藏方块手臂：不画但保留几何（定位要用包围盒） */
   private readonly hiddenArm = new MeshBasicMaterial({ visible: false });
+  /** 手部调节面板：把原版方块手臂半透明画出来当参照 */
+  private readonly ghostArm = new MeshBasicMaterial({ color: 0x46c8ff, transparent: true, opacity: 0.35, depthWrite: false });
 
   constructor(
     readonly json: GunJson,
@@ -72,6 +74,15 @@ export class TaczModel {
 
     const byName = new Map<string, Bone>();
     for (const b of json.bones) byName.set(b.name, b);
+    // 有的枪（M870）手臂骨骼在、方块却是空的：补上和其它枪一样的标准手臂方块（4×12×4，左手在骨骼左边 8 像素、右手右边 4 像素），
+    // 不然定位不到手，程序手臂不显示，手部调节面板也调不了这把枪
+    for (const name of HAND_POS) {
+      const b = byName.get(name);
+      if (!b || b.cubes?.length) continue;
+      const left = name === 'lefthand_pos';
+      const [px, py, pz] = b.pivot;
+      b.cubes = [{ origin: [px + (left ? -8 : 4), py, pz - 2], size: [4, 12, 4], uv: [0, 0] }];
+    }
     for (const b of json.bones) {
       const parent = b.parent ? byName.get(b.parent) : undefined;
       const pos = parent
@@ -122,6 +133,15 @@ export class TaczModel {
     const adapter = this.nodes.get('attachment_adapter');
     if (adapter) for (const o of adapter.objs) for (const c of o.children) if (c.name) c.visible = false;
     this.setRest();
+  }
+
+  /** 原版方块手臂：false = 不画（平时），true = 半透明蓝色参照（手部调节面板） */
+  showBlockArms(on: boolean): void {
+    for (const name of HAND_POS) {
+      const n = this.nodes.get(name);
+      if (!n) continue;
+      for (const o of n.objs) for (const c of o.children) if ((c as Mesh).isMesh) (c as Mesh).material = on ? this.ghostArm : this.hiddenArm;
+    }
   }
 
   setVisible(name: string, v: boolean): void {
@@ -277,6 +297,7 @@ export class TaczModel {
     this.glowMaterial.dispose();
     this.armMaterial.dispose();
     this.hiddenArm.dispose();
+    this.ghostArm.dispose();
   }
 }
 

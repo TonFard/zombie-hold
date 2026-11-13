@@ -12,6 +12,7 @@ import type { MetaApplied } from '../game/config';
 import { STRUCTURES } from '../game/data/structures';
 import { ZOMBIES, type ZombieKind } from '../game/data/zombies';
 import { HEAL_TICK, POOL_PER_TICK } from '../game/data/heal';
+import { bossFor } from '../game/data/waves';
 import { TDM } from '../game/systems/tdm';
 import { RISKS, RISK_FX, type RiskId } from '../game/systems/events';
 import { LOOT, isDanger, lootAvailable } from '../game/systems/loot';
@@ -81,6 +82,7 @@ const specialsOf = (kind: WeaponKind, tier: number): string[] => {
   const st = statsAt(kind, tier);
   const out: string[] = [];
   if (st.pierce > 0) out.push(`穿透 ${st.pierce}`);
+  if (WEAPONS[kind].ap) out.push('穿甲');
   if (st.aoe > 0) out.push(`范围 ${st.aoe}`);
   if (st.burn > 0) out.push('点燃');
   if (st.ramp > 0) out.push('射速递增');
@@ -144,8 +146,6 @@ export const hud = reactive({
   /** 身上的重量（千克）和它带来的移速倍率 */
   weight: 0,
   weightSpeed: 1,
-  /** 双持手枪 */
-  dual: false,
   /** 换弹进度 0–1，-1 = 没在换弹 */
   reload: -1,
   scrap: 0,
@@ -160,6 +160,8 @@ export const hud = reactive({
   hit: 0,
   hitCrit: false,
   kill: 0,
+  /** 这次击杀是爆头：击杀标记换成金色的 */
+  killHead: false,
   /** 发电机刚被打，0–1 */
   coreHurt: 0,
   /** 受击方向：a 是相对视线的顺时针角度（弧度，0 = 正前方），life 1→0 */
@@ -311,7 +313,7 @@ export const radar = {
   solid: null as Uint8Array | null,
 };
 
-const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, breaker: 3, colossus: 4, spitter: 5, screamer: 6 };
+const ZOMBIE_CODE: Record<string, number> = { walker: 0, runner: 1, bloater: 2, breaker: 3, colossus: 4, spitter: 5, screamer: 6, reaper: 4, brood: 4, siren: 4 };
 const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2, hmg: 1, flamer: 1, mortar: 1 };
 
 let pendingBox = false;
@@ -423,7 +425,7 @@ function syncTab(game: Game): void {
     row('脱战回血', m.regen > 0 ? `${m.regen.toFixed(1)} / 秒` : '—', m.regen > 0 ? true : undefined),
     row('击杀回血', m.lifesteal > 0 ? `攒 ${m.lifesteal} 点 / 杀，每秒 ≤ ${(POOL_PER_TICK / HEAL_TICK).toFixed(0)}` : '—', m.lifesteal > 0 ? true : undefined),
     row('发电机自修', m.coreRegen > 0 ? `${m.coreRegen.toFixed(1)} / 秒` : '—', m.coreRegen > 0 ? true : undefined),
-    row('当前武器', `${WEAPONS[p.weapon].name} ${p.tier + 1} 级 · DPS ${sustainedDps(st).toFixed(0)}`),
+    row('当前武器', `${game.weaponName(p.weapon)} ${p.tier + 1} 级 · DPS ${sustainedDps(st).toFixed(0)}`),
   ];
   const s = game.stats;
   t.kills = (Object.keys(s.killsBy) as ZombieKind[]).filter((k) => s.killsBy[k] > 0).map((k) => ({ name: ZOMBIES[k].name, n: s.killsBy[k] })).sort((a, b) => b.n - a.n);
@@ -483,7 +485,7 @@ function syncTab(game: Game): void {
       };
     });
     const st = game.statsOf(k, slot.tier);
-    return { kind: k, name: WEAPONS[k].name, tier: slot.tier + 1, hand: game.player.weapon === k, rows, dps: (sustainedDps(st) * game.mods.damage * game.mods.fireRate).toFixed(0), kills: game.stats.weaponKills[k] };
+    return { kind: k, name: game.weaponName(k), tier: slot.tier + 1, hand: game.player.weapon === k, rows, dps: (sustainedDps(st) * game.mods.damage * game.mods.fireRate).toFixed(0), kills: game.stats.weaponKills[k] };
   });
 }
 
@@ -564,7 +566,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.maxHp = p.maxHp;
   hud.stamina = p.stamina;
   hud.maxStamina = p.maxStamina;
-  hud.weaponName = WEAPONS[p.weapon].name;
+  hud.weaponName = game.weaponName(p.weapon);
   hud.weaponStars = game.config.stars[p.weapon];
   hud.weaponKind = p.weapon;
   hud.tier = p.tier;
@@ -580,7 +582,6 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   const wt = game.weightNow();
   hud.weight = wt.hand + wt.back * 0.5;
   hud.weightSpeed = wt.speed;
-  hud.dual = game.config.dual && p.weapon === 'pistol';
   hud.reload = p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1;
   hud.scrap = game.scrap;
   syncFeedback(game, dt);
@@ -617,8 +618,8 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.risk.dist = Math.hypot(p.x - ev.x, p.z - ev.z);
   hud.risk.canAfford = ev.id !== 'market' || game.scrap >= RISK_FX.marketCost;
   hud.risk.free = ev.freeUpgrade > 0;
-  const boss = game.zombies.find((z) => z.alive && z.kind === 'colossus');
-  hud.bossName = boss ? (run.night >= 10 ? '巨像·终焉' : '巨像·初代') : '';
+  const boss = game.zombies.find((z) => z.alive && z.id === run.bossId);
+  hud.bossName = boss ? (bossFor(run.night, game.config.chapter)?.title ?? boss.def.name) + (boss.rage ? ' · 狂暴' : '') : '';
   hud.bossHp = boss ? boss.hp : 0;
   hud.bossMax = boss ? boss.maxHp : 1;
 
@@ -635,7 +636,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
       return {
         kind: k,
         key: i + 1,
-        name: def.name,
+        name: game.weaponName(k),
         owned: slot.owned,
         stowed: slot.owned && game.config.extras && !slot.carried,
         equipped: p.weapon === k,
@@ -648,7 +649,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         dpsAfter: slot.owned ? (up ? sustainedDps(game.statsOf(k, slot.tier + 1)) : dps) : sustainedDps(game.statsOf(k, 1)),
         canBuy: state === 'ok',
         short: state === 'scrap' ? Math.ceil(def.price - game.scrap) : 0,
-        swapOut: (!slot.owned || !slot.carried) && game.config.extras && game.carried().length >= CARRY_MAX ? WEAPONS[p.weapon].name : '',
+        swapOut: (!slot.owned || !slot.carried) && game.config.extras && game.carried().length >= CARRY_MAX ? game.weaponName(p.weapon) : '',
         lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁（大厅 · 军械库）',
         canUpgrade: slot.owned && !!up && game.scrap >= up.cost,
         specials: specialsOf(k, slot.owned ? slot.tier : MAX_TIER),
@@ -658,7 +659,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         cap,
         locked,
         reserve: game.reserveOf(k) === Infinity ? -1 : game.reserveOf(k),
-        weight: weightOf(k, game.config.weaponMods[k], game.config.dual),
+        weight: weightOf(k, game.config.weaponMods[k], game.gunOf(k)),
       };
     });
   }

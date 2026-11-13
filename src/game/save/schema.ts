@@ -2,6 +2,7 @@ import { DIFFICULTY_ORDER, isDifficulty } from '../data/difficulty';
 import { META_BY_ID } from '../data/meta-catalog';
 import type { Quality } from '../data/quality';
 import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
+import { GUN_BY_ID, gunFits } from '../data/guns';
 import { FINAL_NIGHT } from '../data/waves';
 import { newCodex, type Codex } from '../meta/achievements';
 import { newMeta, type MetaState } from '../meta/progress';
@@ -93,6 +94,27 @@ function parseMix(v: unknown): SaveData['mix'] {
   return { weapons: f('weapons'), zombies: f('zombies'), world: f('world'), ui: f('ui') };
 }
 
+/** 删掉的「手枪双持」当时的价格（勋章）：旧存档里买过的退回 */
+const DUAL_REFUND = 80;
+/** 删掉的榴弹发射器：解锁价（勋章）和武器台每条线 1–3 级的价格（补给，按当时的 benchPrice 算好的） */
+const LAUNCHER_UNLOCK_REFUND = 400;
+const LAUNCHER_BENCH_PRICES = [75, 130, 220];
+
+/** 旧存档里已经删掉的东西退回多少：勋章（双持、榴弹解锁）和补给（榴弹的武器台强化） */
+function goneRefund(v: Record<string, unknown>): { medals: number; supplies: number } {
+  const lv = isObj(v.levels) ? v.levels : {};
+  const has = (id: string) => typeof lv[id] === 'number' && (lv[id] as number) > 0;
+  const medals = (has('dual') ? DUAL_REFUND : 0) + (has('unlock-launcher') ? LAUNCHER_UNLOCK_REFUND : 0);
+  let supplies = 0;
+  if (isObj(v.bench)) {
+    for (const [key, n] of Object.entries(v.bench)) {
+      if (!key.startsWith('launcher.') || typeof n !== 'number' || !Number.isInteger(n)) continue;
+      for (let i = 0; i < Math.min(n, LAUNCHER_BENCH_PRICES.length); i++) supplies += LAUNCHER_BENCH_PRICES[i] as number;
+    }
+  }
+  return { medals, supplies };
+}
+
 function parseMeta(v: unknown): MetaState {
   if (!isObj(v)) throw new SaveError('meta 缺失');
   const levels: Record<string, number> = {};
@@ -108,19 +130,32 @@ function parseMeta(v: unknown): MetaState {
   if (!Array.isArray(v.cleared)) throw new SaveError('meta.cleared 不合法');
   // 上次出征选的东西只是个记忆：认不出（旧版本的难度名、没了的武器）就回到默认
   const side = v.lastSidearm;
+  // 删掉的「手枪双持」和榴弹发射器：买过的退回勋章 / 补给
+  const refund = goneRefund(v);
+  const supply = parseSupply(v);
   return {
-    medals: num(v, 'medals', 0, 1e7, true),
+    medals: num(v, 'medals', 0, 1e7, true) + refund.medals,
     medalsEarned: num(v, 'medalsEarned', 0, 1e8, true),
     levels,
     cleared: DIFFICULTY_ORDER.filter((d) => (v.cleared as unknown[]).includes(d)),
     lastDifficulty: isDifficulty(v.lastDifficulty) ? v.lastDifficulty : 'normal',
     lastSidearm: typeof side === 'string' && (WEAPON_ORDER as string[]).includes(side) ? (side as WeaponKind) : null,
-    ...parseSupply(v),
+    ...supply,
+    supplies: Math.min(1e8, supply.supplies + refund.supplies),
   };
 }
 
 /** 补给 / 库存子弹 / 工作台 / 章节：缺省时按新档处理（旧存档升级上来） */
-function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | 'ammo' | 'bench' | 'chapters' | 'lastChapter' | 'mastery'> {
+function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | 'ammo' | 'bench' | 'chapters' | 'lastChapter' | 'mastery' | 'guns' | 'gunPick'> {
+  // 枪械型号：未知的 id、默认型号（不用解锁）、选了别的类的型号都丢掉
+  const guns = Array.isArray(v.guns) ? [...new Set(v.guns.filter((id): id is string => typeof id === 'string' && (GUN_BY_ID[id]?.medals ?? 0) > 0))] : [];
+  const gunPick: Partial<Record<WeaponKind, string>> = {};
+  if (isObj(v.gunPick)) {
+    for (const k of WEAPON_ORDER) {
+      const id = v.gunPick[k];
+      if (typeof id === 'string' && gunFits(k, id)) gunPick[k] = id;
+    }
+  }
   const mastery: Partial<Record<WeaponKind, number>> = {};
   if (isObj(v.mastery)) {
     for (const k of WEAPON_ORDER) {
@@ -151,6 +186,8 @@ function parseSupply(v: Record<string, unknown>): Pick<MetaState, 'supplies' | '
     chapters,
     lastChapter: isMapId(v.lastChapter) ? v.lastChapter : 'outpost',
     mastery,
+    guns,
+    gunPick,
   };
 }
 

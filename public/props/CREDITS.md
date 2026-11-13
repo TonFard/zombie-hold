@@ -63,3 +63,9 @@
 | wooden_bookshelf_worn | Wooden Bookshelf Worn | Ulan Cabanilla | CC0 | https://polyhaven.com/a/wooden_bookshelf_worn |
 | electric_stove | Electric Stove | Kuutti Siitonen | CC0 | https://polyhaven.com/a/electric_stove |
 | hdriNight | dikhololo_night | Poly Haven | CC0 | https://polyhaven.com/a/dikhololo_night |
+| bench_vice_01 | Bench Vice 01 | Yann Kervran, Antanas Kep | CC0 | https://polyhaven.com/a/bench_vice_01 |
+| service_pistol | Service Pistol | Mateusz Sadek | CC0 | https://polyhaven.com/a/service_pistol |
+| ammo_box | Ammo Box | DanKit | CC0 | https://polyhaven.com/a/ammo_box |
+| metal_toolbox | Metal Toolbox | Mateusz Sadek | CC0 | https://polyhaven.com/a/metal_toolbox |
+| metal_tool_chest | Metal Tool Chest | Yann Kervran, John Hutcheson | CC0 | https://polyhaven.com/a/metal_tool_chest |
+| desk_lamp_arm_01 | Desk Lamp Arm 01 | Yann Kervran, Kuutti Siitonen | CC0 | https://polyhaven.com/a/desk_lamp_arm_01 |

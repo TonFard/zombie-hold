@@ -45,7 +45,8 @@ export const TDM = {
  * 步枪远距离精准又有穿透，冲锋枪 / 霰弹枪在射程边缘被衰减吃掉一大半，结果步枪一家独大。
  * 这里按"贴脸时每种枪都能在 0.4–0.8 秒内打死一个满血的人"重新拉平
  */
-export const TDM_DMG: Record<WeaponKind, number> = { pistol: 1.4, smg: 2.1, shotgun: 1.4, rifle: 0.75, sniper: 0.9, lmg: 0.85, launcher: 1 };
+// 霰弹 1.4 → 1.0、狙击 0.9 → 0.8：2026-11 这两把枪在打僵尸的模式里加强了（每丸 9 → 12.5、每发 140 → 160），这里每一下的伤害保持不变
+export const TDM_DMG: Record<WeaponKind, number> = { pistol: 1.4, smg: 2.1, shotgun: 1.0, rifle: 0.75, sniper: 0.8, lmg: 0.85 };
 /** 人机开火的最远距离（占射程的比例）：近战枪要贴近再打，不在射程边缘放空枪 */
 const FIRE_AT: Partial<Record<WeaponKind, number>> = { smg: 1.05, shotgun: 0.85, pistol: 0.9 };
 
@@ -627,7 +628,6 @@ function fireSoldier(g: Game, s: Soldier): void {
   const ox = s.x + Math.sin(s.aimYaw) * 0.5;
   const oz = s.z + Math.cos(s.aimYaw) * 0.5;
   g.events.emit('soldierShot', { id: s.id, kind, x: ox, y: eyeY - 0.1, z: oz, yaw: s.aimYaw });
-  if (st.speed > 0) return; // 人机不用榴弹
   // 散布：腰射散布，移动时更大，蹲下更小
   const moving = Math.hypot(s.vx, s.vz) / TDM.speed;
   const tgt = s.brain.target === null ? null : targets(g).find((e) => e.id === s.brain.target);

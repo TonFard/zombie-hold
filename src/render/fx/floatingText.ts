@@ -12,6 +12,8 @@ interface Item {
   owner: number;
   value: number;
   crit: boolean;
+  /** 爆头：金色大字 + 上面一行「爆头」 */
+  head: boolean;
   kind: 'dmg' | 'scrap';
   /** 屏幕上的随机水平偏移 */
   ox: number;
@@ -33,7 +35,7 @@ export class FloatingText {
       el.className = 'fx-text';
       el.style.display = 'none';
       container.appendChild(el);
-      this.items.push({ el, active: false, x: 0, y: 0, z: 0, vy: 0, age: 0, life: 0, owner: -1, value: 0, crit: false, kind: 'dmg', ox: 0 });
+      this.items.push({ el, active: false, x: 0, y: 0, z: 0, vy: 0, age: 0, life: 0, owner: -1, value: 0, crit: false, head: false, kind: 'dmg', ox: 0 });
     }
   }
 
@@ -45,25 +47,26 @@ export class FloatingText {
     return oldest;
   }
 
-  /** 同一只僵尸 0.15 秒内的多次命中（霰弹的多颗弹丸）合并成一个数字 */
-  damage(owner: number, x: number, y: number, z: number, amount: number, crit: boolean): void {
+  /** 同一只僵尸 0.15 秒内的多次命中（霰弹的多颗弹丸）合并成一个数字；里面有一颗爆头，整个数字就按爆头显示 */
+  damage(owner: number, x: number, y: number, z: number, amount: number, crit: boolean, head = false): void {
     for (const it of this.items) {
       if (it.active && it.kind === 'dmg' && it.owner === owner && it.age < 0.15) {
         it.value += amount;
         it.crit = it.crit || crit;
+        it.head = it.head || head;
         this.paint(it);
         return;
       }
     }
     const it = this.take();
-    Object.assign(it, { active: true, x, y, z, vy: 2.0, age: 0, life: crit ? 1.0 : 0.75, owner, value: amount, crit, kind: 'dmg' as const, ox: (Math.random() - 0.5) * 30 });
+    Object.assign(it, { active: true, x, y, z, vy: head ? 2.4 : 2.0, age: 0, life: head ? 1.1 : crit ? 1.0 : 0.75, owner, value: amount, crit, head, kind: 'dmg' as const, ox: (Math.random() - 0.5) * (head ? 16 : 30) });
     it.el.style.display = 'block';
     this.paint(it);
   }
 
   scrap(x: number, y: number, z: number, amount: number): void {
     const it = this.take();
-    Object.assign(it, { active: true, x, y, z, vy: 1.6, age: 0, life: 1.5, owner: -1, value: amount, crit: false, kind: 'scrap' as const, ox: 22 });
+    Object.assign(it, { active: true, x, y, z, vy: 1.6, age: 0, life: 1.5, owner: -1, value: amount, crit: false, head: false, kind: 'scrap' as const, ox: 22 });
     it.el.style.display = 'block';
     this.paint(it);
   }
@@ -78,11 +81,18 @@ export class FloatingText {
       it.el.style.fontSize = `${Math.min(30, 19 + Math.sqrt(v) * 0.9).toFixed(0)}px`;
       return;
     }
-    it.el.className = 'fx-text';
     it.el.textContent = String(v);
     const big = Math.min(34, 15 + v * 0.12);
+    if (it.head) {
+      // 颜色、描边、上面那行「爆头」都在样式表里（.fx-head）
+      it.el.className = 'fx-text fx-head';
+      it.el.style.color = '';
+      it.el.style.fontSize = `${big + (it.crit ? 12 : 8)}px`;
+      return;
+    }
+    it.el.className = 'fx-text';
     it.el.style.fontSize = `${it.crit ? big + 8 : big}px`;
-    it.el.style.color = it.crit ? '#ffd23a' : v >= 60 ? '#ffb070' : '#f2f2ea';
+    it.el.style.color = it.crit ? '#ff9c3a' : v >= 60 ? '#ffb070' : '#f2f2ea';
   }
 
   update(dt: number): void {
@@ -105,7 +115,9 @@ export class FloatingText {
       const px = (this.v.x * 0.5 + 0.5) * w + it.ox;
       const py = (-this.v.y * 0.5 + 0.5) * h;
       const k = it.age / it.life;
-      const pop = it.age < 0.08 ? 0.6 + (it.age / 0.08) * 0.6 : 1.2 - Math.min(0.2, (it.age - 0.08) * 0.6);
+      // 弹出来的那一下：爆头的数字弹得更大
+      const peak = it.head ? 1.45 : 1.2;
+      const pop = it.age < 0.08 ? 0.6 + (it.age / 0.08) * (peak - 0.6) : peak - Math.min(peak - 1, (it.age - 0.08) * (it.head ? 2.2 : 0.6));
       it.el.style.opacity = String(k < 0.6 ? 1 : 1 - (k - 0.6) / 0.4);
       it.el.style.transform = `translate(${px.toFixed(1)}px, ${py.toFixed(1)}px) translate(-50%, -50%) scale(${pop.toFixed(2)})`;
     }

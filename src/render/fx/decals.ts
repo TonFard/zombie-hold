@@ -89,6 +89,9 @@ export class Decals {
     d.age = 0;
     d.life = life;
     d.base = kind === 'scorch' ? 0.85 : 0.9;
+    // 血和酸是湿的，反光；焦痕是干的：不压掉反光的话，低角度看过去映着天空，是一块浅灰色的「水渍」
+    d.mat.roughness = kind === 'scorch' ? 1 : 0.35;
+    d.mat.envMapIntensity = kind === 'scorch' ? 0 : 1;
     d.mat.opacity = d.base;
   }
 

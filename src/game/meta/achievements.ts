@@ -55,6 +55,7 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'combo-15', name: '收割机', desc: '一局里打出 15 连杀', medals: 20, test: (a) => a.bestCombo >= 15 },
   { id: 'challenges-10', name: '挑战者', desc: '累计完成 10 个夜间挑战', medals: 25, test: (a) => a.challenges >= 10 },
   { id: 'codex', name: '博物学家', desc: '图鉴里集齐全部 9 种僵尸', medals: 30, test: (a) => seenAll(a.codex, ['walker', 'runner', 'bloater', 'breaker', 'colossus', 'spitter', 'screamer', 'crawler', 'armored']) },
+  { id: 'codex-new', name: '新物种', desc: '图鉴里见过跳跃者、裂殖者和毒雾者', medals: 15, test: (a) => seenAll(a.codex, ['leaper', 'splitter', 'gasser']) },
 ];
 
 /** 新达成的成就（不含已经达成过的） */

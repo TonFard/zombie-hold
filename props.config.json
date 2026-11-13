@@ -63,6 +63,20 @@
     "tool_cart": {
       "tris": 6000
     },
+    "bench_vice_01": {},
+    "service_pistol": {
+      "tris": 6000
+    },
+    "ammo_box": {},
+    "metal_toolbox": {
+      "tris": 4000
+    },
+    "metal_tool_chest": {
+      "tris": 6000
+    },
+    "desk_lamp_arm_01": {
+      "tris": 5000
+    },
     "utility_box_02": {},
     "metal_trash_can": {
       "tris": 5000

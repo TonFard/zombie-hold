@@ -7,6 +7,7 @@ import { BENCH_MAX, benchKey, benchPrice, type BenchLine } from '../data/bench';
 import { masteryBenchCap, masteryLevel, masteryTierCap, xpFor } from '../data/mastery';
 import { CHALLENGE_MEDALS } from '../data/modifiers';
 import { FINAL_NIGHT } from '../data/waves';
+import { GUNS, GUN_BY_ID, defaultGuns, gunFits, type GunDef } from '../data/guns';
 
 /** 局外进度：存档 v2 的一部分 */
 export interface MetaState {
@@ -32,9 +33,13 @@ export interface MetaState {
   lastChapter: MapId;
   /** 武器熟练度经验（累计，永久）：用这把枪击杀 +1，爆头击杀再 +1 */
   mastery: Partial<Record<WeaponKind, number>>;
+  /** 已解锁的枪械型号（data/guns.ts；每类的默认型号不用解锁，不记） */
+  guns: string[];
+  /** 每一类出征时用哪个型号（没选 / 没解锁 = 默认型号） */
+  gunPick: Partial<Record<WeaponKind, string>>;
 }
 
-export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', lastSidearm: null, supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost', mastery: {} });
+export const newMeta = (): MetaState => ({ medals: 0, medalsEarned: 0, levels: {}, cleared: [], lastDifficulty: 'normal', lastSidearm: null, supplies: 60, ammo: {}, bench: {}, chapters: [], lastChapter: 'outpost', mastery: {}, guns: [], gunPick: {} });
 
 // ---------------------------------------------------------------- 勋章结算
 
@@ -111,7 +116,7 @@ export function settleRun(m: MetaState, o: RunOutcome): [MetaState, MedalBreakdo
   return [next, b];
 }
 
-export const cloneMeta = (m: MetaState): MetaState => ({ ...m, levels: { ...m.levels }, cleared: [...m.cleared], ammo: { ...m.ammo }, bench: { ...m.bench }, chapters: [...m.chapters], mastery: { ...m.mastery } });
+export const cloneMeta = (m: MetaState): MetaState => ({ ...m, levels: { ...m.levels }, cleared: [...m.cleared], ammo: { ...m.ammo }, bench: { ...m.bench }, chapters: [...m.chapters], mastery: { ...m.mastery }, guns: [...m.guns], gunPick: { ...m.gunPick } });
 
 /** 把一局里每把枪的击杀加进熟练度（直接改 next） */
 export function addMastery(next: MetaState, o: Pick<RunOutcome, 'weaponKills' | 'weaponHeads'>): void {
@@ -162,8 +167,52 @@ export function buyBench(m: MetaState, k: WeaponKind, line: BenchLine): MetaStat
   return next;
 }
 
-// ---------------------------------------------------------------- 购买
+// ---------------------------------------------------------------- 枪械型号
 
+export type GunResult = 'owned' | 'unknown' | 'class' | 'mastery' | 'medals' | 'ok';
+
+/** 这个型号现在是什么状态：已拥有 / 这一类还没解锁 / 熟练度不够 / 勋章不够 / 可以解锁 */
+export function gunState(m: MetaState, id: string): GunResult {
+  const g = GUN_BY_ID[id];
+  if (!g) return 'unknown';
+  if (g.medals === 0 || m.guns.includes(id)) return 'owned';
+  if (g.cls !== 'pistol' && !bonusesOf(m).weapons.has(g.cls)) return 'class';
+  if (masteryOf(m, g.cls) < g.mastery) return 'mastery';
+  if (m.medals < g.medals) return 'medals';
+  return 'ok';
+}
+
+/** 解锁一个型号（花勋章）：买不了返回 null */
+export function unlockGun(m: MetaState, id: string): MetaState | null {
+  if (gunState(m, id) !== 'ok') return null;
+  const next = cloneMeta(m);
+  next.medals -= (GUN_BY_ID[id] as GunDef).medals;
+  next.guns.push(id);
+  return next;
+}
+
+/** 选一个已拥有的型号出征：不是这一类 / 没拥有返回 null */
+export function pickGun(m: MetaState, k: WeaponKind, id: string): MetaState | null {
+  if (!gunFits(k, id) || gunState(m, id) !== 'owned') return null;
+  const next = cloneMeta(m);
+  next.gunPick[k] = id;
+  return next;
+}
+
+/** 出征时每一类用的型号：选了并且拥有就用它，否则默认型号 */
+export function gunsFor(m: MetaState): Record<WeaponKind, string> {
+  const out = defaultGuns();
+  for (const k of WEAPON_ORDER) {
+    const id = m.gunPick[k];
+    if (id && gunFits(k, id) && gunState(m, id) === 'owned') out[k] = id;
+  }
+  return out;
+}
+
+/** 还没解锁的型号（局内空投的试用枪从里面抽） */
+export const lockedGuns = (m: MetaState): string[] => GUNS.filter((g) => gunState(m, g.id) !== 'owned').map((g) => g.id);
+
+// ---------------------------------------------------------------- 购买
 export type BuyResult = 'ok' | 'unknown' | 'maxed' | 'medals' | 'requires' | 'rank' | 'mastery';
 
 export const levelOf = (m: MetaState, id: string): number => m.levels[id] ?? 0;

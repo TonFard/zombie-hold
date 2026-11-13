@@ -3,6 +3,7 @@
 import { STAR_FX, STAR_MAX, starXp, starsOf } from '../../src/game/data/stars';
 import { MASTERY_MAX, MASTERY_XP } from '../../src/game/data/mastery';
 import { WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from '../../src/game/data/weapons';
+import { ZOMBIES } from '../../src/game/data/zombies';
 import { Game, STEP } from '../../src/game/sim';
 import type { Zombie } from '../../src/game/entities/zombie';
 import { configFor } from '../../src/game/meta/loadout';
@@ -34,15 +35,19 @@ function game(kind: WeaponKind, n: number, tier = 0): Game {
   g.player.tier = tier;
   return g;
 }
-const pin = (z: Zombie, x: number, zz: number) => {
+/** 靶子面朝射手（射手在 −X 方向）：头球在身体前面，朝向决定头在哪 */
+const FACING = -Math.PI / 2;
+const pin = (z: Zombie, x: number, zz: number, yaw?: number) => {
   z.x = x;
   z.z = zz;
   z.vx = z.vz = 0;
   z.kbx = z.kbz = 0;
+  if (yaw !== undefined) z.yaw = yaw;
 };
-/** 对着 dx 米外一只不动的巨像打 seconds 秒，返回打出的伤害；pitch 默认打胸口 */
+/** 对着 dx 米外一只不动的巨像（面朝射手）打 seconds 秒，返回打出的伤害；pitch 默认打胸口 */
 function shoot(g: Game, dx: number, seconds: number, pitch = -0.1, setup?: (z: Zombie) => void): { dmg: number; z: Zombie } {
   const z = g.spawnZombie('colossus', PX + dx, PZ, 1e6) as Zombie;
+  z.yaw = FACING;
   setup?.(z);
   let dmg = 0;
   g.events.on('zombieHit', (e) => {
@@ -54,7 +59,7 @@ function shoot(g: Game, dx: number, seconds: number, pitch = -0.1, setup?: (z: Z
   g.input.fire = true;
   for (let t = 0; t < Math.round(seconds / STEP); t++) {
     g.update(STEP);
-    pin(z, PX + dx, PZ);
+    pin(z, PX + dx, PZ, FACING);
   }
   return { dmg, z };
 }
@@ -81,28 +86,46 @@ console.log('\n== 手枪 ==');
     return g.player.reloadTotal;
   };
   check(near(ratio(reloadOf(2), reloadOf(0)), STAR_FX.pistolReload), `★2 换弹 ×${ratio(reloadOf(2), reloadOf(0)).toFixed(2)}（应 ×${STAR_FX.pistolReload}）`);
-  const gd = (n: number) => {
+  // ★3：爆头伤害 +25%（双持删了之后换成这个）。和步枪 ★1 一样打巨像的头，只统计打中头的
+  const head = (n: number) => {
     const g = game('pistol', n);
-    g.config.dual = true;
-    g.loadout.pistol.mag = 0;
-    g.update(STEP);
-    return g.player.reloadTotal;
+    let heads = 0;
+    let headDmg = 0;
+    g.events.on('zombieHit', (e) => {
+      if (e.head) {
+        heads++;
+        headDmg += e.amount;
+      }
+    });
+    const dx = 5;
+    const h = ZOMBIES.colossus.head;
+    shoot(g, dx, 1.2, Math.atan2(h.y - g.player.eye, dx - h.fwd));
+    return heads > 0 ? headDmg / heads : 0;
   };
-  check(near(ratio(gd(3), gd(2)), STAR_FX.pistolDualReload), `★3 双持换弹再 ×${ratio(gd(3), gd(2)).toFixed(2)}`);
+  const hp = ratio(head(3), head(2));
+  const hx = (1 + (WEAPONS.pistol.headMult - 1) * STAR_FX.pistolHead * 0.6) / (1 + (WEAPONS.pistol.headMult - 1) * 0.6);
+  check(near(hp, hx, 0.01), `★3 爆头伤害 ×${hp.toFixed(3)}（巨像头部脆弱系数 0.6，理论 ×${hx.toFixed(3)}）`);
+  // 手枪能右键举镜（以前双持时不能举）
+  const g2 = game('pistol', 0);
+  g2.input.ads = true;
+  for (let i = 0; i < 30; i++) g2.update(STEP);
+  check(g2.player.ads > 0.95, `手枪右键举镜：0.5 秒后举镜进度 ${g2.player.ads.toFixed(2)}`);
   // ★1：爆头击杀返弹。头部伤害够秒杀行尸
   const refundOf = (n: number) => {
     const g = game('pistol', n);
     const z = g.spawnZombie('walker', PX + 3, PZ, 0.01) as Zombie;
+    z.yaw = FACING;
     g.loadout.pistol.mag = 5;
     let refunded = 0;
     g.events.on('refund', (e) => (refunded += e.amount));
     g.input.aimX = PX + 20;
     g.input.aimZ = PZ;
-    g.input.aimPitch = Math.atan2(z.def.head.y - g.player.eye, 3);
+    // 行尸面朝射手站着：头在身体前面 head.fwd 米
+    g.input.aimPitch = Math.atan2(z.def.head.y - g.player.eye, 3 - z.def.head.fwd);
     g.input.fire = true;
     for (let t = 0; t < 30 && z.alive; t++) {
       g.update(STEP);
-      pin(z, PX + 3, PZ);
+      pin(z, PX + 3, PZ, FACING);
     }
     return refunded;
   };
@@ -171,7 +194,7 @@ console.log('\n== 突击步枪 ==');
   check(r > 1.15 && r < 1 + STAR_FX.rifleFocus.max + 0.01, `★3 3 秒连射同一目标伤害 ×${r.toFixed(3)}（逐发 +3%，上限 +30%）`);
   // ★1：爆头加成 ×1.2
   const head = (n: number) => {
-    // 靶子是巨像：头在 3.45 米高（不是行尸的头），按它的头和头前伸量瞄
+    // 靶子是巨像，面朝射手站着：按它的头球（高度、前伸量）瞄，不是行尸的头
     // 只统计打中头的那几发（散布会让一部分打到身上，混进去会把比值稀释）
     const g = game('rifle', n);
     let heads = 0;
@@ -183,7 +206,8 @@ console.log('\n== 突击步枪 ==');
       }
     });
     const dx = 6;
-    shoot(g, dx, 0.3, Math.atan2(3.45 - g.player.eye, dx - 0.95 + 0.2));
+    const h = ZOMBIES.colossus.head;
+    shoot(g, dx, 0.3, Math.atan2(h.y - g.player.eye, dx - h.fwd));
     return heads > 0 ? headDmg / heads : 0;
   };
   const hr = ratio(head(1), head(0));
@@ -229,29 +253,6 @@ console.log('\n== 轻机枪 ==');
   const g = game('lmg', 1);
   shoot(g, 6, 2.5);
   check(g.player.sustainT >= 2, `★1 持续开火计时 ${g.player.sustainT.toFixed(1)} 秒（≥ 2 秒散布 −40%）`);
-}
-
-console.log('\n== 榴弹发射器 ==');
-{
-  const g1 = game('launcher', 1);
-  const g0 = game('launcher', 0);
-  for (const x of [g0, g1]) {
-    x.input.aimX = PX + 20;
-    x.input.aimZ = PZ;
-    x.input.fire = true;
-    x.update(STEP);
-  }
-  const a0 = g0.projectiles[0]?.aoe ?? 0;
-  const a1 = g1.projectiles[0]?.aoe ?? 0;
-  check(near(ratio(a1, a0), STAR_FX.launcherAoe), `★1 爆炸半径 ${a0.toFixed(2)} → ${a1.toFixed(2)}`);
-  const g2 = game('launcher', 2);
-  g2.input.aimX = PX + 20;
-  g2.input.aimZ = PZ;
-  g2.input.fire = true;
-  g2.update(STEP);
-  const v0 = Math.hypot(g0.projectiles[0]?.vx ?? 0, g0.projectiles[0]?.vz ?? 0);
-  const v2 = Math.hypot(g2.projectiles[0]?.vx ?? 0, g2.projectiles[0]?.vz ?? 0);
-  check(near(ratio(v2, v0), STAR_FX.launcherReach), `★2 弹速 ×${ratio(v2, v0).toFixed(2)}`);
 }
 
 console.log('\n== 不影响别的枪、不影响炮塔 ==');

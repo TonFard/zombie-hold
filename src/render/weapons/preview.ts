@@ -1,6 +1,6 @@
 import { AmbientLight, Box3, DirectionalLight, Group, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, ACESFilmicToneMapping, type Object3D } from 'three';
 import { WEAPON_ORDER, type WeaponKind } from '../../game/data/weapons';
-import { buildWeapon } from './index';
+import { buildWeapon, hasGunModel } from './index';
 
 /**
  * 武器图标和武器台的 3D 预览（M20）：用程序武器模型（buildWeapon，每把枪都有，不依赖 TACZ 文件）。
@@ -63,7 +63,7 @@ const icons = new Map<string, string>();
 
 /** 某把枪某个等级的侧视图标（PNG data URL），缓存 */
 export function weaponIcon(kind: WeaponKind, tier = 0, w = 240, h = 96): string {
-  const key = `${kind}:${tier}:${w}x${h}`;
+  const key = `${kind}:${tier}:${w}x${h}:${hasGunModel(kind) ? 'glb' : 'kit'}`;
   const hit = icons.get(key);
   if (hit) return hit;
   const s = setup();
@@ -96,7 +96,7 @@ export const allIcons = (): Record<WeaponKind, string> => Object.fromEntries(WEA
  * 画布跟着容器尺寸走（resize），单独一个渲染器，只在武器台打开时存在。
  * 双持手枪展示两把（一左一右），不是一把
  */
-export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; setWeapon(kind: WeaponKind, tier: number, dual?: boolean): void; resize(w: number, h: number): void; dispose(): void } {
+export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; setWeapon(kind: WeaponKind, tier: number): void; resize(w: number, h: number): void; dispose(): void } {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -134,7 +134,7 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   let current: Group | null = null;
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
   const loop = (now: number) => {
-    const dt = Math.min(0.05, (now - last) / 1000);
+    const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
     // 一圈 12 秒；刚换枪时转得快一点，然后缓下来
     if (!dragging && now - touched > 3000 && !reduce) yaw += dt * ((Math.PI * 2) / 12);
@@ -184,24 +184,11 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   raf = requestAnimationFrame(loop);
   return {
     canvas: el,
-    setWeapon(kind, tier, dual = false) {
+    setWeapon(kind, tier) {
       holder.clear();
       // frame() 会挪模型的位置，每次都用新建的模型
-      // 双持：左右各一把（左边那把沿 X 镜像）。只沿 X 摆开的话，从侧面看两把完全重叠、像一把，
-      // 所以再前后、上下错开一点，枪口各向外撇一点，转到哪个角度都看得出是两把
       const g = new Group();
-      if (dual && kind === 'pistol') {
-        const right = buildWeapon(kind, tier).group;
-        const left = buildWeapon(kind, tier).group;
-        left.scale.x = -1;
-        right.position.set(0.07, 0.035, 0.07);
-        left.position.set(-0.07, -0.035, -0.07);
-        right.rotation.y = 0.2;
-        left.rotation.y = -0.2;
-        g.add(right, left);
-      } else {
-        g.add(buildWeapon(kind, tier).group);
-      }
+      g.add(buildWeapon(kind, tier).group);
       holder.add(g);
       current = g;
       swap = reduce ? 1 : 0;

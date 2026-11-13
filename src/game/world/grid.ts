@@ -3,6 +3,12 @@ export const GRID_H = 80;
 export const HALF_W = GRID_W / 2;
 export const HALF_H = GRID_H / 2;
 const COUNT = GRID_W * GRID_H;
+/** 薄障碍（栅栏）的半厚度（米） */
+export const SLAB_HALF = 0.12;
+/** 单排沙袋的半厚度（米）：渲染层按它缩放模型，看到多厚就挡多厚 */
+export const SANDBAG_HALF = 0.3;
+/** 车的外沿（padX / padZ）挤出来的缝最少留多宽（米）：玩家直径 0.7 */
+const GAP_MIN = 0.85;
 
 /** 地面类型，渲染用 */
 /** 地面种类。Water 是浅水（可走、会减速，渲染成水面）；Sand 是湖岸沙地 */
@@ -39,6 +45,39 @@ export class Grid {
    * 寻路仍然把整格当成障碍，但玩家的碰撞和子弹按真实粗细算，不会撞上"空气墙"。
    */
   readonly post = new Float32Array(COUNT);
+
+  /**
+   * 薄障碍（栅栏、单排沙袋）：1 = 沿 x 方向的一道薄墙，2 = 沿 y 方向，0 = 整格方块。在格子正中，半厚度见 slabHalf。
+   * 和 post 一样只影响玩家碰撞和子弹，寻路仍把整格当障碍。
+   */
+  readonly slab = new Uint8Array(COUNT);
+  /** 薄障碍的半厚度（米），slab > 0 的格才有意义 */
+  readonly slabHalf = new Float32Array(COUNT);
+
+  /**
+   * 模型伸出格子的距离（米，沿世界 x / z）：车身比 2×4 格长、开着的车门和后视镜伸到旁边的格子里。
+   * 玩家的精细碰撞把格子按它往外扩（看到车门就挡住）。僵尸不用（会盖住车旁那一格的路点，走不到就卡住）
+   */
+  readonly padX = new Float32Array(COUNT);
+  readonly padZ = new Float32Array(COUNT);
+
+  /**
+   * 阻挡格 (cx,cy) 朝 (dx,dy) 方向（四个正交方向之一）实际伸出去多少米。
+   * 旁边那格也是障碍：0。隔一格又是障碍（1 格宽的缝）：两边伸出去的加起来至少留 0.85 米，人还过得去
+   */
+  padToward(cx: number, cy: number, dx: number, dy: number): number {
+    if (!this.inBounds(cx, cy)) return 0;
+    const i = cy * GRID_W + cx;
+    const pad = (dx !== 0 ? this.padX[i] : this.padZ[i]) as number;
+    if (pad <= 0 || this.isBlocked(cx + dx, cy + dy)) return 0;
+    const fx = cx + 2 * dx;
+    const fy = cy + 2 * dy;
+    if (!this.isBlocked(fx, fy)) return pad;
+    const other = this.inBounds(fx, fy) ? ((dx !== 0 ? this.padX[fy * GRID_W + fx] : this.padZ[fy * GRID_W + fx]) as number) : 0;
+    const room = 1 - GAP_MIN;
+    // 两边按各自的伸出量分剩下的余量
+    return pad + other <= room ? pad : (room * pad) / (pad + other);
+  }
 
   /** 1 = 这一格的阻挡建筑是路障：爬行者能从底下钻过去（炮塔不行） */
   readonly crawl = new Uint8Array(COUNT);

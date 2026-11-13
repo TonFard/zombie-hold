@@ -32,10 +32,22 @@ const GAIT: Record<ZombieKind, Gait> = {
   crawler: { legSwing: 0.4, knee: 0.6, bob: 0.02, armRaise: -1.4, armSwing: 0.5, elbow: -0.3, spread: 0.2, lean: 0, loll: 0.15, sway: 0.1, pump: true },
   // 重装感染者：沉、慢，双臂护在胸前的钢板后面
   armored: { legSwing: 0.42, knee: 0.5, bob: 0.04, armRaise: -0.6, armSwing: 0.06, elbow: -1.3, spread: 0.08, lean: 0.12, loll: 0.06, sway: 0.14, pump: false },
+  // 跳跃者：弓着腰、屈着膝小跑，双手垂在身前
+  leaper: { legSwing: 0.85, knee: 1.3, bob: 0.06, armRaise: -0.5, armSwing: 0.7, elbow: -0.6, spread: 0.2, lean: 0.62, loll: 0.15, sway: 0.08, pump: true },
+  // 裂殖者：背上的囊包压得它往前佝，拖着步子
+  splitter: { legSwing: 0.4, knee: 0.5, bob: 0.05, armRaise: -0.7, armSwing: 0.1, elbow: -0.5, spread: 0.35, lean: 0.38, loll: 0.25, sway: 0.18, pump: false },
+  // 毒雾者：歪着身子晃，一只手捏着面具
+  gasser: { legSwing: 0.5, knee: 0.65, bob: 0.04, armRaise: -0.8, armSwing: 0.15, elbow: -0.9, spread: 0.18, lean: 0.22, loll: 0.3, sway: 0.16, pump: false },
+  // 收割者：长胳膊垂着，骨镰拖在身侧，大步往前探
+  reaper: { legSwing: 0.55, knee: 0.7, bob: 0.04, armRaise: -0.25, armSwing: 0.25, elbow: -0.35, spread: 0.18, lean: 0.28, loll: 0.25, sway: 0.12, pump: false },
+  // 母巢：肚子坠着，一步一晃
+  brood: { legSwing: 0.3, knee: 0.4, bob: 0.06, armRaise: -0.6, armSwing: 0.1, elbow: -0.3, spread: 0.6, lean: 0.15, loll: 0.12, sway: 0.25, pump: false },
+  // 哀嚎女王：双臂软软垂着，头歪向一边，飘着走
+  siren: { legSwing: 0.6, knee: 0.8, bob: 0.04, armRaise: -0.15, armSwing: 0.2, elbow: -0.2, spread: 0.22, lean: 0.18, loll: 0.35, sway: 0.1, pump: false },
 };
 
 /** 攻击动画时长（秒），渲染层据此把攻击事件展开成 0–1 的进度 */
-export const ATTACK_TIME: Record<ZombieKind, number> = { walker: 0.6, runner: 0.4, bloater: 0.8, breaker: 0.75, colossus: 1.1, spitter: 0.7, screamer: 0.5, crawler: 0.35, armored: 0.9 };
+export const ATTACK_TIME: Record<ZombieKind, number> = { walker: 0.6, runner: 0.4, bloater: 0.8, breaker: 0.75, colossus: 1.1, spitter: 0.7, screamer: 0.5, crawler: 0.35, armored: 0.9, leaper: 0.4, splitter: 0.8, gasser: 0.6, reaper: 0.8, brood: 1.0, siren: 0.55 };
 
 export interface ZombiePose {
   kind: ZombieKind;
@@ -49,6 +61,12 @@ export interface ZombiePose {
   attack: number;
   flinch: number;
   seed: number;
+  /** 跳跃者：蹲下蓄力的进度 0–1（没在蓄力 = 0）；滞空进度 0–1（<0 = 在地上） */
+  crouch?: number;
+  air?: number;
+  /** 首领技能：哪一招、蓄力进度 0–1（1 = 已经放出去） */
+  skill?: 'hook' | 'cleave' | 'shriek' | 'howl' | '';
+  skillK?: number;
 }
 
 const ease = (x: number) => x * x * (3 - 2 * x);
@@ -166,6 +184,66 @@ export function poseZombie(a: RigActor, p: ZombiePose): void {
       const st = strike(p.attack);
       chest.rotation.x -= st.lean * 0.6;
       head.rotation.x += st.arm * 0.4;
+    }
+  }
+
+  // 跳跃者：蓄力时蹲低（脚还踩在地上：大腿前摆 1 弧度、小腿往回折 1.8 弧度时髋下沉约 0.33 米）、手往后抡、抬头盯人；
+  // 在空中收腿、双手往前伸去抓，快落地时把腿放下来
+  const crouch = p.crouch ?? 0;
+  if (crouch > 0) {
+    const k = ease(clamp(crouch * 1.6, 0, 1));
+    pelvis.position.y = a.pelvisBaseY - 0.33 * k;
+    bone(B.legUL).rotation.x = -1.0 * k;
+    bone(B.legUR).rotation.x = -1.0 * k;
+    bone(B.legLL).rotation.x = 1.8 * k;
+    bone(B.legLR).rotation.x = 1.8 * k;
+    chest.rotation.x = g.lean + 0.35 * k + 0.04 * Math.sin(p.t * 30) * k;
+    head.rotation.x = -g.lean * 0.7 - 0.55 * k;
+    bone(B.armUL).rotation.set(lerp(aUL, 0.9, k), 0, spreadL + 0.25 * k);
+    bone(B.armUR).rotation.set(lerp(aUR, 0.9, k), 0, -spreadR - 0.25 * k);
+  }
+  const air = p.air ?? -1;
+  if (air >= 0) {
+    const tuck = Math.sin(Math.PI * clamp(air, 0, 1));
+    const reach = ease(clamp(air * 3, 0, 1));
+    pelvis.position.y = a.pelvisBaseY;
+    bone(B.legUL).rotation.x = -0.4 - 0.9 * tuck;
+    bone(B.legUR).rotation.x = -0.2 - 0.9 * tuck;
+    bone(B.legLL).rotation.x = 0.4 + 1.3 * tuck;
+    bone(B.legLR).rotation.x = 0.5 + 1.3 * tuck;
+    chest.rotation.x = 0.35 + 0.25 * tuck;
+    head.rotation.x = -0.6;
+    bone(B.armUL).rotation.set(lerp(0.6, -2.3, reach), 0, 0.3);
+    bone(B.armUR).rotation.set(lerp(0.6, -2.2, reach), 0, -0.3);
+    bone(B.armLL).rotation.x = -0.3;
+    bone(B.armLR).rotation.x = -0.35;
+  }
+
+  // 首领技能的动作：蓄力时把动作做大（玩家靠这个和地上的预警读招），放出去以后停在出招的姿势
+  const sk = p.skill ?? '';
+  if (sk) {
+    const k = ease(clamp(p.skillK ?? 0, 0, 1));
+    const out = (p.skillK ?? 0) >= 1;
+    if (sk === 'hook') {
+      // 左手的钩子：蓄力时抡到身后，甩出去时直直伸向前
+      bone(B.armUL).rotation.set(out ? -1.7 : lerp(aUL, 1.2, k), 0, out ? 0.1 : 0.2 + 0.4 * k);
+      bone(B.armLL).rotation.x = out ? -0.1 : -1.2 * k;
+      chest.rotation.y = out ? -0.35 : 0.5 * k;
+    } else if (sk === 'cleave') {
+      // 右臂的骨镰：蓄力时举过头顶、拧腰，放出去时一刀横抡到另一边
+      bone(B.armUR).rotation.set(out ? -1.3 : lerp(aUR, -2.6, k), 0, out ? 0.5 : -spreadR - 0.9 * k);
+      bone(B.armLR).rotation.x = out ? -0.2 : -0.6 * k;
+      chest.rotation.y = out ? 0.7 : -0.6 * k;
+      chest.rotation.x = g.lean + (out ? 0.3 : -0.15 * k);
+    } else {
+      // 尖啸 / 咆哮：蓄力时仰头挺胸、双臂张开，叫出来时上身猛地前探
+      chest.rotation.x = out ? g.lean + 0.35 : g.lean - 0.4 * k;
+      head.rotation.x = out ? -0.2 : -0.9 * k;
+      bone(B.armUL).rotation.set(lerp(aUL, -0.6, k), 0, spreadL + 1.1 * k);
+      bone(B.armUR).rotation.set(lerp(aUR, -0.6, k), 0, -spreadR - 1.1 * k);
+      bone(B.armLL).rotation.x = -0.3 * k;
+      bone(B.armLR).rotation.x = -0.3 * k;
+      if (!out) chest.rotation.z += 0.03 * Math.sin(p.t * 40) * k;
     }
   }
 

@@ -5,7 +5,7 @@ import { ZOMBIES } from '../../src/game/data/zombies';
 import { CARD_BY_ID, drawCards } from '../../src/game/data/cards';
 import { FINAL_NIGHT, bossFor } from '../../src/game/data/waves';
 import { baseBonuses, META_ITEMS } from '../../src/game/data/meta-catalog';
-import { NO_MOD, weightOf } from '../../src/game/data/weapons';
+import { NO_MOD, WEAPONS, weightOf } from '../../src/game/data/weapons';
 import { applyMeta } from '../../src/game/meta/loadout';
 import { medalsFor } from '../../src/game/meta/progress';
 import { loadCheckpoint, serialize } from '../../src/game/save/checkpoint';
@@ -322,7 +322,7 @@ console.log('\n== 新僵尸 ==');
     const sp = t.spawnZombie('spitter', 0.5, 9)!;
     sp.dummy = true;
     sp.yaw = Math.PI;
-    t.input.aimPitch = Math.atan2(ZOMBIES.spitter.head.y - t.player.eye, 5);
+    t.input.aimPitch = Math.atan2(ZOMBIES.spitter.head.y - t.player.eye, 5 - ZOMBIES.spitter.head.fwd);
     t.loadout.pistol.mag = 16;
     fireWeapon(t);
     run(t, 0.2);
@@ -444,7 +444,7 @@ console.log('\n== 夜间挑战 ==');
 
 console.log('\n== 无尽模式 ==');
 {
-  check(bossFor(15)?.kind === 'colossus' && bossFor(20)!.hpScale > bossFor(15)!.hpScale && !bossFor(12), '第 15 / 20 夜有首领且越来越硬，第 12 夜没有');
+  check(!!bossFor(15) && !!bossFor(20) && bossFor(20)!.hpScale > bossFor(15)!.hpScale && !bossFor(12), '第 15 / 20 夜有首领且越来越硬，第 12 夜没有');
   const g = ranked(16);
   g.invulnerableCore = true;
   g.invulnerablePlayer = true;
@@ -551,12 +551,12 @@ console.log('\n== M13：首领冲锋与弱点 ==');
   stages = [];
 }
 
-console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
+console.log('\n== 武器属性：重量、弹药、章节 ==');
 {
   const { bonusesOf, newMeta, suppliesFor, buyAmmo, buyBench } = await import('../../src/game/meta/progress');
   const { CHAPTER_BY_ID } = await import('../../src/game/data/chapters');
   const { switchWeapon } = await import('../../src/game/systems/player');
-  const all = { 'unlock-smg': 1, 'unlock-shotgun': 1, 'unlock-rifle': 1, 'unlock-lmg': 1, dual: 1, 'cap-pistol': 1 };
+  const all = { 'unlock-smg': 1, 'unlock-shotgun': 1, 'unlock-rifle': 1, 'unlock-lmg': 1, 'cap-pistol': 1 };
   const b = bonusesOf({ ...newMeta(), levels: all });
 
   // 重量：拿轻机枪走得比手枪慢
@@ -597,23 +597,11 @@ console.log('\n== 武器属性：重量、弹药、双持、章节 ==');
   check(g.loadout.smg.mag === 0 && g.player.reloadTimer === 0, '备弹打光：不会再换弹');
   check(g.reserveOf('pistol') === Infinity, '手枪子弹无限');
 
-  // 双持：弹匣翻倍、射速更高、换弹更慢、重量翻倍
+  // 手枪只有单持：旧存档里的「手枪双持」不再生效，按单把算（12 发、1 kg）
   const gd = new Game(43);
-  applyMeta(gd, b, { difficulty: 'normal' });
-  check(gd.config.dual && gd.statsOf('pistol').mag === 24 && gd.statsOf('pistol').rate > 5, `双持手枪：弹匣 ${gd.statsOf('pistol').mag}、射速 ${gd.statsOf('pistol').rate.toFixed(1)}`);
+  applyMeta(gd, bonusesOf({ ...newMeta(), levels: { ...all, dual: 1 } }), { difficulty: 'normal' });
+  check(!('dual' in gd.config) && gd.statsOf('pistol').mag === 12 && Math.abs(weightOf('pistol', NO_MOD) - WEAPONS.pistol.weight) < 1e-9, `手枪单持：弹匣 ${gd.statsOf('pistol').mag}、${weightOf('pistol', NO_MOD).toFixed(1)} kg`);
   {
-    // 换弹更慢：双持的换弹时间要比单持长
-    const gs = new Game(48);
-    applyMeta(gs, bonusesOf({ ...newMeta(), levels: { ...all, dual: 0 } }), { difficulty: 'normal' });
-    const single = gs.statsOf('pistol').reload;
-    const dual = gd.statsOf('pistol').reload;
-    check(dual > single * 1.2, `双持换弹更慢：单持 ${single.toFixed(2)} 秒 → 双持 ${dual.toFixed(2)} 秒`);
-
-    // 重量翻倍：双持手枪的重量正好是两把手枪
-    const wSingle = weightOf('pistol', NO_MOD, false);
-    const wDual = weightOf('pistol', NO_MOD, true);
-    check(Math.abs(wDual - wSingle * 2) < 1e-9, `双持重量翻倍：单持 ${wSingle.toFixed(1)} kg → 双持 ${wDual.toFixed(1)} kg`);
-
     // 「随身武器」：军械库里有，要先解锁霰弹枪，默认没有
     check(META_ITEMS.some((it) => it.id === 'sidearm' && it.requires?.id === 'unlock-shotgun'), '军械库里有「随身武器」，前置是解锁霰弹枪');
     check(baseBonuses().sidearm === false, '局外加成里默认没有随身武器');

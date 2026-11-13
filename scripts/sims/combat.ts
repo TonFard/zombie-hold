@@ -15,8 +15,8 @@ const check = (ok: boolean, msg: string) => {
 
 const PX = -8;
 const PZ = 6;
-/** 略微下压：子弹在 2.5–5 m 处约 1.1–1.35 m 高，打在胸口而不是头 */
-const CHEST = -0.1;
+/** 下压：子弹在 2.5–5 m 处约 0.65–1.15 m 高，打在胸口 / 肚子上。僵尸驼着背，头在胸口前面 1.3–1.7 m 高，再平一点就蹭到头了 */
+const CHEST = -0.2;
 
 function fresh(): Game {
   const g = new Game(5);
@@ -28,12 +28,13 @@ function fresh(): Game {
   return g;
 }
 
-/** 让僵尸原地不动（只测伤害，不测 AI） */
-function pin(z: Zombie, x: number, zz: number): void {
+/** 让僵尸原地不动（只测伤害，不测 AI）；给了 yaw 就连朝向一起定住（头球在身体前面，朝向决定头在哪） */
+function pin(z: Zombie, x: number, zz: number, yaw?: number): void {
   z.x = x;
   z.z = zz;
   z.vx = z.vz = 0;
   z.kbx = z.kbz = 0;
+  if (yaw !== undefined) z.yaw = yaw;
 }
 
 function setWeapon(g: Game, kind: WeaponKind, tier: number): void {
@@ -162,20 +163,17 @@ console.log('\n== 墙体阻挡 ==');
   check(wallImpact, '子弹在墙上产生了命中事件');
 }
 
-console.log('\n== 榴弹范围伤害 ==');
+console.log('\n== 抛射体范围伤害（迫击炮弹）==');
 {
+  // 榴弹发射器删了，抛射体 + 爆炸现在只有迫击炮在用：直接放一发朝中间目标飞的炮弹
   const g = fresh();
-  setWeapon(g, 'launcher', 0); // 伤害 120，半径 2.2
   const center = g.spawnZombie('colossus', PX + 6, PZ, 1e6) as Zombie;
   const near = g.spawnZombie('walker', PX + 6, PZ + 1.6, 100) as Zombie;
   const far = g.spawnZombie('walker', PX + 6, PZ + 6, 100) as Zombie;
   const nearHp = near.hp;
-  g.input.aimX = PX + 20;
-  g.input.aimZ = PZ;
-  g.input.fire = true;
+  g.projectiles.push({ x: PX + 1, y: 1, z: PZ, vx: 16, vy: 0, vz: 0, life: 2, damage: 120, aoe: 2.2, split: 0, bomblet: false });
   for (let i = 0; i < 60; i++) {
     g.update(STEP);
-    g.input.fire = false;
     pin(center, PX + 6, PZ);
     pin(near, PX + 6, PZ + 1.6);
     pin(far, PX + 6, PZ + 6);
@@ -279,6 +277,8 @@ console.log('\n== 击杀奖励与胖子酸液 ==');
 // 一条开阔的射击通道：从 (-8, 0.5) 朝 +X 方向 40 米内没有障碍
 const LX = -8;
 const LZ = 0.5;
+/** 通道里的僵尸面朝射手（朝 −X）：瞄头的测试打的是正脸 */
+const FACING = -Math.PI / 2;
 function lane(kind: WeaponKind, tier = 0): Game {
   const g = fresh();
   g.player.x = LX;
@@ -296,9 +296,10 @@ function ads(g: Game, z: Zombie): void {
   const x = z.x;
   const zz = z.z;
   g.input.ads = true;
+  z.yaw = FACING;
   for (let i = 0; i < 40 && g.player.ads < 1; i++) {
     g.update(STEP);
-    pin(z, x, zz);
+    pin(z, x, zz, FACING);
   }
 }
 
@@ -311,11 +312,12 @@ function shootAt(g: Game, z: Zombie, frames = 30): Array<{ amount: number; head:
   });
   const zx = z.x;
   const zz = z.z;
+  z.yaw = FACING;
   g.input.fire = true;
   for (f = 0; f < frames; f++) {
     g.update(STEP);
     g.input.fire = false;
-    pin(z, zx, zz);
+    pin(z, zx, zz, FACING);
   }
   off();
   return hits;
@@ -327,7 +329,7 @@ for (const kind of ['pistol', 'rifle', 'sniper'] as WeaponKind[]) {
   const g1 = lane(kind);
   const z1 = g1.spawnZombie('walker', LX + d, LZ, 1e6) as Zombie;
   ads(g1, z1);
-  g1.input.aimPitch = pitchFor(kind, d, 1.1);
+  g1.input.aimPitch = pitchFor(kind, d, 1.0);
   const body = shootAt(g1, z1);
   const g2 = lane(kind);
   const z2 = g2.spawnZombie('walker', LX + d, LZ, 1e6) as Zombie;
@@ -350,7 +352,7 @@ for (const kind of ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg'] as Wea
   const inside = Math.min(36, R - 2);
   const g1 = lane(kind);
   const z1 = g1.spawnZombie('walker', LX + inside, LZ, 1e6) as Zombie;
-  g1.input.aimPitch = pitchFor(kind, inside, 1.2);
+  g1.input.aimPitch = pitchFor(kind, inside, 1.0);
   const hit = shootAt(g1, z1, 60);
   check(hit.length > 0, `${WEAPONS[kind].name}：射程 ${R} 米内（${inside} 米）打得到`);
   if (hit[0]) {
@@ -361,7 +363,7 @@ for (const kind of ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg'] as Wea
   if (R + 3 < 39) {
     const g2 = lane(kind);
     const z2 = g2.spawnZombie('walker', LX + R + 3, LZ, 1e6) as Zombie;
-    g2.input.aimPitch = pitchFor(kind, R + 3, 1.2);
+    g2.input.aimPitch = pitchFor(kind, R + 3, 1.0);
     check(shootAt(g2, z2, 60).length === 0, `${WEAPONS[kind].name}：超出射程（${R + 3} 米）打不到`);
   }
 }
@@ -375,6 +377,52 @@ for (const kind of ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg'] as Wea
   const dn = sum(shootAt(near, zn));
   const df = sum(shootAt(far, zf));
   check(dn > df * 1.4, `霰弹枪 3 米一发（${dn.toFixed(0)}）明显比 9 米（${df.toFixed(0)}）伤害高`);
+}
+
+console.log('\n== 霰弹枪：贴脸一枪一只，把冲上来的顶回去 ==');
+{
+  /** 20 个种子里，d 米外一枪放倒一只第 5 夜的行尸（84 血）的次数 */
+  const oneShot = (d: number): number => {
+    let kills = 0;
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = new Game(seed);
+      g.invulnerablePlayer = true;
+      g.aggroScale = 0;
+      g.player.x = LX;
+      g.player.z = LZ;
+      setWeapon(g, 'shotgun', 0);
+      g.input.aimX = LX + 50;
+      g.input.aimZ = LZ;
+      g.input.aimPitch = pitchFor('shotgun', d, 1.0);
+      const z = g.spawnZombie('walker', LX + d, LZ, 1.4) as Zombie;
+      shootAt(g, z, 12);
+      if (!z.alive) kills++;
+    }
+    return kills;
+  };
+  const k3 = oneShot(3);
+  const k8 = oneShot(8);
+  check(k3 >= 19, `3 米腰射一枪放倒第 5 夜的行尸（20 次里 ${k3} 次）`);
+  check(k8 <= 2, `8 米一枪放不倒（20 次里 ${k8} 次）：仍然是贴脸的枪`);
+
+  /** 一枪把 2.5 米外的行尸往后推了多远（让它硬直着不走，只看击退） */
+  const push = (kind: WeaponKind): number => {
+    const g = lane(kind);
+    const z = g.spawnZombie('walker', LX + 2.5, LZ, 1e6) as Zombie;
+    z.yaw = FACING;
+    z.stunT = 2;
+    g.input.aimPitch = pitchFor(kind, 2.5, 1.0);
+    g.input.fire = true;
+    for (let f = 0; f < 40; f++) {
+      g.update(STEP);
+      g.input.fire = false;
+    }
+    return z.x - (LX + 2.5);
+  };
+  const ps = push('shotgun');
+  const pr = push('rifle');
+  check(ps > 0.8 && ps < 2, `霰弹枪一枪把行尸顶回去 ${ps.toFixed(2)} 米（0.8–2）`);
+  check(ps > pr * 4, `比步枪一发（${pr.toFixed(2)} 米）推得远得多`);
 }
 
 console.log('\n== 掩体：路障挡低不挡高，打地面 ==');

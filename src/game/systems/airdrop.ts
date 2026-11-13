@@ -1,4 +1,5 @@
 import type { Game } from '../sim';
+import { GUN_BY_ID, type GunDef } from '../data/guns';
 import { HALF_H, HALF_W } from '../world/grid';
 
 /** 空投：白天开始后若干秒，地图外圈随机一处落下补给，周围有守卫；限时抢夺 */
@@ -71,11 +72,33 @@ export function updateAirdrop(g: Game, dt: number): void {
     g.hz.fires += 1;
     g.events.emit('scrap', { x: a.x, z: a.z, amount: scrap });
     g.events.emit('airdrop', { stage: 'taken', x: a.x, z: a.z });
-    g.events.emit('banner', { text: '拿到空投', sub: `+${scrap} 零件 · 手雷 +${AIRDROP.grenades} · 燃烧弹 +1` });
+    const trial = trialGun(g);
+    g.events.emit('banner', { text: '拿到空投', sub: `+${scrap} 零件 · 手雷 +${AIRDROP.grenades} · 燃烧弹 +1${trial ? ` · 试用枪：${trial.name}` : ''}` });
     return;
   }
   if (a.t <= 0) {
     a.stage = 0;
     g.events.emit('airdrop', { stage: 'gone', x: a.x, z: a.z });
   }
+}
+
+/**
+ * 空投的武器箱：从还没解锁的型号里抽一把（只抽玩家这一局已经有的枪类），这一局里那一类就换成它（等级、强化照旧），
+ * 弹匣按新型号装满。没有可试用的返回 null
+ */
+export function trialGun(g: Game): GunDef | null {
+  if (!g.config.extras) return null;
+  const pool = g.config.trialGuns.map((id) => GUN_BY_ID[id]).filter((d): d is GunDef => !!d && g.loadout[d.cls].owned && g.config.guns[d.cls] !== d.id);
+  if (!pool.length) return null;
+  // 优先拿在手上的那一类：换上就能立刻试
+  const inHand = pool.filter((d) => d.cls === g.player.weapon);
+  const list = inHand.length && g.rng.next() < 0.6 ? inHand : pool;
+  const pick = list[g.rng.int(0, list.length - 1)] as GunDef;
+  g.config.guns[pick.cls] = pick.id;
+  g.config.trialGuns = g.config.trialGuns.filter((id) => id !== pick.id);
+  const slot = g.loadout[pick.cls];
+  const max = g.statsOf(pick.cls).mag;
+  slot.mag = Math.min(max, slot.mag + g.takeAmmo(pick.cls, Math.max(0, max - slot.mag)));
+  g.events.emit('trialGun', { kind: pick.cls, id: pick.id });
+  return pick;
 }

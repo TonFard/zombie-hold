@@ -90,7 +90,7 @@ export const CHAPTERS: Chapter[] = [
     damage: 1.3,
     scrap: 1.3,
     medals: 2,
-    weapons: ['launcher', 'shotgun', 'smg'],
+    weapons: ['lmg', 'shotgun', 'smg'],
     mix: { breaker: 0.06, screamer: 0.03, runner: 0.05 },
   },
 ];

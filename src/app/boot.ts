@@ -11,7 +11,8 @@ import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunO
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
 import { isMapId, type MapId } from '../game/world/maps';
 import { chapterUnlocked } from '../game/data/chapters';
-import { buyAmmo, buyBench, cloneMeta, suppliesFor } from '../game/meta/progress';
+import { buyAmmo, buyBench, cloneMeta, gunsFor, lockedGuns, pickGun, suppliesFor, unlockGun } from '../game/meta/progress';
+import { GUN_BY_ID } from '../game/data/guns';
 import { buildReplay } from '../game/stats/replay';
 import { createPreview, weaponIcon } from '../render/weapons/preview';
 import { acceptRisk } from '../game/systems/events';
@@ -122,7 +123,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   const unwire = wireEvents(game, audio);
   // TACZ 枪：动画音效走采样，加载好的武器停掉合成枪声
   view.viewmodel.onSound = (url, gain) => audio.sample(url, gain);
-  view.viewmodel.onTaczReady = (kind, urls) => audio.useSamples(kind, urls);
+  view.viewmodel.onTaczReady = (_id, urls) => audio.useSamples(urls);
+  audio.sampledBy = (kind) => view.viewmodel.hasTacz(game.config.guns[kind]);
   input.onInspect = () => view.viewmodel.inspect();
 
   // ---------------- 线上存档 ----------------
@@ -395,6 +397,22 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       audio.sfx.uiBuy();
     } else audio.sfx.uiDeny();
   };
+  ui.actions.unlockGun = (id) => {
+    const next = unlockGun(ui.save.meta, id);
+    if (next) {
+      // 解锁以后顺手装上：刚花勋章买的枪，大多是想马上用
+      const g = GUN_BY_ID[id];
+      save({ ...ui.save, meta: (g && pickGun(next, g.cls, id)) || next });
+      audio.sfx.uiBuy();
+    } else audio.sfx.uiDeny();
+  };
+  ui.actions.pickGun = (k, id) => {
+    const next = pickGun(ui.save.meta, k as WeaponKind, id);
+    if (next) {
+      save({ ...ui.save, meta: next });
+      audio.sfx.uiBuy();
+    } else audio.sfx.uiDeny();
+  };
   ui.actions.buyBench = (k, line) => {
     const next = buyBench(ui.save.meta, k as WeaponKind, line as BenchLine);
     if (next) {
@@ -456,7 +474,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   ui.gfx.icon = (k, tier = 0) => weaponIcon(k as WeaponKind, tier);
   ui.gfx.preview = (w, h) => {
     const p = createPreview(w, h);
-    return { canvas: p.canvas, setWeapon: (k, tier, dual) => p.setWeapon(k as WeaponKind, tier, dual), resize: (w2, h2) => p.resize(w2, h2), dispose: () => p.dispose() };
+    return { canvas: p.canvas, setWeapon: (k, tier) => p.setWeapon(k as WeaponKind, tier), resize: (w2, h2) => p.resize(w2, h2), dispose: () => p.dispose() };
   };
   ui.actions.testSound = () => {
     // 点按钮本身就是手势：先解锁，再放声音
@@ -520,7 +538,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     startRun(game);
     enterPlay('play');
   } else if (params.training) {
-    applyTraining(game, bonuses, ui.save.meta.bench, ui.save.meta.mastery);
+    applyTraining(game, bonuses, ui.save.meta.bench, ui.save.meta.mastery, gunsFor(ui.save.meta));
     training = new Training(game);
     training.start();
     ui.inTraining = true;
@@ -564,7 +582,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     // 子弹：库存整份带进这一局（结算时把剩下的退回来）；无限弹药时库存不动
     const stock = { ...ui.save.meta.ammo };
     if (AMMO_LIMITED) save({ ...ui.save, meta: { ...cloneMeta(ui.save.meta), ammo: {} } });
-    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, mastery: ui.save.meta.mastery, ammo: stock });
+    applyMeta(game, bonuses, { difficulty: d, sidearm: side, chapter, bench: ui.save.meta.bench, mastery: ui.save.meta.mastery, ammo: stock, guns: gunsFor(ui.save.meta), trialGuns: lockedGuns(ui.save.meta) });
     startRun(game);
     enterPlay('play');
   } else if (params.tdm) {

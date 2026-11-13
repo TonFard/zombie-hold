@@ -33,8 +33,6 @@ export interface MetaBonuses {
   tierCap: Record<WeaponKind, number>;
   /** 允许带一把随身武器开局 */
   sidearm: boolean;
-  /** 双持手枪 */
-  dual: boolean;
   structures: Set<StructureKind>;
   turretCap: number;
   turretDamage: number;
@@ -58,9 +56,8 @@ export interface MetaBonuses {
 export function baseBonuses(): MetaBonuses {
   return {
     weapons: new Set<WeaponKind>(['pistol']),
-    tierCap: { pistol: 5, smg: 5, shotgun: 5, rifle: 5, sniper: 5, lmg: 5, launcher: 5 },
+    tierCap: { pistol: 5, smg: 5, shotgun: 5, rifle: 5, sniper: 5, lmg: 5 },
     sidearm: false,
-    dual: false,
     structures: new Set<StructureKind>(['barricade', 'turret', 'spikes']),
     turretCap: 3,
     turretDamage: 1,
@@ -116,17 +113,20 @@ export const rankFor = (m: MetaItem, level: number): number => m.ranks?.[level] 
  */
 const P = (...xs: number[]): number[] => xs.map((x) => Math.max(5, Math.round((x * PRICE_K) / 5) * 5));
 
-/** 价格系数：加了「体能训练」这一栏之后整体下调，总价保持在 8000 左右 */
-const PRICE_K = 0.5;
+/**
+ * 价格系数：加了「体能训练」这一栏之后整体下调到 0.5；2026-11 删了手枪双持（80）和榴弹发射器（400），
+ * 总价少了 480，买满变快（sim:meta 普通 62 局 / 熟练 15 局），调到 0.55 补回到约 6500
+ */
+const PRICE_K = 0.55;
 
-const WEAPON_NAMES: Record<WeaponKind, string> = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '突击步枪', sniper: '狙击步枪', lmg: '轻机枪', launcher: '榴弹发射器' };
+const WEAPON_NAMES: Record<WeaponKind, string> = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '突击步枪', sniper: '狙击步枪', lmg: '轻机枪' };
 
 /**
- * 武器解锁链：手枪 → 冲锋枪 → 霰弹枪 → 突击步枪 → 狙击 / 轻机枪 → 榴弹（要先精通轻机枪）。
+ * 武器解锁链：手枪 → 冲锋枪 → 霰弹枪 → 突击步枪 → 狙击 / 轻机枪（榴弹发射器已删）。
  * 解锁一把枪要先把上一把枪练到精通（熟练度 5 级，见 data/mastery.ts），再花勋章。
  * 等级上限也不再用勋章买，由这把枪自己的熟练度决定——想用好枪，就得先把手里的枪用熟
  */
-const UNLOCK_PRE: Record<Exclude<WeaponKind, 'pistol'>, WeaponKind> = { smg: 'pistol', shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle', launcher: 'lmg' };
+const UNLOCK_PRE: Record<Exclude<WeaponKind, 'pistol'>, WeaponKind> = { smg: 'pistol', shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle' };
 
 const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: string): MetaItem => ({
   id: `unlock-${k}`,
@@ -146,13 +146,11 @@ const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: str
 export const META_ITEMS: MetaItem[] = [
   // ---- 军械库 ----
   unlockWeapon('smg', 60, '射速 13，城区巷战主力'),
-  unlockWeapon('shotgun', 120, '全自动，近距离一喷一片'),
+  unlockWeapon('shotgun', 120, '全自动，贴脸一枪一只，把冲上来的顶回去'),
   unlockWeapon('rifle', 200, '射程 32 米，从一开始就穿透'),
-  unlockWeapon('sniper', 300, '初速 420，爆头 ×3，穿透 2'),
+  unlockWeapon('sniper', 300, '爆头 ×3，一发穿 4 只，无视钢板和头盔'),
   unlockWeapon('lmg', 300, '弹链 100 发，压制减速'),
-  unlockWeapon('launcher', 400, '榴弹范围爆炸，伤害 120'),
-  // 双持：手枪练到 3 级就能买，是手枪前期的大目标；后期手枪当副武器也用得上
-  { id: 'dual', section: 'armory', name: '手枪双持', desc: '左右手各一把：弹匣 ×2、射速 ×1.7，但换弹更慢、重量翻倍、散布变大、不能举镜', prices: P(160), mastery: { weapon: 'pistol', level: 3 }, apply: (b, lv) => { b.dual = lv > 0; } },
+  // 「手枪双持」已删（用户：只要单独的格洛克，能右键瞄准）。买过的存档在 parseMeta 里退回勋章
   // 随身武器：开局就带一把已解锁的枪。要先解锁霰弹枪（不能靠它在前期跳过武器解锁链），
   // 勋章 150：比解锁霰弹枪（120）贵一些、比解锁突击步枪（200）便宜，攒一阵子才买得起；不打折，和武器解锁同价档
   { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）；要先解锁霰弹枪', prices: [150], requires: { id: 'unlock-shotgun', level: 1 }, apply: (b, lv) => { b.sidearm = lv > 0; } },

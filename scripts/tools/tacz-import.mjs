@@ -69,7 +69,7 @@ const round = (x) => Math.round(x * 1e5) / 1e5;
 const MOVEMENT_CLIPS = ['idle', 'walk_forward', 'walk_backward', 'walk_sideway', 'walk_aiming', 'run_start', 'run', 'run_end', 'slide', 'slide_idle', 'slide_back', 'aim_start', 'aim', 'aim_end'];
 
 /** 我们的武器栏位默认的射击模式（选 static_auto / static_semi 这种"快慢机位置"片段用） */
-const FIRE_MODE = { pistol: 'semi', smg: 'auto', shotgun: 'semi', rifle: 'auto', sniper: 'semi', lmg: 'auto', launcher: 'semi' };
+const FIRE_MODE = { pistol: 'semi', smg: 'auto', shotgun: 'semi', rifle: 'auto', sniper: 'semi', lmg: 'auto' };
 
 function makeAnimConverter(stats) {
   const num = (v) => {

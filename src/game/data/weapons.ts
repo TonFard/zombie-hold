@@ -1,13 +1,15 @@
-export type WeaponKind = 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'lmg' | 'launcher';
+import { applyGun, type GunDef } from './guns';
 
-/** 数字键 1–7 的顺序 */
-export const WEAPON_ORDER: WeaponKind[] = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg', 'launcher'];
+export type WeaponKind = 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'sniper' | 'lmg';
+
+/** 数字键 1–6 的顺序（榴弹发射器已删） */
+export const WEAPON_ORDER: WeaponKind[] = ['pistol', 'smg', 'shotgun', 'rifle', 'sniper', 'lmg'];
 
 /** 武器等级上限（第 6–8 级是后期升级，零件更贵） */
 export const MAX_TIER = 8;
 
 export interface WeaponStats {
-  /** 单发（每颗弹丸）伤害；榴弹为直击 + 爆炸 */
+  /** 单发（每颗弹丸）伤害 */
   damage: number;
   pellets: number;
   /** 每秒射速 */
@@ -21,7 +23,7 @@ export interface WeaponStats {
   range: number;
   /** 可穿透的额外目标数 */
   pierce: number;
-  /** 弹速（格/秒），0 = 走子弹弹道；> 0 = 榴弹抛射体 */
+  /** 弹速（格/秒）：0 = 走子弹弹道。以前榴弹发射器用 > 0 的抛射体，已删，现在所有枪都是 0 */
   speed: number;
   /** 爆炸半径，0 = 无 */
   aoe: number;
@@ -75,7 +77,7 @@ export interface WeaponDef {
   base: WeaponStats;
   /** 8 级固定升级路线 */
   upgrades: UpgradeDef[];
-  /** 枪口初速（米/秒）。0 = 不走弹道（榴弹发射器用自己的抛射体） */
+  /** 枪口初速（米/秒） */
   muzzle: number;
   /** 归零距离（米）：枪口微微上抬，让子弹在这个距离正好穿过准星，再远就开始下坠 */
   zero: number;
@@ -99,6 +101,12 @@ export interface WeaponDef {
   role: string;
   /** 3 米内的伤害倍率（霰弹枪的贴脸加成）；缺省 1 */
   close?: number;
+  /** 击退倍率（霰弹枪把冲上来的顶回去）；缺省 1 */
+  knock?: number;
+  /** 边走边腰射时散布变大的幅度（1 = 照常 +35%，0 = 不变大）；缺省 1 */
+  moveSpread?: number;
+  /** 穿甲（狙击枪）：无视重装感染者正面的钢板和破墙者的头盔；首领的头部装甲照旧 */
+  ap?: boolean;
 }
 
 const s = (o: Partial<WeaponStats>): WeaponStats => ({
@@ -136,7 +144,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     kind: 'pistol',
     weight: 1.0,
     ammo: null,
-    role: '备用枪，子弹无限；双持后近距离火力翻倍',
+    role: '备用枪，子弹无限，能右键举镜',
     name: 'M9 手枪',
     price: 0,
     muzzle: 160,
@@ -187,9 +195,13 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     kind: 'shotgun',
     weight: 3.9,
     ammo: { pack: 24, price: 6 },
-    role: '门口、走廊等狭窄入口：一枪打一片；3 米内伤害 +15%',
+    role: '门口、走廊等狭窄入口：贴脸一枪一只，把冲上来的顶回去；3 米内伤害 +25%',
     // sim:progress：霰弹枪是最难练的枪（机器人每局只有 46 经验），贴脸加成让它在门口真正好用
-    close: 1.15,
+    // 2026-11 重调：以前 14° 的散布 3 米处只有七成半弹丸打中、5 米一半，边走边打再散三成，贴脸也要两枪。
+    // 现在每丸 8 → 11、散布 9°、边走边打几乎不变散、射速 3.5 → 3.0：每一枪更重，3 米内一枪一只行尸，5 米外仍然不行
+    close: 1.25,
+    knock: 1.8,
+    moveSpread: 0.3,
     name: '铁砧霰弹枪',
     price: 450,
     muzzle: 130,
@@ -197,18 +209,18 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     headMult: 1.75,
     falloff: [0.35, 0.55],
     ads: { spread: 0.7, zoom: 1.2 },
-    // 全自动（AA-12 式）：按住左键连发，每秒 3.5 发，8 发弹匣。单丸伤害比泵动时低，靠射速和覆盖面清怪
+    // 全自动（AA-12 式）：按住左键连发，每秒 3 发，8 发弹匣
     recoil: { v: 2.2, h: 0.9 },
-    base: s({ damage: 8, pellets: 9, rate: 3.5, mag: 8, reload: 2.4, spread: 14, range: 13, adsTime: 0.2 }),
+    base: s({ damage: 11, pellets: 9, rate: 3.0, mag: 8, reload: 2.4, spread: 9, range: 13, adsTime: 0.2 }),
     upgrades: route(450, [
-      { name: '加粗弹丸', desc: '每丸伤害 8 → 9', patch: { damage: 9 } },
+      { name: '加粗弹丸', desc: '每丸伤害 11 → 12.5', patch: { damage: 12.5 } },
       { name: '弹鼓', desc: '弹匣 8 → 10', patch: { mag: 10 } },
       { name: '十一弹丸', desc: '每发 9 → 11 颗弹丸', patch: { pellets: 11 } },
       { name: '快速装填', desc: '换弹 2.4 → 1.8 秒', patch: { reload: 1.8 } },
-      { name: '龙息弹', desc: '伤害 → 10，穿透 1，点燃 3 秒', patch: { damage: 10, pierce: 1, burn: 12 } },
-      { name: '收束扼流', desc: '散布 14° → 11°，射程 13 → 16', patch: { spread: 11, range: 16 } },
+      { name: '龙息弹', desc: '每丸伤害 → 14，穿透 1，点燃 3 秒', patch: { damage: 14, pierce: 1, burn: 12 } },
+      { name: '收束扼流', desc: '散布 9° → 7°，射程 13 → 16', patch: { spread: 7, range: 16 } },
       { name: '大容量弹鼓', desc: '弹匣 10 → 14', patch: { mag: 14 } },
-      { name: '导气加速', desc: '射速 3.5 → 4.2', patch: { rate: 4.2 } },
+      { name: '导气加速', desc: '射速 3.0 → 3.6', patch: { rate: 3.6 } },
     ]),
   },
   rifle: {
@@ -242,7 +254,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     kind: 'sniper',
     weight: 5.8,
     ammo: { pack: 15, price: 8 },
-    role: '湖畔、长街：远距离点杀首领和精英',
+    role: '一发穿一串、点杀精英：无视钢板和头盔；湖畔、长街上能打得更远',
     name: '寒鸦狙击步枪',
     price: 800,
     muzzle: 420,
@@ -250,17 +262,21 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     headMult: 3.0,
     falloff: [1, 1],
     ads: { spread: 0.04, zoom: 3.5, scope: true },
+    // 2026-11 重调：四张图从据点看出去中位数只有 11–16 米、僵尸 15–32 米才露面，60 米射程哪张图都用不满，
+    // 以前它只是一把射速很慢的步枪（基础持续输出全枪最低，打破墙者的身体比步枪还慢）。
+    // 现在不靠距离吃饭：一发穿 4 只、穿甲、举镜更快，中距离上打一整队和精英
+    ap: true,
     recoil: { v: 4.2, h: 0.6 },
-    base: s({ damage: 110, rate: 1.2, mag: 5, reload: 2.6, spread: 4.5, range: 60, pierce: 2, adsTime: 0.35, adsSlow: 0.55 }),
+    base: s({ damage: 130, rate: 1.4, mag: 5, reload: 2.4, spread: 3.5, range: 60, pierce: 3, adsTime: 0.28, adsSlow: 0.45 }),
     upgrades: route(800, [
-      { name: '比赛级弹药', desc: '伤害 110 → 140', patch: { damage: 140 } },
+      { name: '比赛级弹药', desc: '伤害 130 → 160', patch: { damage: 160 } },
       { name: '扩容弹仓', desc: '弹仓 5 → 7', patch: { mag: 7 } },
-      { name: '顺滑枪栓', desc: '射速 1.2 → 1.5', patch: { rate: 1.5 } },
-      { name: '快拆弹匣', desc: '换弹 2.6 → 1.9 秒', patch: { reload: 1.9 } },
-      { name: '猎首', desc: '伤害 → 170；爆头击杀返还 1 发子弹', patch: { damage: 170, refund: 1 } },
-      { name: '轻量镜架', desc: '举镜 0.35 → 0.26 秒，伤害 → 190', patch: { adsTime: 0.26, damage: 190 } },
-      { name: '双动枪栓', desc: '射速 1.5 → 1.7', patch: { rate: 1.7 } },
-      { name: '钨芯穿甲弹', desc: '伤害 → 220，穿透 3', patch: { damage: 220, pierce: 3 } },
+      { name: '顺滑枪栓', desc: '射速 1.4 → 1.7', patch: { rate: 1.7 } },
+      { name: '快拆弹匣', desc: '换弹 2.4 → 1.8 秒', patch: { reload: 1.8 } },
+      { name: '猎首', desc: '伤害 → 190；爆头击杀返还 1 发子弹', patch: { damage: 190, refund: 1 } },
+      { name: '轻量镜架', desc: '举镜 0.28 → 0.2 秒，伤害 → 210', patch: { adsTime: 0.2, damage: 210 } },
+      { name: '双动枪栓', desc: '射速 1.7 → 2.0', patch: { rate: 2.0 } },
+      { name: '钨芯穿甲弹', desc: '伤害 → 240，穿透 5', patch: { damage: 240, pierce: 5 } },
     ]),
   },
   lmg: {
@@ -287,32 +303,6 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
       { name: '150 发弹链', desc: '弹链 100 → 150', patch: { mag: 150 } },
       { name: '穿甲弹链', desc: '伤害 → 23，穿透 1', patch: { damage: 23, pierce: 1 } },
       { name: '速射枪管', desc: '射速 12.5 → 14', patch: { rate: 14 } },
-    ]),
-  },
-  launcher: {
-    kind: 'launcher',
-    weight: 6.4,
-    ammo: { pack: 8, price: 10 },
-    role: '尸潮扎堆时：范围爆炸，别对着脚下打',
-    name: '炼狱榴弹发射器',
-    // 1100 → 850：同上
-    price: 850,
-    muzzle: 0,
-    zero: 0,
-    headMult: 1,
-    falloff: [1, 1],
-    ads: { spread: 0.7, zoom: 1.3 },
-    recoil: { v: 3.6, h: 0.5 },
-    base: s({ damage: 120, rate: 1.2, mag: 6, reload: 2.4, spread: 1.5, range: 14, speed: 16, aoe: 2.2, adsTime: 0.25 }),
-    upgrades: route(850, [
-      { name: '高爆弹', desc: '伤害 120 → 140', patch: { damage: 140 } },
-      { name: '扩容弹仓', desc: '弹仓 6 → 8，射速 +0.2', patch: { mag: 8, rate: 1.4 } },
-      { name: '扩大杀伤', desc: '伤害 → 160，爆炸半径 → 3.0', patch: { damage: 160, aoe: 3.0 } },
-      { name: '快速装填', desc: '换弹 2.4 → 1.8 秒', patch: { reload: 1.8 } },
-      { name: '集束弹', desc: '伤害 → 180，爆炸后分裂 3 枚小炸弹', patch: { damage: 180, split: 3 } },
-      { name: '高速推进', desc: '弹速 16 → 20，射程 14 → 18', patch: { speed: 20, range: 18 } },
-      { name: '温压装药', desc: '伤害 → 200，爆炸半径 → 3.4', patch: { damage: 200, aoe: 3.4 } },
-      { name: '五联集束', desc: '伤害 → 220，分裂 5 枚', patch: { damage: 220, split: 5 } },
     ]),
   },
 };
@@ -382,37 +372,19 @@ export function noMods(): Record<WeaponKind, WeaponMod> {
  */
 export const AMMO_LIMITED = false;
 
-/**
- * 双持手枪：左右手各一把（左右交替开火）。
- * 收益：弹匣 ×2、射速 ×1.7。
- * 代价：换弹更慢（两把都要装弹，×1.5）、重量翻倍（×2，减重之后再翻倍）、散布变大、不能举镜瞄准。
- * 换弹 1.35 → 1.5：手枪 ★3 的双持换弹 −25% 叠上去以后，1.35 倍几乎和单持一样快
- */
-export const DUAL = { mag: 2, rate: 1.7, spread: 1.5, recoil: 0.8, reload: 1.5, weight: 2 };
-
-/** 局外强化 + 双持之后的实际属性 */
-export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = NO_MOD, dual = false): WeaponStats {
+/** 局外强化 + 型号之后的实际属性 */
+export function effectiveStats(kind: WeaponKind, tier: number, mod: WeaponMod = NO_MOD, gun?: GunDef): WeaponStats {
   const st = statsAt(kind, tier);
+  applyGun(st, gun);
   if (mod.damage !== 1) st.damage *= mod.damage;
   if (mod.mag !== 1) st.mag = Math.max(1, Math.round(st.mag * mod.mag));
   if (mod.rate !== 1) st.rate *= mod.rate;
-  if (dual && kind === 'pistol') {
-    st.mag *= DUAL.mag;
-    st.rate *= DUAL.rate;
-    st.spread *= DUAL.spread;
-    // 两把枪都要装弹：换弹时间变长
-    st.reload *= DUAL.reload;
-  }
   return st;
 }
 
-/**
- * 实际重量（千克）：局外减重之后的单把重量；双持时手上是两把手枪，重量 ×2。
- * 手枪 1.0 kg → 双持 2.0 kg；减重到 0.6 kg 之后双持就是 1.2 kg（始终正好两把）。
- */
-export function weightOf(kind: WeaponKind, mod: WeaponMod = NO_MOD, dual = false): number {
-  const one = Math.max(0.6, WEAPONS[kind].weight - mod.lighter);
-  return dual && kind === 'pistol' ? one * DUAL.weight : one;
+/** 实际重量（千克）：局外减重之后的重量，最轻 0.6 kg */
+export function weightOf(kind: WeaponKind, mod: WeaponMod = NO_MOD, gun?: GunDef): number {
+  return Math.max(0.6, WEAPONS[kind].weight + (gun?.weight ?? 0) - mod.lighter);
 }
 
 /**

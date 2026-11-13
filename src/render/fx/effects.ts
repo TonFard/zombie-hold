@@ -15,24 +15,40 @@ import {
 import { Rng } from '../../game/core/rng';
 import type { WeaponKind } from '../../game/data/weapons';
 import type { Projectile } from '../../game/entities/projectile';
+import type { Zombie } from '../../game/entities/zombie';
 import type { Game } from '../../game/sim';
+import { headCenter, hitScale } from '../../game/systems/hitvolume';
+import { HALF_H, HALF_W } from '../../game/world/grid';
+import { surfaceAt } from '../../game/world/surface';
 import type { CameraRig } from '../core/cameraRig';
 import { Builder, toGroup } from '../kit';
-import { MODEL_SCALE } from '../actors/zombie-models';
 import type { ViewModel } from '../weapons/viewmodel';
 import { Decals } from './decals';
 import { FloatingText } from './floatingText';
 import { Particles } from './particles';
+import { Puffs } from './puffs';
 
-const SHAKE: Record<WeaponKind, number> = { pistol: 0.07, smg: 0.05, shotgun: 0.26, rifle: 0.09, sniper: 0.3, lmg: 0.08, launcher: 0.34 };
+const SHAKE: Record<WeaponKind, number> = { pistol: 0.07, smg: 0.05, shotgun: 0.26, rifle: 0.09, sniper: 0.3, lmg: 0.08 };
 /** 枪口火光照亮前方世界的点光源峰值 */
-const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 16, smg: 14, shotgun: 46, rifle: 20, sniper: 40, lmg: 24, launcher: 54 };
+const FLASH_LIGHT: Record<WeaponKind, number> = { pistol: 16, smg: 14, shotgun: 46, rifle: 20, sniper: 40, lmg: 24 };
 
 /**
  * 开枪时相机额外的一下"顿挫"（弧度，很快回弹，只影响画面）。
  * 真正的后坐力在逻辑层（player.kickPitch），会实际抬高弹着点。
  */
-const KICK: Record<WeaponKind, number> = { pistol: 0.006, smg: 0.003, shotgun: 0.022, rifle: 0.006, sniper: 0.03, lmg: 0.004, launcher: 0.03 };
+const KICK: Record<WeaponKind, number> = { pistol: 0.006, smg: 0.003, shotgun: 0.022, rifle: 0.006, sniper: 0.03, lmg: 0.004 };
+
+/** 子弹打在东西上溅出来的量：霰弹一发 10 颗弹丸，每颗少溅一点；狙击多一点 */
+const IMPACT_SCALE: Partial<Record<WeaponKind, number>> = { shotgun: 0.5, sniper: 1.6 };
+/** 碎屑、灰的大小上限 = 离镜头的距离 × 这个数：贴着墙开枪时不会是一堆大方块糊在眼前 */
+const IMPACT_CAP = 0.07;
+
+const _head = { x: 0, y: 0, z: 0 };
+const _face = { x: 0, z: 0, nx: 0, nz: 0 };
+/** 血粒子的大小上限 = 离镜头的距离 × 这个数（6 米外的不受影响；近处打的时候是一片细血点，不会糊成满屏的红方块） */
+const BLOOD_CAP = 0.014;
+/** 僵尸的个头（相对 1.6 米高的行尸）：血、火的粒子按它铺开。爬行者 0.44，巨像 2.2，精英再大一圈 */
+const bodyScale = (z: Zombie): number => (z.def.height * hitScale(z)) / 1.6;
 
 interface Tracer {
   mesh: Mesh;
@@ -50,8 +66,11 @@ interface Boom {
 /** 战斗特效：枪口火光、曳光、命中、爆炸、血迹、伤害数字…… 全部由逻辑层事件驱动 */
 export class Effects {
   readonly particles = new Particles();
+  readonly puffs = new Puffs();
   readonly decals = new Decals();
   readonly text: FloatingText;
+  /** 0 黄昏 → 1 夜（View 每帧写进来）：不受光照的碎屑、灰夜里要跟着暗下来，不然像在发光 */
+  night = 0;
 
   private readonly rng = new Rng(2024);
   private readonly off: Array<() => void> = [];
@@ -84,6 +103,7 @@ export class Effects {
   ) {
     this.text = new FloatingText(container, camera, size);
     scene.add(this.particles.mesh);
+    scene.add(this.puffs.mesh);
     scene.add(this.decals.group);
 
     // 枪口火光的面片在视角模型里；这里只留一盏短命点光源照亮前方的地面和墙
@@ -129,8 +149,7 @@ export class Effects {
           this.bloodSpray(i.x, i.z, -i.nx, -i.nz, i.zone === 'head' ? 14 : 7, 1, i.y);
           // 爆头：一团向上散开的血雾
           if (i.zone === 'head') for (let k = 0; k < 6; k++) this.blood(i.x, i.y, i.z, this.rng.range(-1.2, 1.2), this.rng.range(1.5, 3.5), this.rng.range(-1.2, 1.2), 0.12);
-        } else if (i.zone === 'ground') this.dirt(i.x, i.z);
-        else this.sparks(i.x, i.z, i.nx, i.nz, i.y);
+        } else this.onImpact(i.x, i.y, i.z, i.nx, i.nz, i.zone === 'ground', i.kind);
       }),
       e.on('meleeHit', (m) => {
         if (!m.zombie) return;
@@ -139,13 +158,15 @@ export class Effects {
       }),
       e.on('zombieHit', (h) => {
         const z = h.zombie;
-        // 爆头先用暴击的金色数字顶着，M9 会做专门的样式
-        this.text.damage(z.id, z.x, 1.9 * MODEL_SCALE[z.kind], z.z, h.amount, h.crit || h.head);
+        // 数字从头顶冒出来：头的位置跟着姿势走，和命中判定用的是同一个点
+        headCenter(z, _head);
+        this.text.damage(z.id, _head.x, _head.y + z.def.head.r * hitScale(z) + 0.2, _head.z, h.amount, h.crit, h.head);
       }),
-      e.on('zombieDied', ({ zombie: z }) => {
-        const s = MODEL_SCALE[z.kind];
+      e.on('zombieDied', ({ zombie: z, head }) => {
+        const s = bodyScale(z);
         this.bloodSpray(z.x, z.z, Math.sin(z.yaw), Math.cos(z.yaw), Math.round(12 * Math.sqrt(s)), s);
         this.decals.add('blood', z.x + this.rng.range(-0.2, 0.2), z.z + this.rng.range(-0.2, 0.2), 1.5 * Math.sqrt(s) + this.rng.range(0, 0.6));
+        if (head) this.headBurst(z);
         if (z.kind === 'bloater') return;
         // 少量血雾向上
         for (let i = 0; i < 4; i++) this.blood(z.x, 0.9 * s, z.z, this.rng.range(-1, 1), this.rng.range(2, 5), this.rng.range(-1, 1), 0.07);
@@ -153,6 +174,20 @@ export class Effects {
       e.on('scrap', (s) => this.text.scrap(s.x, 1.2, s.z, s.amount)),
       e.on('explosion', (x) => this.onExplosion(x.x, x.z, x.radius, x.big)),
       e.on('acid', (a) => this.onAcid(a.x, a.z, a.radius)),
+      e.on('gas', (a) => {
+        if (!a.ignite) this.onGas(a.x, a.z, a.radius);
+      }),
+      e.on('split', (s) => {
+        // 裂开：血往四周喷、地上一大滩
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + this.rng.range(-0.4, 0.4);
+          this.bloodSpray(s.x, s.z, Math.sin(a), Math.cos(a), 7, 1);
+        }
+        this.decals.add('blood', s.x, s.z, 2.4 + this.rng.range(0, 0.6));
+      }),
+      e.on('leap', (l) => {
+        if (l.stage === 'land') this.dust(l.zombie.x, l.zombie.z, 5);
+      }),
       e.on('playerDied', (p) => {
         // 第一人称里镜头就在玩家身上，近处的血粒子会变成满屏的大方块，所以只留地上的血迹
         this.decals.add('blood', p.x, p.z, 2.4, 60);
@@ -169,7 +204,7 @@ export class Effects {
 
   private blood(x: number, y: number, z: number, vx: number, vy: number, vz: number, size: number): void {
     const k = this.rng.range(0.8, 1.2);
-    this.particles.spawn({ x, y, z, vx, vy, vz, size, life: this.rng.range(0.5, 0.95), r: 0.5 * k, g: 0.04 * k, b: 0.035 * k, gravity: 15, drag: 0.6, bounce: 0.25 });
+    this.particles.spawn({ x, y, z, vx, vy, vz, size, life: this.rng.range(0.5, 0.95), r: 0.27 * k, g: 0.014 * k, b: 0.014 * k, gravity: 15, drag: 0.6, bounce: 0.25, cap: BLOOD_CAP });
   }
 
   /** 血液喷溅：沿 (dx,dz) 方向喷出一扇形 */
@@ -180,36 +215,154 @@ export class Effects {
     }
   }
 
-  /** 子弹打在地上：一小股尘土 */
-  private dirt(x: number, z: number): void {
-    for (let i = 0; i < 5; i++) {
-      this.particles.spawn({ x, y: 0.03, z, vx: this.rng.range(-0.8, 0.8), vy: this.rng.range(1.2, 3), vz: this.rng.range(-0.8, 0.8), size: this.rng.range(0.03, 0.06), life: this.rng.range(0.35, 0.6), r: 0.32, g: 0.28, b: 0.22, gravity: 10, drag: 0.6 });
+  /**
+   * 爆头击杀：头炸开（模型那边同时换成去掉头的几何体）。血往四周喷，碎块落地会弹，一团细的血雾在原地散开。
+   * 位置用头部命中球的球心，大小跟着头的大小走（巨像的头是行尸的两倍）
+   */
+  private headBurst(z: Zombie): void {
+    headCenter(z, _head);
+    const { x, y } = _head;
+    const hz = _head.z;
+    const k = Math.sqrt((z.def.head.r * hitScale(z)) / 0.19);
+    for (let i = 0; i < 14; i++) {
+      const a = this.rng.range(0, 6.28);
+      const sp = this.rng.range(1, 4.5) * k;
+      this.blood(x, y, hz, Math.cos(a) * sp, this.rng.range(1, 5.5), Math.sin(a) * sp, this.rng.range(0.045, 0.09) * k);
     }
-    this.particles.spawn({ x, y: 0.08, z, vx: 0, vy: 0.4, vz: 0, size: 0.16, life: 0.5, r: 0.36, g: 0.33, b: 0.28, gravity: -0.3, drag: 2.5 });
+    for (let i = 0; i < 6; i++) {
+      const a = this.rng.range(0, 6.28);
+      const sp = this.rng.range(1.5, 4) * k;
+      const c = this.rng.range(0.7, 1.1);
+      this.particles.spawn({ x, y, z: hz, vx: Math.cos(a) * sp, vy: this.rng.range(2, 5), vz: Math.sin(a) * sp, size: this.rng.range(0.06, 0.11) * k, life: this.rng.range(0.9, 1.4), r: 0.17 * c, g: 0.02 * c, b: 0.018 * c, gravity: 16, drag: 0.3, bounce: 0.35, shrink: false, cap: BLOOD_CAP });
+    }
+    // 血雾：一团很细的血点，阻力大、几乎不往下掉，在原地散开（粒子是不透明的小方块，大块的看着像红砖）
+    for (let i = 0; i < 16; i++) {
+      const a = this.rng.range(0, 6.28);
+      const sp = this.rng.range(0.4, 2.6) * k;
+      this.particles.spawn({ x, y: y + this.rng.range(-0.05, 0.08) * k, z: hz, vx: Math.cos(a) * sp, vy: this.rng.range(-0.6, 2.6), vz: Math.sin(a) * sp, size: this.rng.range(0.022, 0.042) * k, life: this.rng.range(0.3, 0.6), r: 0.24, g: 0.012, b: 0.012, gravity: 2.5, drag: 4.5, cap: BLOOD_CAP });
+    }
   }
 
-  private sparks(x: number, z: number, nx: number, nz: number, y = 1.1): void {
-    for (let i = 0; i < 7; i++) {
-      const sp = this.rng.range(2, 6);
-      this.particles.spawn({
-        x,
-        y,
-        z,
-        vx: nx * sp + this.rng.range(-2, 2),
-        vy: this.rng.range(0.5, 3.5),
-        vz: nz * sp + this.rng.range(-2, 2),
-        size: this.rng.range(0.025, 0.05),
-        life: this.rng.range(0.2, 0.45),
-        r: 4.2,
-        g: 2.4,
-        b: 0.9,
-        gravity: 9,
-        drag: 0.4,
-        bounce: 0.35,
-      });
+  /** 爆头击杀后，脖子的断口往外冒血（Actors 按断口当前的位置逐帧调用） */
+  neckSpurt(x: number, y: number, z: number): void {
+    this.blood(x, y, z, this.rng.range(-0.9, 0.9), this.rng.range(1.2, 3.2), this.rng.range(-0.9, 0.9), this.rng.range(0.05, 0.09));
+  }
+
+  // ---------------------------------------------------------------- 子弹打在东西上
+
+  /**
+   * 子弹打在地上 / 障碍物上，按材质溅东西：铁冒火星，混凝土和砖崩碎渣带一团灰，木头（路障、木箱、树）掉木屑，
+   * 土地扬土，沙袋漏沙，水面溅水花。(nx, nz) 是子弹来的方向（水平）
+   */
+  private onImpact(x: number, y: number, z: number, nx: number, nz: number, ground: boolean, kind: WeaponKind): void {
+    const surf = surfaceAt(this.game, x, y, z, ground);
+    const k = IMPACT_SCALE[kind] ?? 1;
+    const n = (c: number): number => Math.max(1, Math.round(c * k));
+    let ux = nx;
+    let uy = 0;
+    let uz = nz;
+    if (ground || surf === 'water') {
+      // 地面：往上溅，顺着子弹飞的方向带一点
+      ux = -nx * 0.25;
+      uy = 1;
+      uz = -nz * 0.25;
+      y = 0.04;
+    } else {
+      this.toFace(x, z, nx, nz);
+      x = _face.x;
+      z = _face.z;
+      ux = _face.nx;
+      uz = _face.nz;
     }
-    for (let i = 0; i < 3; i++) {
-      this.particles.spawn({ x, y, z, vx: nx * 1.2 + this.rng.range(-0.6, 0.6), vy: this.rng.range(0.3, 1.0), vz: nz * 1.2 + this.rng.range(-0.6, 0.6), size: this.rng.range(0.08, 0.14), life: this.rng.range(0.35, 0.6), r: 0.34, g: 0.33, b: 0.3, gravity: -0.5, drag: 2.5 });
+    switch (surf) {
+      case 'metal':
+        this.sparks(x, y, z, ux, uy, uz, n(7));
+        this.puff(x, y, z, ux, uy, uz, 1, 0.09, 0.09, 0.09, 0.08, 0.3);
+        break;
+      case 'concrete':
+        this.debris(x, y, z, ux, uy, uz, n(5), 0.17, 0.16, 0.145, 0.05, 4.5);
+        this.puff(x, y, z, ux, uy, uz, n(3), 0.17, 0.165, 0.15, 0.13, 0.5);
+        if (this.rng.chance(0.3)) this.sparks(x, y, z, ux, uy, uz, 2);
+        break;
+      case 'brick':
+        this.debris(x, y, z, ux, uy, uz, n(5), 0.17, 0.05, 0.03, 0.05, 4.5);
+        this.puff(x, y, z, ux, uy, uz, n(3), 0.19, 0.1, 0.07, 0.13, 0.5);
+        break;
+      case 'wood':
+        this.debris(x, y, z, ux, uy, uz, n(7), 0.22, 0.12, 0.05, 0.045, 4);
+        this.puff(x, y, z, ux, uy, uz, 1, 0.16, 0.12, 0.075, 0.09, 0.3);
+        break;
+      case 'dirt':
+        this.debris(x, y, z, ux, uy, uz, n(5), 0.09, 0.06, 0.035, 0.06, 3, 0);
+        this.puff(x, y, z, ux, uy, uz, n(2), 0.13, 0.1, 0.065, 0.13, 0.45);
+        break;
+      case 'sand':
+        this.debris(x, y, z, ux, uy, uz, n(6), 0.28, 0.22, 0.12, 0.035, 3, 0);
+        this.puff(x, y, z, ux, uy, uz, n(3), 0.24, 0.2, 0.13, 0.13, 0.5);
+        break;
+      case 'water':
+        this.debris(x, y, z, ux, uy, uz, n(8), 0.34, 0.44, 0.5, 0.045, 4.5, 0);
+        this.puff(x, y, z, ux, uy, uz, n(2), 0.3, 0.36, 0.4, 0.1, 0.35);
+        break;
+    }
+  }
+
+  /**
+   * 命中判定每 0.2 米采样一次，报上来的点在障碍物里面一点：沿子弹来的方向退回到这一格的边上（墙面就在格子边上），
+   * 顺便得到这一面朝哪。细柱子、栅栏、玩家造的建筑不占满整格，不动
+   */
+  private toFace(x: number, z: number, nx: number, nz: number): void {
+    _face.x = x;
+    _face.z = z;
+    _face.nx = nx;
+    _face.nz = nz;
+    const grid = this.game.grid;
+    const cx = grid.cellX(x);
+    const cy = grid.cellY(z);
+    if (!grid.inBounds(cx, cy)) return;
+    const i = grid.idx(cx, cy);
+    if (!grid.solid[i] || (grid.post[i] as number) > 0 || grid.slab[i]) return;
+    const sx = nx > 1e-3 ? (cx + 1 - HALF_W - x) / nx : nx < -1e-3 ? (cx - HALF_W - x) / nx : 9;
+    const sz = nz > 1e-3 ? (cy + 1 - HALF_H - z) / nz : nz < -1e-3 ? (cy - HALF_H - z) / nz : 9;
+    const s = Math.min(sx, sz);
+    const ax = sx < sz ? Math.sign(nx) : 0;
+    const az = sx < sz ? 0 : Math.sign(nz);
+    // 退得太远、或者那一侧也是实心的：子弹是擦着墙角 / 从上面打进来的，还用原来的点
+    if (s > 0.5 || grid.isStaticSolid(cx + ax, cy + az)) return;
+    _face.x = x + nx * s;
+    _face.z = z + nz * s;
+    _face.nx = ax * 0.75 + nx * 0.25;
+    _face.nz = az * 0.75 + nz * 0.25;
+  }
+
+  /** 一把碎屑：顺着 (ux, uy, uz) 往外崩，受重力往下掉；bounce > 0 的落地会弹（石渣、木屑），土和水不弹 */
+  private debris(x: number, y: number, z: number, ux: number, uy: number, uz: number, n: number, r: number, g: number, b: number, size: number, speed: number, bounce = 0.3): void {
+    for (let i = 0; i < n; i++) {
+      const sp = this.rng.range(0.35, 1) * speed;
+      const c = this.rng.range(0.75, 1.15) * this.dim();
+      this.particles.spawn({ x, y, z, vx: ux * sp + this.rng.range(-1.3, 1.3), vy: uy * sp + this.rng.range(0.3, 2.4), vz: uz * sp + this.rng.range(-1.3, 1.3), size: this.rng.range(0.5, 1) * size, life: this.rng.range(0.4, 0.8), r: r * c, g: g * c, b: b * c, gravity: 12, drag: 0.5, bounce, cap: IMPACT_CAP });
+    }
+  }
+
+  /** 一团灰：软边的半透明圆片，从命中点顺着 (ux, uy, uz) 冒出来，边散开边变淡。alpha = 最浓时的不透明度 */
+  private puff(x: number, y: number, z: number, ux: number, uy: number, uz: number, n: number, r: number, g: number, b: number, size: number, alpha: number): void {
+    const c = this.dim();
+    for (let i = 0; i < n; i++) {
+      const sp = this.rng.range(0.4, 1.5);
+      const k = c * this.rng.range(0.85, 1.1);
+      this.puffs.spawn({ x, y, z, vx: ux * sp + this.rng.range(-0.35, 0.35), vy: uy * sp + this.rng.range(0.1, 0.6), vz: uz * sp + this.rng.range(-0.35, 0.35), size: this.rng.range(0.7, 1.1) * size, grow: this.rng.range(2.6, 3.8), life: this.rng.range(0.4, 0.7), r: r * k, g: g * k, b: b * k, alpha });
+    }
+  }
+
+  /** 碎屑和灰不受光照：夜里按这个系数压暗，不然在黑夜里像在发光 */
+  private dim(): number {
+    return 1 - 0.75 * this.night;
+  }
+
+  private sparks(x: number, y: number, z: number, ux: number, uy: number, uz: number, n: number): void {
+    for (let i = 0; i < n; i++) {
+      const sp = this.rng.range(2, 6);
+      this.particles.spawn({ x, y, z, vx: ux * sp + this.rng.range(-2, 2), vy: uy * sp + this.rng.range(0.5, 3.5), vz: uz * sp + this.rng.range(-2, 2), size: this.rng.range(0.025, 0.05), life: this.rng.range(0.2, 0.45), r: 4.2, g: 2.4, b: 0.9, gravity: 9, drag: 0.4, bounce: 0.35, cap: IMPACT_CAP });
     }
   }
 
@@ -226,7 +379,6 @@ export class Effects {
     this.rig.kick(KICK[kind]);
 
     // 抛壳：从枪的右侧弹出。右方 = (-cos yaw, sin yaw)，前方 = (sin yaw, cos yaw)
-    if (kind === 'launcher') return;
     const rx = -Math.cos(yaw);
     const rz = Math.sin(yaw);
     const fx = Math.sin(yaw);
@@ -238,6 +390,7 @@ export class Effects {
     const cam = this.rig.camera.position;
     const ahead = (m.x - cam.x) * fx + (m.z - cam.z) * fz - 0.2;
     const back = 0.2 - Math.max(0, 0.9 - ahead);
+    const dim = 1 - 0.5 * this.night;
     this.particles.spawn({
       x: m.x - fx * back,
       y: m.y + 0.03,
@@ -245,11 +398,11 @@ export class Effects {
       vx: rx * this.rng.range(1.6, 2.6) + fx * 0.3 + this.rng.range(-0.4, 0.4),
       vy: this.rng.range(1.6, 2.6),
       vz: rz * this.rng.range(1.6, 2.6) + fz * 0.3 + this.rng.range(-0.4, 0.4),
-      size: shell ? 0.07 : big ? 0.05 : 0.04,
+      size: shell ? 0.026 : big ? 0.02 : 0.016,
       life: 1.6,
-      r: shell ? 0.8 : 1.5,
-      g: shell ? 0.12 : 1.1,
-      b: shell ? 0.08 : 0.35,
+      r: (shell ? 0.3 : 0.4) * dim,
+      g: (shell ? 0.04 : 0.27) * dim,
+      b: (shell ? 0.03 : 0.08) * dim,
       gravity: 16,
       drag: 0.3,
       shrink: false,
@@ -333,20 +486,22 @@ export class Effects {
     this.decals.add('scorch', x, z, radius * (big ? 2.4 : 1.6), 40);
 
     const n = big ? 22 : 10;
+    const dim = this.dim();
     for (let i = 0; i < n; i++) {
       const a = this.rng.range(0, 6.28);
       const sp = this.rng.range(1.5, 6.5) * (radius / 2.2);
       this.particles.spawn({ x, y: 0.5, z, vx: Math.cos(a) * sp, vy: this.rng.range(2, 8), vz: Math.sin(a) * sp, size: this.rng.range(0.1, 0.22), life: this.rng.range(0.3, 0.7), r: 4, g: 1.7, b: 0.4, gravity: 6, drag: 1.2 });
     }
-    for (let i = 0; i < (big ? 14 : 5); i++) {
+    for (let i = 0; i < (big ? 16 : 8); i++) {
       const a = this.rng.range(0, 6.28);
       const sp = this.rng.range(0.6, 2.8);
-      this.particles.spawn({ x: x + Math.cos(a) * 0.4, y: 0.6, z: z + Math.sin(a) * 0.4, vx: Math.cos(a) * sp, vy: this.rng.range(1.5, 3.5), vz: Math.sin(a) * sp, size: this.rng.range(0.25, 0.5), life: this.rng.range(0.8, 1.5), r: 0.2, g: 0.19, b: 0.18, gravity: -1.2, drag: 1.8 });
+      const c = this.dim() * this.rng.range(0.8, 1.1);
+      this.puffs.spawn({ x: x + Math.cos(a) * 0.4, y: 0.6, z: z + Math.sin(a) * 0.4, vx: Math.cos(a) * sp, vy: this.rng.range(1.5, 3.5), vz: Math.sin(a) * sp, size: this.rng.range(0.45, 0.8), grow: this.rng.range(2, 2.8), life: this.rng.range(1.2, 2.2), r: 0.032 * c, g: 0.03 * c, b: 0.028 * c, alpha: 0.9, rise: 1.2, drag: 1.8 });
     }
     for (let i = 0; i < (big ? 10 : 3); i++) {
       const a = this.rng.range(0, 6.28);
       const sp = this.rng.range(3, 8);
-      this.particles.spawn({ x, y: 0.4, z, vx: Math.cos(a) * sp, vy: this.rng.range(4, 9), vz: Math.sin(a) * sp, size: this.rng.range(0.05, 0.1), life: 1.3, r: 0.22, g: 0.18, b: 0.14, gravity: 18, drag: 0.2, bounce: 0.35, shrink: false });
+      this.particles.spawn({ x, y: 0.4, z, vx: Math.cos(a) * sp, vy: this.rng.range(4, 9), vz: Math.sin(a) * sp, size: this.rng.range(0.05, 0.1), life: 1.3, r: 0.1 * dim, g: 0.08 * dim, b: 0.06 * dim, gravity: 18, drag: 0.2, bounce: 0.35, shrink: false });
     }
   }
 
@@ -358,6 +513,23 @@ export class Effects {
       this.particles.spawn({ x, y: 0.8, z, vx: Math.cos(a) * sp, vy: this.rng.range(1.5, 6), vz: Math.sin(a) * sp, size: this.rng.range(0.07, 0.16), life: this.rng.range(0.5, 1.0), r: 0.7, g: 3.0, b: 0.3, gravity: 13, drag: 0.5, bounce: 0.2 });
     }
     this.rig.addShake(0.2);
+  }
+
+  /** 毒雾者死后喷出一团毒雾：地上留一片黄绿的污渍，一圈烟往外扩 */
+  private onGas(x: number, z: number, radius: number): void {
+    this.decals.add('acid', x, z, radius * 1.3, 14);
+    const c = this.dim();
+    for (let i = 0; i < 18; i++) {
+      const a = this.rng.range(0, 6.28);
+      const sp = this.rng.range(0.8, 2.4) * (radius / 2.8);
+      this.puffs.spawn({ x, y: this.rng.range(0.3, 1.2), z, vx: Math.cos(a) * sp, vy: this.rng.range(0, 0.5), vz: Math.sin(a) * sp, size: this.rng.range(0.4, 0.7), grow: 2.4, life: this.rng.range(1.2, 2), r: 0.12 * c, g: 0.15 * c, b: 0.055 * c, alpha: 0.5, rise: 0.15, drag: 1.4 });
+    }
+  }
+
+  /** 一缕毒气（毒雾者身边和地上的毒雾里不停冒） */
+  gas(x: number, y: number, z: number, big: boolean): void {
+    const c = this.dim();
+    this.puffs.spawn({ x, y, z, vx: this.rng.range(-0.2, 0.2), vy: this.rng.range(0.05, 0.3), vz: this.rng.range(-0.2, 0.2), size: big ? this.rng.range(0.45, 0.75) : this.rng.range(0.2, 0.35), grow: 2.2, life: this.rng.range(1.2, 2), r: 0.12 * c, g: 0.15 * c, b: 0.055 * c, alpha: big ? 0.32 : 0.28, rise: 0.15, drag: 1.2 });
   }
 
   // ---------------------------------------------------------------- 建筑相关（供 StructureViews 调用）
@@ -388,10 +560,11 @@ export class Effects {
   }
 
   dust(x: number, z: number, n = 8): void {
+    const c = this.dim();
     for (let i = 0; i < n; i++) {
       const a = this.rng.range(0, 6.28);
       const sp = this.rng.range(0.4, 1.6);
-      this.particles.spawn({ x, y: 0.15, z, vx: Math.cos(a) * sp, vy: this.rng.range(0.2, 0.9), vz: Math.sin(a) * sp, size: this.rng.range(0.12, 0.22), life: this.rng.range(0.4, 0.8), r: 0.42, g: 0.4, b: 0.36, gravity: -0.3, drag: 2.2 });
+      this.puffs.spawn({ x, y: 0.15, z, vx: Math.cos(a) * sp, vy: this.rng.range(0.2, 0.9), vz: Math.sin(a) * sp, size: this.rng.range(0.22, 0.36), grow: 2.6, life: this.rng.range(0.6, 1.1), r: 0.17 * c, g: 0.16 * c, b: 0.145 * c, alpha: 0.45, rise: 0.3, drag: 2.2 });
     }
   }
 
@@ -518,7 +691,7 @@ export class Effects {
     // 燃烧中的僵尸冒火
     for (const z of this.game.zombies) {
       if (!z.alive || z.burnT <= 0 || this.rng.next() > 0.7) continue;
-      const s = MODEL_SCALE[z.kind];
+      const s = bodyScale(z);
       this.particles.spawn({
         x: z.x + this.rng.range(-0.2, 0.2) * s,
         y: this.rng.range(0.3, 1.5) * s,
@@ -536,7 +709,10 @@ export class Effects {
       });
     }
 
+    this.particles.eye.copy(this.rig.camera.position);
     this.particles.update(dt);
+    this.puffs.eye.copy(this.rig.camera.position);
+    this.puffs.update(dt);
     this.decals.update(dt);
     this.text.update(dt);
   }
@@ -544,5 +720,6 @@ export class Effects {
   dispose(): void {
     for (const f of this.off) f();
     this.text.dispose();
+    this.puffs.dispose();
   }
 }

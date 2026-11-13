@@ -197,6 +197,7 @@ export class GameView {
       w: canvas.clientWidth || window.innerWidth,
       h: canvas.clientHeight || window.innerHeight,
     }));
+    this.actors.neckSpurt = (x, y, z) => this.fx.neckSpurt(x, y, z);
     this.structures = new StructureViews(this.scene, game, this.fx);
     this.soldiers = new SoldierViews(this.scene, game);
     this.extras = new ExtrasView(this.scene, game, this.fx, this.rig, this.lighting);
@@ -302,6 +303,7 @@ export class GameView {
     this.actors.update(dt);
     this.structures.update(dt);
     this.soldiers.update(dt);
+    this.fx.night = this.nightCur;
     this.fx.update(dt);
     this.extras.update(dt);
 
@@ -344,6 +346,8 @@ export class GameView {
       });
       this.rig.camera.updateMatrixWorld();
       this.viewmodel.sync(this.rig.camera, this.scene, this.lighting);
+      // 身上带的几把枪的模型先加载好，切枪时不用等（已经在加载 / 加载好的直接跳过）
+      for (const k of game.carried()) this.viewmodel.ensureTacz(game.config.guns[k]);
       this.viewmodel.update(dt, {
         kind: p.weapon,
         scope: adsAt(p.weapon, p.tier).scope,
@@ -366,7 +370,7 @@ export class GameView {
         // 速度投到视线方向：前方 = (sin yaw, cos yaw)，右方 = (-cos yaw, sin yaw)
         fwd: p.vx * Math.sin(this.look.yaw) + p.vz * Math.cos(this.look.yaw),
         side: -p.vx * Math.cos(this.look.yaw) + p.vz * Math.sin(this.look.yaw),
-        dual: game.config.dual,
+        gun: game.config.guns[p.weapon],
       });
       // TACZ 枪的摄像机动画（开枪、换弹时镜头的轻微晃动）
       this.rig.camera.quaternion.multiply(this.viewmodel.cameraAnim);

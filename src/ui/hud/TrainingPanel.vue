@@ -9,7 +9,7 @@ import { ui } from '../store';
 const t = computed(() => hud.training);
 const pct = (a: number, b: number): number => (b > 0 ? Math.round((a / b) * 100) : 0);
 
-/** 当前武器在每个靶距上的弹道偏离（厘米，正 = 比瞄准线高）；榴弹走抛物线，不显示 */
+/** 当前武器在每个靶距上的弹道偏离（厘米，正 = 比瞄准线高） */
 const drops = computed(() => {
   const k = hud.weaponKind;
   if (WEAPONS[k].muzzle <= 0) return [];

@@ -1,7 +1,7 @@
 import type { Group, Vector3 } from 'three';
 import { MAX_TIER, type WeaponKind } from '../../game/data/weapons';
+import { glbWeapon, hasGunModel } from './glb';
 import { GunKit, type Action, type GunInfo, type PartName } from './kit-ext';
-import { launcher } from './launcher';
 import { lmg } from './lmg';
 import { pistol } from './pistol';
 import { rifle } from './rifle';
@@ -23,12 +23,20 @@ export interface WeaponModel extends GunInfo {
   rest: Partial<Record<PartName, { p: Vector3; rz: number }>>;
 }
 
-const BUILDERS: Record<WeaponKind, (k: GunKit) => GunInfo> = { pistol, smg, shotgun, rifle, sniper, lmg, launcher };
+const BUILDERS: Record<WeaponKind, (k: GunKit) => GunInfo> = { pistol, smg, shotgun, rifle, sniper, lmg };
+
+export { hasGunModel };
 
 export function buildWeapon(kind: WeaponKind, tier: number): WeaponModel {
-  const k = new GunKit(Math.max(0, Math.min(MAX_TIER, tier)));
-  const info = BUILDERS[kind](k);
-  const { group, parts } = k.finish();
+  const t = Math.max(0, Math.min(MAX_TIER, tier));
+  // Blender 枪模加载好了就用它，否则用程序枪模
+  let built = glbWeapon(kind, t);
+  if (!built) {
+    const k = new GunKit(t);
+    const info = BUILDERS[kind](k);
+    built = { ...k.finish(), info };
+  }
+  const { group, parts, info } = built;
   const rest: WeaponModel['rest'] = {};
   for (const [name, g] of Object.entries(parts) as Array<[PartName, Group]>) rest[name] = { p: g.position.clone(), rz: g.rotation.z };
   return { group, parts, rest, ...info };

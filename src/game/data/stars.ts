@@ -31,24 +31,23 @@ export const starLevels = (xp: Partial<Record<WeaponKind, number>>): Record<Weap
 
 /**
  * 每把枪三颗星的说明（界面用）。和最初的方案（PLAN.md M16）相比改了四条，原因都是"原效果在现有机制里不存在"：
- * 步枪 ★1「穿透后不衰减」→ 爆头 +20%（现在穿透本来就不衰减）；榴弹 ★2「自伤 −50%」→ 射程和弹速 +20%（榴弹炸不到自己）；
- * 霰弹 ★1「多 2 颗弹丸」→ 3 米内伤害再 +20%（弹丸在开火时就定了，没法按距离加）；手枪 ★3「左右独立换弹」→ 双持换弹再快 25%
+ * 步枪 ★1「穿透后不衰减」→ 爆头 +20%（现在穿透本来就不衰减）；榴弹发射器整把删了；
+ * 霰弹 ★1「多 2 颗弹丸」→ 3 米内伤害再 +20%（弹丸在开火时就定了，没法按距离加）；手枪 ★3 原来是双持换弹再快，双持删了以后改成爆头伤害 +25%
  */
 export const STAR_TEXT: Record<WeaponKind, [string, string, string]> = {
-  pistol: ['爆头击杀返还 1 发', '换弹时间 −25%', '双持时换弹再快 25%'],
+  pistol: ['爆头击杀返还 1 发', '换弹时间 −25%', '爆头伤害 +25%'],
   smg: ['换弹后 2 秒射速 +15%', '移动中散布 −30%', '连杀 ≥ 5 时伤害 +10%'],
   shotgun: ['3 米内伤害再 +20%', '击退 +50%', '击杀让周围 2 米的僵尸硬直 0.5 秒'],
   rifle: ['爆头伤害 +20%', '举镜时间 −30%', '连续命中同一目标逐发 +3%（最多 +30%）'],
   sniper: ['首领弱点伤害 +25%', '爆头击杀再返还 1 发', '穿透 +1'],
   lmg: ['持续开火 2 秒后散布 −40%', '命中减速 +15%', '弹链最后 20 发伤害 +20%'],
-  launcher: ['爆炸半径 +15%', '射程和弹速 +20%', '集束子弹伤害 +30%'],
 };
 
 /** 特性的数值（逻辑层用） */
 export const STAR_FX = {
   pistolRefund: 1,
   pistolReload: 0.75,
-  pistolDualReload: 0.75,
+  pistolHead: 1.25,
   smgBurst: { time: 2, rate: 1.15 },
   smgMoveSpread: 0.7,
   smgCombo: { combo: 5, damage: 1.1 },
@@ -64,9 +63,6 @@ export const STAR_FX = {
   lmgSustainSpread: 0.6,
   lmgSlow: 0.15,
   lmgTail: { last: 20, damage: 1.2 },
-  launcherAoe: 1.15,
-  launcherReach: 1.2,
-  launcherSplit: 1.3,
 } as const;
 
 /** 星级颜色：普通白、★ 蓝、★★ 紫、★★★ 金 */

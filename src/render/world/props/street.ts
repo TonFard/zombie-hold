@@ -118,19 +118,47 @@ export function sandbag(b: Builder, p: Prop, rng: Rng): void {
 
 export function fence(b: Builder, p: Prop, rng: Rng): void {
   const r = rectOf(p);
-  b.push({ x: r.cx, z: r.cz, ry: r.horiz ? 0 : Math.PI / 2 });
+  // 方向按 side（单格栅栏靠长宽判断不出来），和碰撞（grid.slab）一致
+  const horiz = p.side ? p.side === 'N' || p.side === 'S' : r.horiz;
+  const L = horiz ? p.x1 - p.x0 : p.y1 - p.y0;
+  const H = p.h ?? 2.1;
+  b.push({ x: r.cx, z: r.cz, ry: horiz ? 0 : Math.PI / 2 });
+  // 立柱均匀排满整段：两头的柱子正好在碰撞范围的两端，看到哪里挡到哪里
+  const spans = Math.max(1, Math.round(L / 1.5));
+  const xs = Array.from({ length: spans + 1 }, (_, i) => -L / 2 + 0.06 + ((L - 0.12) * i) / spans);
+  if (H <= 1.4) {
+    // 矮栅栏（农场）：木桩 + 三道横木板，顶就是碰撞高度（子弹从上面过）
+    const wood = matte(Pal.wood, { jitter: 0.22, ao: 0.3, aoH: 1 });
+    const dark = matte(Pal.woodDark, { jitter: 0.2, ao: 0.3, aoH: 1 });
+    for (const x of xs) {
+      b.box(0.11, H, 0.11, { x, ry: rng.range(-0.15, 0.15), rz: rng.range(-0.03, 0.03) }, dark);
+      b.box(0.13, 0.03, 0.13, { x, y: H }, wood);
+    }
+    for (const y of [H * 0.22, H * 0.52, H * 0.82]) {
+      for (let i = 0; i < spans; i++) {
+        const a = xs[i] as number;
+        const c = xs[i + 1] as number;
+        // 个别木板掉了一头
+        const sag = rng.chance(0.12) ? rng.range(0.08, 0.2) : 0;
+        b.box(c - a + 0.1, 0.1, 0.035, { x: (a + c) / 2, y: y - 0.05 - sag / 2, z: 0.07, rz: -sag / (c - a) }, wood);
+      }
+    }
+    b.pop();
+    return;
+  }
+  const top = H - 0.05;
   const pole = metal(0x6b6f72, { jitter: 0.1, ao: 0.2 });
   const wire = metal(0x7a7e80, { jitter: 0.1, ao: 0 });
   const posts: Array<[number, number, number]> = [];
-  for (let x = -r.L / 2; x <= r.L / 2 + 0.01; x += 1.5) {
-    const lean = rng.range(-0.12, 0.12);
+  for (const x of xs) {
+    const lean = rng.range(-0.06, 0.06);
     posts.push([x, lean, rng.range(-0.08, 0.08)]);
-    b.cyl(0.03, 0.035, 1.55, 6, { x, rx: lean, rz: rng.range(-0.08, 0.08) }, pole);
-    b.cyl(0.05, 0.05, 0.03, 6, { x, y: 1.55 }, pole);
+    b.cyl(0.03, 0.035, top + 0.05, 6, { x, rx: lean, rz: rng.range(-0.04, 0.04) }, pole);
+    b.cyl(0.05, 0.05, 0.03, 6, { x, y: top + 0.05 }, pole);
     b.box(0.12, 0.08, 0.12, { x }, matte(Pal.concreteDark, { ao: 0 }));
   }
   // 顶 / 中 / 底拉线，略微下垂
-  for (const y of [0.1, 0.78, 1.5]) {
+  for (const y of [0.1, top / 2, top]) {
     for (let i = 0; i + 1 < posts.length; i++) {
       const a = posts[i] as [number, number, number];
       const c = posts[i + 1] as [number, number, number];
@@ -150,8 +178,8 @@ export function fence(b: Builder, p: Prop, rng: Rng): void {
     const step = span / 6;
     for (let k = 0; k <= 6; k++) {
       const x0 = a[0] + k * step;
-      b.rod([x0, 0.12, 0], [Math.min(c[0], x0 + 1.38), Math.min(1.48, 0.12 + (c[0] - x0)), 0], 0.004, wire, 3);
-      b.rod([x0, 0.12, 0], [Math.max(a[0], x0 - 1.38), Math.min(1.48, 0.12 + (x0 - a[0])), 0], 0.004, wire, 3);
+      b.rod([x0, 0.12, 0], [Math.min(c[0], x0 + top - 0.14), Math.min(top - 0.02, 0.12 + (c[0] - x0)), 0], 0.004, wire, 3);
+      b.rod([x0, 0.12, 0], [Math.max(a[0], x0 - top + 0.14), Math.min(top - 0.02, 0.12 + (x0 - a[0])), 0], 0.004, wire, 3);
     }
   }
   b.pop();

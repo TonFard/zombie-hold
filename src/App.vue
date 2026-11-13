@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { defineAsyncComponent, onBeforeUnmount, onMounted, ref } from 'vue';
+import { defineAsyncComponent, onBeforeUnmount, onMounted, ref, shallowRef } from 'vue';
 import { startApp, type App } from './app/boot';
 import { AuthError, CloudStore, OfflineStore, clearAuth, loadAuth, pull, signIn, type CloudAuth } from './app/cloud';
 import AuthGate from './ui/screens/AuthGate.vue';
@@ -17,6 +17,7 @@ import TrainingPanel from './ui/hud/TrainingPanel.vue';
 import ExtrasHud from './ui/hud/ExtrasHud.vue';
 import TabPanel from './ui/hud/TabPanel.vue';
 import TdmHud from './ui/hud/TdmHud.vue';
+import HandTuner from './ui/screens/HandTuner.vue';
 import Lobby from './ui/screens/Lobby.vue';
 import MainMenu from './ui/screens/MainMenu.vue';
 import PauseMenu from './ui/screens/PauseMenu.vue';
@@ -25,7 +26,7 @@ import { ui } from './ui/store';
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const fxRef = ref<HTMLDivElement | null>(null);
-const appRef = ref<App | null>(null);
+const appRef = shallowRef<App | null>(null);
 let app: App | null = null;
 
 // ---- 线上存档：先登录、把进度从服务器拉下来，再启动游戏 ----
@@ -95,6 +96,7 @@ onBeforeUnmount(() => {
   <Cards />
   <Result v-if="!ui.inTdm" />
   <Toast />
+  <HandTuner v-if="appRef" :app="appRef" />
   <component :is="RenderLab" v-if="RenderLab && renderLab && appRef" :render="appRef.render" />
   <AuthGate v-if="needLogin" :busy="authBusy" :error="authError" :submit="submit" />
   <Transition name="fade">

@@ -74,7 +74,6 @@ console.log('\n== 弹道（M6）==');
 // 子弹在有效射程内的下坠不能太夸张，飞行时间也要够快，否则"指哪打哪"的手感就没了
 for (const k of WEAPON_ORDER) {
   const d = WEAPONS[k];
-  if (d.muzzle <= 0) continue; // 榴弹发射器是抛物线弹，不算
   const R = statsAt(k, 0).range;
   const drop = Math.abs(bulletHeightAt(k, R) - EYE_HEIGHT);
   const flight = flightTime(k, R);
@@ -85,7 +84,6 @@ for (const k of WEAPON_ORDER) {
 {
   const ph = sustainedDps(statsAt('pistol', 5)) * WEAPONS.pistol.headMult;
   for (const k of others) {
-    if (WEAPONS[k].muzzle <= 0) continue; // 榴弹靠爆炸，没有爆头
     const t1 = (dps[k] as number[])[1] as number;
     check(ph < t1 * WEAPONS[k].headMult, `全爆头的满级手枪（${ph.toFixed(1)}）不超过全爆头的 1 级${WEAPONS[k].name}（${(t1 * WEAPONS[k].headMult).toFixed(1)}）`);
   }

@@ -178,7 +178,7 @@ console.log('\n== 武器熟练度 ==');
   b = buyBench(b, 'pistol', 'damage') as MetaState;
   b = buyBench(b, 'pistol', 'damage') as MetaState;
   check(!!b && canBench(b, 'pistol', 'damage') === 'maxed', '精通：3 级全开');
-  check(canBuy({ ...newMeta(), medals: 999, mastery: { pistol: MASTERY_XP.pistol[2] as number } }, 'dual') === 'ok' && canBuy({ ...newMeta(), medals: 999, mastery: { pistol: MASTERY_XP.pistol[1] as number } }, 'dual') === 'mastery', '手枪双持要熟练度 3 级');
+  check(!META_BY_ID.dual, '「手枪双持」已经删掉');
 }
 
 console.log('\n== 军衔 ==');
@@ -225,6 +225,25 @@ console.log('\n== 版本更新不清进度（旧档宽松读取）==');
   check(!('item-from-the-future' in m.levels) && !('max-hp' in m.levels), '认不出的项目、坏掉的级数：只忽略这一项');
   check(m.cleared.join() === 'normal' && m.lastDifficulty === 'normal', '认不出的难度：忽略，回到默认');
   check(m.lastSidearm === 'smg', '上次选的随身武器保留');
+
+  // 买过「手枪双持」（已删）的旧档：这一项去掉，退回 80 勋章
+  const withDual = JSON.parse(JSON.stringify(old)) as typeof old;
+  withDual.meta.levels = { 'unlock-smg': 1, dual: 1 };
+  const st3 = new MemoryStorage();
+  st3.set(SAVE_KEY, JSON.stringify(withDual));
+  const md = loadSave(st3).save.meta;
+  check(loadSave(st3).warning === '' && !('dual' in md.levels) && md.medals === 880 && md.levels['unlock-smg'] === 1, `买过双持的旧档：去掉这一项、退回勋章（800 → ${md.medals}）`);
+
+  // 解锁过榴弹发射器（已删）、武器台强化过的旧档：退回 400 勋章和强化花的补给
+  const withGl = JSON.parse(JSON.stringify(old)) as typeof old;
+  withGl.meta.levels = { 'unlock-smg': 1, 'unlock-launcher': 1 };
+  withGl.meta.supplies = 100;
+  withGl.meta.bench = { 'launcher.damage': 2, 'smg.damage': 1 };
+  withGl.meta.mastery = { launcher: 500, smg: 40 };
+  const st4 = new MemoryStorage();
+  st4.set(SAVE_KEY, JSON.stringify(withGl));
+  const mg = loadSave(st4).save.meta;
+  check(loadSave(st4).warning === '' && !('unlock-launcher' in mg.levels) && mg.medals === 1200 && mg.supplies === 100 + 75 + 130 && mg.bench['smg.damage'] === 1 && !('launcher.damage' in mg.bench) && !('launcher' in mg.mastery), `用过榴弹发射器的旧档：去掉、退回勋章 800 → ${mg.medals}、补给 100 → ${mg.supplies}`);
 
   // 没有 lastSidearm 字段的存档（升级上来的旧档）：按没选过处理
   const noSide = JSON.parse(JSON.stringify(defaultSave())) as Record<string, unknown> & { meta: Record<string, unknown> };
@@ -291,12 +310,6 @@ console.log('\n== 开局应用加成 ==');
   gr.takeWeapon('rifle');
   check(gr.config.structures.includes('hmg') && gr.player.maxHp === 100, '新解锁的炮塔也能用；生命这类开局加成不重复叠加');
 
-  // 双持：买了才生效
-  const bs = bonusesOf({ ...newMeta(), levels: { dual: 1 } });
-  check(bs.dual && !baseBonuses().dual, '双持：买了才有');
-  const gp = new Game(5);
-  applyMeta(gp, bs, { difficulty: 'normal' });
-  check(gp.config.dual, '双持：开局规则里生效');
 
   const g0 = new Game(5);
   applyMeta(g0, baseBonuses(), { difficulty: 'normal' });
@@ -454,7 +467,8 @@ function drive(g: Game): void {
   if (best) {
     inp.aimX = best.x;
     inp.aimZ = best.z;
-    inp.aimPitch = Math.atan2(1.2 - g.player.eye, Math.max(0.5, bd));
+    // 瞄胸口（0.9 米）：再高就打到驼背僵尸伸在前面的头了
+    inp.aimPitch = Math.atan2(0.9 - g.player.eye, Math.max(0.5, bd));
     inp.fire = bd < 16;
     if (bd < 3) {
       inp.moveX = (g.player.x - best.x) / bd;

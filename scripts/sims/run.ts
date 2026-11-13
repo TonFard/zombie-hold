@@ -3,6 +3,7 @@
 import { CARD_BY_ID, CARDS } from '../../src/game/data/cards';
 import { MAX_TIER, WEAPON_ORDER, WEAPONS, statsAt, type WeaponKind } from '../../src/game/data/weapons';
 import { FINAL_NIGHT, bossFor, nightCount } from '../../src/game/data/waves';
+import { ZOMBIES } from '../../src/game/data/zombies';
 import { Game, STEP } from '../../src/game/sim';
 import { tryPlace } from '../../src/game/systems/building';
 import { chooseCard, skipDay, startRun } from '../../src/game/systems/run';
@@ -86,10 +87,11 @@ console.log('\n== 首领 ==');
     g.update(STEP);
     g.input.confirm = true;
     g.update(STEP);
-    const boss = g.zombies.find((z) => z.kind === 'colossus');
-    const exp = bossFor(n)!;
-    check(!!boss && boss.maxHp === Math.round(2400 * exp.hpScale), `第 ${n} 夜出现首领（生命 ${boss?.maxHp}，预期 ${Math.round(2400 * exp.hpScale)}）`);
-    check(g.zombies.filter((z) => z.kind === 'bloater' || z.kind === 'breaker').length >= exp.escorts - 1, `首领带了 ${exp.escorts} 个随从`);
+    const exp = bossFor(n, g.config.chapter)!;
+    const boss = g.zombies.find((z) => z.kind === exp.kind);
+    const want = Math.round(ZOMBIES[exp.kind].hp * exp.hpScale);
+    check(!!boss && boss.maxHp === want, `第 ${n} 夜出现首领 ${ZOMBIES[exp.kind].name}（生命 ${boss?.maxHp}，预期 ${want}）`);
+    check(g.zombies.filter((z) => (exp.escort as string[]).includes(z.kind)).length >= exp.escorts - 1, `首领带了 ${exp.escorts} 个随从`);
   }
   const g = new Game(6);
   startRun(g);
@@ -251,7 +253,7 @@ function playBot(seed: number, verbose = false): BotResult {
     let progress = true;
     while (progress) {
       progress = false;
-      const nextBuy = (['smg', 'shotgun', 'rifle', 'launcher'] as WeaponKind[]).find((k) => !g.loadout[k].owned);
+      const nextBuy = (['smg', 'shotgun', 'rifle', 'lmg'] as WeaponKind[]).find((k) => !g.loadout[k].owned);
       const cur = upgradeTarget();
       const slot = g.loadout[cur];
       const up = slot.tier < MAX_TIER ? WEAPONS[cur].upgrades[slot.tier] : undefined;
@@ -327,8 +329,9 @@ function playBot(seed: number, verbose = false): BotResult {
     if (z) {
       g.input.aimX = z.x;
       g.input.aimZ = z.z;
-      // 瞄胸口（约 1.2 米高）：俯仰角按距离算，子弹是 3D 的，不再自动瞄准高度
-      g.input.aimPitch = Math.atan2(1.2 - g.player.eye, Math.max(0.5, d));
+      // 瞄胸口（约 0.9 米高）：俯仰角按距离算，子弹是 3D 的，不再自动瞄准高度。
+      // 僵尸驼着背冲过来时头在 1.1–1.5 米、胸口前面，瞄 1.2 米会发发爆头，机器人就不像「只会打身体的普通玩家」了
+      g.input.aimPitch = Math.atan2(0.9 - g.player.eye, Math.max(0.5, d));
       g.input.fire = d < Math.min(16, statsAt(g.player.weapon, g.player.tier).range - 0.5);
       // 站在发电机附近，太近就往后退（保持距离射击）
       if (d < 3.5) {
