@@ -7,3 +7,12 @@ dist
 release
 __pycache__/
 *.pyc
+
+# Vettura 车辆（没有公开授权，只供本机）：python -I scripts/tools/vehicles-import.py 生成
+public/vehicles/
+
+# LRTactical「Stims & Stuffs」消耗品包（All Rights Reserved，只供本机）：node scripts/tools/stims-import.mjs 生成
+public/stims/
+
+# 挥刀动作（EMA / Better Combat，授权说不清，只供本机）：npm run melee:import 生成
+public/melee/

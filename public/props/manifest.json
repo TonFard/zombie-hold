@@ -206,6 +206,456 @@
     "desk_lamp_arm_01": {
       "file": "desk_lamp_arm_01/desk_lamp_arm_01.gltf",
       "tris": 4998
+    },
+    "tree_pine_a": {
+      "file": "tree_pine_a/tree_pine_a.gltf",
+      "tris": 5627
+    },
+    "tree_pine_b": {
+      "file": "tree_pine_b/tree_pine_b.gltf",
+      "tris": 7822
+    },
+    "tree_leaf_a": {
+      "file": "tree_leaf_a/tree_leaf_a.gltf",
+      "tris": 6017
+    },
+    "tree_leaf_b": {
+      "file": "tree_leaf_b/tree_leaf_b.gltf",
+      "tris": 7413
+    },
+    "bush_a": {
+      "file": "bush_a/bush_a.gltf",
+      "tris": 244
+    },
+    "bush_b": {
+      "file": "bush_b/bush_b.gltf",
+      "tris": 320
+    },
+    "grass_clump_a": {
+      "file": "grass_clump_a/grass_clump_a.gltf",
+      "tris": 32
+    },
+    "grass_clump_dry": {
+      "file": "grass_clump_dry/grass_clump_dry.gltf",
+      "tris": 112
+    },
+    "namaqualand_boulder_04": {
+      "file": "namaqualand_boulder_04/namaqualand_boulder_04.gltf",
+      "tris": 1500
+    },
+    "dead_tree_trunk": {
+      "file": "dead_tree_trunk/dead_tree_trunk.gltf",
+      "tris": 1500
+    },
+    "namaqualand_boulder_05": {
+      "file": "namaqualand_boulder_05/namaqualand_boulder_05.gltf",
+      "tris": 1500
+    },
+    "mil_truck": {
+      "file": "mil_truck/mil_truck.gltf",
+      "tris": 8492
+    },
+    "mil_tent": {
+      "file": "mil_tent/mil_tent.gltf",
+      "tris": 5360
+    },
+    "watchtower": {
+      "file": "watchtower/watchtower.gltf",
+      "tris": 2265
+    },
+    "power_pole": {
+      "file": "power_pole/power_pole.gltf",
+      "tris": 1718
+    },
+    "fuel_tank": {
+      "file": "fuel_tank/fuel_tank.gltf",
+      "tris": 5769
+    },
+    "mil_apc": {
+      "file": "mil_apc/mil_apc.gltf",
+      "tris": 7361
+    },
+    "van_wreck": {
+      "file": "van_wreck/van_wreck.gltf",
+      "tris": 11771
+    },
+    "road_sign": {
+      "file": "road_sign/road_sign.gltf",
+      "tris": 5576
+    },
+    "heli_wreck": {
+      "file": "heli_wreck/heli_wreck.gltf",
+      "tris": 4237
+    },
+    "painted_wooden_nightstand": {
+      "file": "painted_wooden_nightstand/painted_wooden_nightstand.gltf",
+      "tris": 470,
+      "open": true
+    },
+    "painted_wooden_shelves": {
+      "file": "painted_wooden_shelves/painted_wooden_shelves.gltf",
+      "tris": 524,
+      "open": true
+    },
+    "painted_wooden_cabinet": {
+      "file": "painted_wooden_cabinet/painted_wooden_cabinet.gltf",
+      "tris": 2227,
+      "open": true
+    },
+    "painted_wooden_bench": {
+      "file": "painted_wooden_bench/painted_wooden_bench.gltf",
+      "tris": 630,
+      "open": true
+    },
+    "painted_wooden_stool": {
+      "file": "painted_wooden_stool/painted_wooden_stool.gltf",
+      "tris": 676,
+      "open": true
+    },
+    "painted_wooden_sofa": {
+      "file": "painted_wooden_sofa/painted_wooden_sofa.gltf",
+      "tris": 3000,
+      "open": true
+    },
+    "painted_wooden_chair_02": {
+      "file": "painted_wooden_chair_02/painted_wooden_chair_02.gltf",
+      "tris": 1246,
+      "open": true
+    },
+    "ArmChair_01": {
+      "file": "ArmChair_01/ArmChair_01.gltf",
+      "tris": 3000,
+      "open": true
+    },
+    "Sofa_01": {
+      "file": "Sofa_01/Sofa_01.gltf",
+      "tris": 4101,
+      "open": true
+    },
+    "modern_coffee_table_01": {
+      "file": "modern_coffee_table_01/modern_coffee_table_01.gltf",
+      "tris": 2500,
+      "open": true
+    },
+    "side_table_01": {
+      "file": "side_table_01/side_table_01.gltf",
+      "tris": 2756,
+      "open": true
+    },
+    "dining_table": {
+      "file": "dining_table/dining_table.gltf",
+      "tris": 1048,
+      "open": true
+    },
+    "plastic_monobloc_chair_01": {
+      "file": "plastic_monobloc_chair_01/plastic_monobloc_chair_01.gltf",
+      "tris": 2000,
+      "open": true
+    },
+    "vintage_wooden_drawer_01": {
+      "file": "vintage_wooden_drawer_01/vintage_wooden_drawer_01.gltf",
+      "tris": 2994,
+      "open": true
+    },
+    "steel_frame_shelves_01": {
+      "file": "steel_frame_shelves_01/steel_frame_shelves_01.gltf",
+      "tris": 2999,
+      "open": true
+    },
+    "steel_frame_shelves_03": {
+      "file": "steel_frame_shelves_03/steel_frame_shelves_03.gltf",
+      "tris": 3995,
+      "open": true
+    },
+    "wooden_display_shelves_01": {
+      "file": "wooden_display_shelves_01/wooden_display_shelves_01.gltf",
+      "tris": 3174,
+      "open": true
+    },
+    "Shelf_01": {
+      "file": "Shelf_01/Shelf_01.gltf",
+      "tris": 182,
+      "open": true
+    },
+    "vintage_day_bed": {
+      "file": "vintage_day_bed/vintage_day_bed.gltf",
+      "tris": 2715,
+      "open": true
+    },
+    "Television_01": {
+      "file": "Television_01/Television_01.gltf",
+      "tris": 1918,
+      "open": true
+    },
+    "barrel_stove": {
+      "file": "barrel_stove/barrel_stove.gltf",
+      "tris": 2999,
+      "open": true
+    },
+    "modern_arm_chair_01": {
+      "file": "modern_arm_chair_01/modern_arm_chair_01.gltf",
+      "tris": 2997,
+      "open": true
+    },
+    "metal_stool_01": {
+      "file": "metal_stool_01/metal_stool_01.gltf",
+      "tris": 1499,
+      "open": true
+    },
+    "vintage_microwave": {
+      "file": "vintage_microwave/vintage_microwave.gltf",
+      "tris": 2499,
+      "open": true
+    },
+    "pot_enamel_01": {
+      "file": "pot_enamel_01/pot_enamel_01.gltf",
+      "tris": 1198,
+      "open": true
+    },
+    "brass_pan_01": {
+      "file": "brass_pan_01/brass_pan_01.gltf",
+      "tris": 899,
+      "open": true
+    },
+    "brass_pot_01": {
+      "file": "brass_pot_01/brass_pot_01.gltf",
+      "tris": 900,
+      "open": true
+    },
+    "can_rusted": {
+      "file": "can_rusted/can_rusted.gltf",
+      "tris": 500,
+      "open": true
+    },
+    "bleach_bottle": {
+      "file": "bleach_bottle/bleach_bottle.gltf",
+      "tris": 599,
+      "open": true
+    },
+    "multi_cleaner_5_litre": {
+      "file": "multi_cleaner_5_litre/multi_cleaner_5_litre.gltf",
+      "tris": 598,
+      "open": true
+    },
+    "wooden_bucket_01": {
+      "file": "wooden_bucket_01/wooden_bucket_01.gltf",
+      "tris": 1198,
+      "open": true
+    },
+    "vintage_suitcase": {
+      "file": "vintage_suitcase/vintage_suitcase.gltf",
+      "tris": 1834,
+      "open": true
+    },
+    "throw_pillows_01": {
+      "file": "throw_pillows_01/throw_pillows_01.gltf",
+      "tris": 1498,
+      "open": true
+    },
+    "office_notepads": {
+      "file": "office_notepads/office_notepads.gltf",
+      "tris": 666,
+      "open": true
+    },
+    "stationery_supplies": {
+      "file": "stationery_supplies/stationery_supplies.gltf",
+      "tris": 1193,
+      "open": true
+    },
+    "classic_laptop": {
+      "file": "classic_laptop/classic_laptop.gltf",
+      "tris": 2706,
+      "open": true
+    },
+    "boombox": {
+      "file": "boombox/boombox.gltf",
+      "tris": 2071,
+      "open": true
+    },
+    "WetFloorSign_01": {
+      "file": "WetFloorSign_01/WetFloorSign_01.gltf",
+      "tris": 228,
+      "open": true
+    },
+    "fancy_picture_frame_01": {
+      "file": "fancy_picture_frame_01/fancy_picture_frame_01.gltf",
+      "tris": 938,
+      "open": true
+    },
+    "dartboard": {
+      "file": "dartboard/dartboard.gltf",
+      "tris": 1200,
+      "open": true
+    },
+    "hanging_industrial_lamp": {
+      "file": "hanging_industrial_lamp/hanging_industrial_lamp.gltf",
+      "tris": 1640,
+      "open": true
+    },
+    "modern_ceiling_lamp_01": {
+      "file": "modern_ceiling_lamp_01/modern_ceiling_lamp_01.gltf",
+      "tris": 1196,
+      "open": true
+    },
+    "mounted_fluorescent_lights": {
+      "file": "mounted_fluorescent_lights/mounted_fluorescent_lights.gltf",
+      "tris": 1706,
+      "open": true
+    },
+    "propane_tank": {
+      "file": "propane_tank/propane_tank.gltf",
+      "tris": 1500,
+      "open": true
+    },
+    "korean_fire_extinguisher_01": {
+      "file": "korean_fire_extinguisher_01/korean_fire_extinguisher_01.gltf",
+      "tris": 1504,
+      "open": true
+    },
+    "cement_bag": {
+      "file": "cement_bag/cement_bag.gltf",
+      "tris": 844,
+      "open": true
+    },
+    "hand_truck": {
+      "file": "hand_truck/hand_truck.gltf",
+      "tris": 5294,
+      "open": true
+    },
+    "wooden_ladder_02": {
+      "file": "wooden_ladder_02/wooden_ladder_02.gltf",
+      "tris": 1499,
+      "open": true
+    },
+    "crowbar_01": {
+      "file": "crowbar_01/crowbar_01.gltf",
+      "tris": 800,
+      "open": true
+    },
+    "sledgehammer_01": {
+      "file": "sledgehammer_01/sledgehammer_01.gltf",
+      "tris": 800,
+      "open": true
+    },
+    "handsaw_wood": {
+      "file": "handsaw_wood/handsaw_wood.gltf",
+      "tris": 800,
+      "open": true
+    },
+    "Drill_01": {
+      "file": "Drill_01/Drill_01.gltf",
+      "tris": 999,
+      "open": true
+    },
+    "oil_tin": {
+      "file": "oil_tin/oil_tin.gltf",
+      "tris": 798,
+      "open": true
+    },
+    "spray_paint_bottles": {
+      "file": "spray_paint_bottles/spray_paint_bottles.gltf",
+      "tris": 999,
+      "open": true
+    },
+    "plastic_crate_02": {
+      "file": "plastic_crate_02/plastic_crate_02.gltf",
+      "tris": 1500,
+      "open": true
+    },
+    "plastic_jerrycan": {
+      "file": "plastic_jerrycan/plastic_jerrycan.gltf",
+      "tris": 1500,
+      "open": true
+    },
+    "bolt_action_rifle_7_62": {
+      "file": "bolt_action_rifle_7_62/bolt_action_rifle_7_62.gltf",
+      "tris": 3418,
+      "open": true
+    },
+    "stick_grenade": {
+      "file": "stick_grenade/stick_grenade.gltf",
+      "tris": 800,
+      "open": true
+    },
+    "old_gas_mask": {
+      "file": "old_gas_mask/old_gas_mask.gltf",
+      "tris": 1499,
+      "open": true
+    },
+    "metal_jerrycan_green": {
+      "file": "metal_jerrycan_green/metal_jerrycan_green.gltf",
+      "tris": 1994,
+      "open": true
+    },
+    "old_military_crate": {
+      "file": "old_military_crate/old_military_crate.gltf",
+      "tris": 2496,
+      "open": true
+    },
+    "medical_box": {
+      "file": "medical_box/medical_box.gltf",
+      "tris": 1496,
+      "open": true
+    },
+    "binoculars": {
+      "file": "binoculars/binoculars.gltf",
+      "tris": 2230,
+      "open": true
+    },
+    "vintage_radio_transceiver": {
+      "file": "vintage_radio_transceiver/vintage_radio_transceiver.gltf",
+      "tris": 10160,
+      "open": true
+    },
+    "pastic_torch_6v": {
+      "file": "pastic_torch_6v/pastic_torch_6v.gltf",
+      "tris": 798,
+      "open": true
+    },
+    "baseball_bat": {
+      "file": "baseball_bat/baseball_bat.gltf",
+      "tris": 800,
+      "open": true
+    },
+    "machete": {
+      "file": "machete/machete.gltf",
+      "tris": 799,
+      "open": true
+    },
+    "hatchet": {
+      "file": "hatchet/hatchet.gltf",
+      "tris": 900,
+      "open": true
+    },
+    "WoodenTable_02": {
+      "file": "WoodenTable_02/WoodenTable_02.gltf",
+      "tris": 1514,
+      "open": true
+    },
+    "CashRegister_01": {
+      "file": "CashRegister_01/CashRegister_01.gltf",
+      "tris": 2621,
+      "open": true
+    },
+    "wall_clock": {
+      "file": "wall_clock/wall_clock.gltf",
+      "tris": 1211,
+      "open": true
+    },
+    "hanging_picture_frame_01": {
+      "file": "hanging_picture_frame_01/hanging_picture_frame_01.gltf",
+      "tris": 1201,
+      "open": true
+    },
+    "hanging_picture_frame_02": {
+      "file": "hanging_picture_frame_02/hanging_picture_frame_02.gltf",
+      "tris": 1202,
+      "open": true
+    },
+    "vintage_oil_lamp": {
+      "file": "vintage_oil_lamp/vintage_oil_lamp.gltf",
+      "tris": 1201,
+      "open": true
     }
   },
   "textures": {
@@ -221,7 +671,19 @@
     "wall_metal": "tex/wall_metal/",
     "trim_metal": "tex/trim_metal/",
     "roof": "tex/roof/",
-    "floor_tile": "tex/floor_tile/"
+    "floor_tile": "tex/floor_tile/",
+    "grass_green": "tex/grass_green/",
+    "forest_floor": "tex/forest_floor/",
+    "rock_cliff": "tex/rock_cliff/",
+    "sand": "tex/sand/",
+    "mud": "tex/mud/",
+    "roof_tiles": "tex/roof_tiles/",
+    "planks": "tex/planks/",
+    "plaster_old": "tex/plaster_old/",
+    "carpet": "tex/carpet/",
+    "rug": "tex/rug/",
+    "cloth": "tex/cloth/",
+    "wallpaper": "tex/wallpaper/"
   },
   "credits": {
     "Barrel_01": {
@@ -625,6 +1087,642 @@
       "author": "Yann Kervran, Kuutti Siitonen",
       "license": "CC0",
       "url": "https://polyhaven.com/a/desk_lamp_arm_01"
+    },
+    "tree_pine_a": {
+      "name": "Pine Tree",
+      "author": "evolveduk",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/pine-tree-d45218a3fab349e5b1de040f29e7b6f9"
+    },
+    "tree_pine_b": {
+      "name": "Spruce",
+      "author": "evolveduk",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/spruce-a50a5df3164246a5af97992cec33a143"
+    },
+    "tree_leaf_a": {
+      "name": "Beech tree",
+      "author": "evolveduk",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/beech-tree-0983d8933531491f9be71c669e8a907b"
+    },
+    "tex:grass_green": {
+      "name": "leafy_grass",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/leafy_grass"
+    },
+    "tex:forest_floor": {
+      "name": "forest_leaves_03",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/forest_leaves_03"
+    },
+    "tex:rock_cliff": {
+      "name": "mossy_rock",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/mossy_rock"
+    },
+    "tex:sand": {
+      "name": "dense_sand",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dense_sand"
+    },
+    "tex:mud": {
+      "name": "brown_mud_03",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/brown_mud_03"
+    },
+    "tex:roof_tiles": {
+      "name": "roof_09",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/roof_09"
+    },
+    "tex:planks": {
+      "name": "weathered_brown_planks",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/weathered_brown_planks"
+    },
+    "tex:plaster_old": {
+      "name": "plastered_wall_03",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastered_wall_03"
+    },
+    "tree_leaf_b": {
+      "name": "Birch tree",
+      "author": "evolveduk",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/birch-tree-aa842dffd9654d33b8b91170ce83c172"
+    },
+    "bush_a": {
+      "name": "Cliff Shrub For Terrain",
+      "author": "Natural_Disbuster",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/cliff-shrub-for-terrain-7a0f2bf2982c4ff8bacc67856fdbfae2"
+    },
+    "bush_b": {
+      "name": "Small bush",
+      "author": "yanix",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/small-bush-f6ed4c70fc024ac88e8e6a19991695af"
+    },
+    "grass_clump_a": {
+      "name": "Low Poly Grass Patch",
+      "author": "Natural_Disbuster",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/low-poly-grass-patch-bf459c87d1ed4667a777b92079586923"
+    },
+    "grass_clump_dry": {
+      "name": "Dry grass",
+      "author": "Pixel-bit",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/dry-grass-d1484537470441b999d37077aeb9b47a"
+    },
+    "namaqualand_boulder_04": {
+      "name": "Namaqualand Boulder 04",
+      "author": "Jenelle van Heerden",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/namaqualand_boulder_04"
+    },
+    "dead_tree_trunk": {
+      "name": "Dead Tree Trunk",
+      "author": "Rob Tuytel",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dead_tree_trunk"
+    },
+    "namaqualand_boulder_05": {
+      "name": "Namaqualand Boulder 05",
+      "author": "Jenelle van Heerden, Dario Barresi",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/namaqualand_boulder_05"
+    },
+    "mil_truck": {
+      "name": "Ural 4320",
+      "author": "Brout",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/ural-4320-f953c51a5dbc4a15949f4dcc0905c4e8"
+    },
+    "mil_tent": {
+      "name": "Tent",
+      "author": "VENIKAMEN",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/tent-979c0784868b4fdeb2b4563f65e0b5b4"
+    },
+    "watchtower": {
+      "name": "Guard Tower [Free Asset]",
+      "author": "Lex713",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/guard-tower-free-asset-963071f5fe404970a40b166bcee430b8"
+    },
+    "power_pole": {
+      "name": "Electric pole",
+      "author": "DJMaesen",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/electric-pole-19be5e32d7a44fcf8c6eb4f83e17bd25"
+    },
+    "fuel_tank": {
+      "name": "Rusted Tank storage",
+      "author": "Mkc",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/rusted-tank-storage-57be2eaf4d6b4d2980bcee4ccb35f780"
+    },
+    "mil_apc": {
+      "name": "BTR 80",
+      "author": "Brout",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/btr-80-004c8509eb1e4aad8093eba9b4707e79"
+    },
+    "van_wreck": {
+      "name": "(FREE) Żuk 3D model",
+      "author": "Lionsharp Studios",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/free-zuk-3d-model-bb4OJb5V4L0hgYjM3vtGvPB7ZMt"
+    },
+    "road_sign": {
+      "name": "Rusty Stop Sign",
+      "author": "Yanez Designs",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/rusty-stop-sign-2225bb40891b4ed083a75bd17e447dd0"
+    },
+    "heli_wreck": {
+      "name": "Mi-24 Hind",
+      "author": "Duane's Mind",
+      "license": "CC Attribution",
+      "url": "https://sketchfab.com/3d-models/mi-24-hind-004d68143e1a4df88e136dbc0a05f181"
+    },
+    "painted_wooden_nightstand": {
+      "name": "Painted Wooden Nightstand",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_nightstand"
+    },
+    "painted_wooden_shelves": {
+      "name": "Painted Wooden Shelves",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_shelves"
+    },
+    "painted_wooden_cabinet": {
+      "name": "Painted Wooden Cabinet",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_cabinet"
+    },
+    "painted_wooden_bench": {
+      "name": "Painted Wooden Bench",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_bench"
+    },
+    "painted_wooden_stool": {
+      "name": "Painted Wooden Stool",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_stool"
+    },
+    "painted_wooden_sofa": {
+      "name": "Painted Wooden Sofa",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_sofa"
+    },
+    "painted_wooden_chair_02": {
+      "name": "Painted Wooden Chair 02",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/painted_wooden_chair_02"
+    },
+    "ArmChair_01": {
+      "name": "Arm Chair 01",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/ArmChair_01"
+    },
+    "Sofa_01": {
+      "name": "Sofa 01",
+      "author": "Kirill Sannikov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Sofa_01"
+    },
+    "modern_coffee_table_01": {
+      "name": "Modern Coffee Table 01",
+      "author": "Amin",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/modern_coffee_table_01"
+    },
+    "side_table_01": {
+      "name": "Side Table 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/side_table_01"
+    },
+    "dining_table": {
+      "name": "Dining Table",
+      "author": "Aron Łyczek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dining_table"
+    },
+    "plastic_monobloc_chair_01": {
+      "name": "Plastic Monobloc Chair 01",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastic_monobloc_chair_01"
+    },
+    "vintage_wooden_drawer_01": {
+      "name": "Vintage Wooden Drawer 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_wooden_drawer_01"
+    },
+    "steel_frame_shelves_01": {
+      "name": "Steel Frame Shelves 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/steel_frame_shelves_01"
+    },
+    "steel_frame_shelves_03": {
+      "name": "Steel Frame Shelves 03",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/steel_frame_shelves_03"
+    },
+    "wooden_display_shelves_01": {
+      "name": "Wooden Display Shelves 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_display_shelves_01"
+    },
+    "Shelf_01": {
+      "name": "Shelf 01",
+      "author": "Gabriel Radić",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Shelf_01"
+    },
+    "vintage_day_bed": {
+      "name": "Vintage Day Bed",
+      "author": "Aron Łyczek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_day_bed"
+    },
+    "Television_01": {
+      "name": "Television 01",
+      "author": "Gabriel Radić",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Television_01"
+    },
+    "barrel_stove": {
+      "name": "Barrel Stove",
+      "author": "MP",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/barrel_stove"
+    },
+    "modern_arm_chair_01": {
+      "name": "Modern Arm Chair 01",
+      "author": "Vibrant Nordic",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/modern_arm_chair_01"
+    },
+    "metal_stool_01": {
+      "name": "Metal Stool 01",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_stool_01"
+    },
+    "vintage_microwave": {
+      "name": "Vintage Microwave",
+      "author": "Adam Nekola",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_microwave"
+    },
+    "pot_enamel_01": {
+      "name": "Pot Enamel 01",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/pot_enamel_01"
+    },
+    "brass_pan_01": {
+      "name": "Brass Pan 01",
+      "author": "Rico Cilliers",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/brass_pan_01"
+    },
+    "brass_pot_01": {
+      "name": "Brass Pot 01",
+      "author": "Rico Cilliers",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/brass_pot_01"
+    },
+    "can_rusted": {
+      "name": "Can Rusted",
+      "author": "Rahul Chaudhary",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/can_rusted"
+    },
+    "bleach_bottle": {
+      "name": "Bleach Bottle",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bleach_bottle"
+    },
+    "multi_cleaner_5_litre": {
+      "name": "Multi Cleaner 5 Litre",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/multi_cleaner_5_litre"
+    },
+    "wooden_bucket_01": {
+      "name": "Wooden Bucket 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_bucket_01"
+    },
+    "vintage_suitcase": {
+      "name": "Vintage Suitcase",
+      "author": "Maximilian Schuster",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_suitcase"
+    },
+    "throw_pillows_01": {
+      "name": "Throw Pillows 01",
+      "author": "Serhii Khromov",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/throw_pillows_01"
+    },
+    "office_notepads": {
+      "name": "Office Notepads",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/office_notepads"
+    },
+    "stationery_supplies": {
+      "name": "Stationery Supplies",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/stationery_supplies"
+    },
+    "classic_laptop": {
+      "name": "Classic Laptop",
+      "author": "Arrangemonk",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/classic_laptop"
+    },
+    "boombox": {
+      "name": "Boombox",
+      "author": "Thomas Paul Mouilleron",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/boombox"
+    },
+    "WetFloorSign_01": {
+      "name": "Wet Floor Sign 01",
+      "author": "Fran Calvente",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/WetFloorSign_01"
+    },
+    "fancy_picture_frame_01": {
+      "name": "Fancy Picture Frame 01",
+      "author": "Rob Tuytel, Rico Cilliers",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/fancy_picture_frame_01"
+    },
+    "dartboard": {
+      "name": "Dartboard",
+      "author": "Satyaki Mandal",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dartboard"
+    },
+    "hanging_industrial_lamp": {
+      "name": "Hanging Industrial Lamp",
+      "author": "Kuutti Siitonen",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/hanging_industrial_lamp"
+    },
+    "modern_ceiling_lamp_01": {
+      "name": "Modern Ceiling Lamp 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/modern_ceiling_lamp_01"
+    },
+    "mounted_fluorescent_lights": {
+      "name": "Mounted Fluorescent Lights",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/mounted_fluorescent_lights"
+    },
+    "propane_tank": {
+      "name": "Propane Tank",
+      "author": "Slinc",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/propane_tank"
+    },
+    "korean_fire_extinguisher_01": {
+      "name": "Korean Fire Extinguisher 01",
+      "author": "UM JOORIN",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/korean_fire_extinguisher_01"
+    },
+    "cement_bag": {
+      "name": "Cement Bag",
+      "author": "PierreB3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/cement_bag"
+    },
+    "hand_truck": {
+      "name": "Hand Truck",
+      "author": "Mutanzom3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/hand_truck"
+    },
+    "wooden_ladder_02": {
+      "name": "Wooden Ladder 02",
+      "author": "JN_3DPRINTINGNERD",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wooden_ladder_02"
+    },
+    "crowbar_01": {
+      "name": "Crowbar 01",
+      "author": "Alexander Otterbeck",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/crowbar_01"
+    },
+    "sledgehammer_01": {
+      "name": "Sledgehammer 01",
+      "author": "Dylan Guzman",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/sledgehammer_01"
+    },
+    "handsaw_wood": {
+      "name": "Handsaw Wood",
+      "author": "Konrad Szałankiewicz",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/handsaw_wood"
+    },
+    "Drill_01": {
+      "name": "Drill 01",
+      "author": "Fernando Quinn",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/Drill_01"
+    },
+    "oil_tin": {
+      "name": "Oil Tin",
+      "author": "Niklas",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/oil_tin"
+    },
+    "spray_paint_bottles": {
+      "name": "Spray Paint Bottles",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/spray_paint_bottles"
+    },
+    "plastic_crate_02": {
+      "name": "Plastic Crate 02",
+      "author": "Fabi_G",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastic_crate_02"
+    },
+    "plastic_jerrycan": {
+      "name": "Plastic Jerrycan",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/plastic_jerrycan"
+    },
+    "bolt_action_rifle_7_62": {
+      "name": "Bolt Action Rifle 7.62",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/bolt_action_rifle_7_62"
+    },
+    "stick_grenade": {
+      "name": "Stick Grenade",
+      "author": "singaii",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/stick_grenade"
+    },
+    "old_gas_mask": {
+      "name": "Old Gas Mask",
+      "author": "Michał Wiśniewski",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_gas_mask"
+    },
+    "metal_jerrycan_green": {
+      "name": "Metal Jerrycan Green",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/metal_jerrycan_green"
+    },
+    "old_military_crate": {
+      "name": "Old Military Crate",
+      "author": "Jack Mava",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/old_military_crate"
+    },
+    "medical_box": {
+      "name": "Medical Box",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/medical_box"
+    },
+    "binoculars": {
+      "name": "Binoculars",
+      "author": "Derek Wight",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/binoculars"
+    },
+    "vintage_radio_transceiver": {
+      "name": "Vintage Radio Transceiver",
+      "author": "Mateusz Sadek",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_radio_transceiver"
+    },
+    "pastic_torch_6v": {
+      "name": "Plastic Torch 6V",
+      "author": "James Cocks",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/pastic_torch_6v"
+    },
+    "baseball_bat": {
+      "name": "Baseball Bat",
+      "author": "Enrique Martín",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/baseball_bat"
+    },
+    "machete": {
+      "name": "Machete",
+      "author": "Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/machete"
+    },
+    "hatchet": {
+      "name": "Hatchet",
+      "author": "James Ray Cock, Ulan Cabanilla",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/hatchet"
+    },
+    "WoodenTable_02": {
+      "name": "Wooden Table 02",
+      "author": "Fran Calvente",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/WoodenTable_02"
+    },
+    "CashRegister_01": {
+      "name": "Cash Register 01",
+      "author": "Joe Seabuhr",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/CashRegister_01"
+    },
+    "wall_clock": {
+      "name": "Wall Clock",
+      "author": "PierreB3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/wall_clock"
+    },
+    "hanging_picture_frame_01": {
+      "name": "Hanging Picture Frame 01",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/hanging_picture_frame_01"
+    },
+    "hanging_picture_frame_02": {
+      "name": "Hanging Picture Frame 02",
+      "author": "James Ray Cock",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/hanging_picture_frame_02"
+    },
+    "vintage_oil_lamp": {
+      "name": "Vintage Oil Lamp",
+      "author": "Monsta3D",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/vintage_oil_lamp"
+    },
+    "tex:carpet": {
+      "name": "dirty_carpet",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/dirty_carpet"
+    },
+    "tex:rug": {
+      "name": "quatrefoil_jacquard_fabric",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/quatrefoil_jacquard_fabric"
+    },
+    "tex:wallpaper": {
+      "name": "decrepit_wallpaper",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/decrepit_wallpaper"
+    },
+    "tex:cloth": {
+      "name": "curly_teddy_checkered",
+      "author": "Poly Haven",
+      "license": "CC0",
+      "url": "https://polyhaven.com/a/curly_teddy_checkered"
     }
   }
 }

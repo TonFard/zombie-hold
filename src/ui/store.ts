@@ -6,7 +6,8 @@ import type { MedalBreakdown } from '../game/meta/progress';
 import type { MetaSection } from '../game/data/meta-catalog';
 import { defaultSave, type SaveData } from '../game/save/schema';
 
-export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result';
+/** buy = 对战里的购买菜单：鼠标放出来点东西，但游戏不停（冻结时间照样在走） */
+export type Screen = 'menu' | 'lobby' | 'play' | 'training' | 'pause' | 'bench' | 'cards' | 'result' | 'buy';
 
 /** 顶栏 6 个页面；工程部 / 补给站 / 体能训练并进军械库，作为军械库里的子分类（shopTab） */
 export type LobbyTab = 'deploy' | 'bench' | 'armory' | 'records' | 'codex' | 'settings';
@@ -45,6 +46,46 @@ export interface CheckpointInfo {
   maxHp: number;
 }
 
+/** 8v8 人机难度：0 = 普通，1 = 困难，2 = 专家（game/systems/tdm.ts 的 LEVELS） */
+export type TdmLevel = 0 | 1 | 2;
+const TDM_LEVEL_KEY = 'zombie-hold-tdm-level';
+
+/** 三档人机各是什么样（大厅、暂停菜单里的说明；数值在 LEVELS） */
+export const TDM_LEVEL_NOTES = [
+  '反应慢、很少瞄头，一半的时候想不起来找掩体；人机的子弹伤害打七五折',
+  '反应比人快一点，三成的枪瞄头，换弹、挨打多半会躲，会扔雷、会翻掩体',
+  '反应很快，一半的枪瞄头，几乎每次都躲着换弹，雷扔得勤；子弹伤害不打折',
+] as const;
+
+/** 对战的按键（大厅的说明、暂停菜单） */
+export const TDM_KEYS: ReadonlyArray<readonly [keys: string, what: string]> = [
+  ['空格', '跳（能跳上箱子、沙袋）'],
+  ['C', '蹲'],
+  ['1 / 2 / 3', '主武器 / 手枪 / 匕首'],
+  ['Q', '换回上一把'],
+  ['V', '抽刀挥一下'],
+  ['左键 / 右键', '拿着刀：横挥 / 捅'],
+  ['G', '扔手雷'],
+  ['E', '捡脚边的枪'],
+  ['B', '购买'],
+  ['Tab', '计分板'],
+];
+
+/** 网址参数 / 本机存的字符串 → 难度；不是 0、1、2 就是 null */
+export const asTdmLevel = (v: unknown): TdmLevel | null => {
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() !== '' ? Number(v) : NaN;
+  return n === 0 || n === 1 || n === 2 ? n : null;
+};
+
+/** 上次选的人机难度（记在这台机器上，和账号的进度无关）；没选过就是困难 */
+function savedTdmLevel(): TdmLevel {
+  try {
+    return (typeof localStorage === 'undefined' ? null : asTdmLevel(localStorage.getItem(TDM_LEVEL_KEY))) ?? 1;
+  } catch {
+    return 1;
+  }
+}
+
 /** 界面层状态：当前在哪个界面、横幅、结算信息、存档统计 */
 export const ui = reactive({
   screen: 'menu' as Screen,
@@ -59,6 +100,8 @@ export const ui = reactive({
   /** 渲染层给界面的小工具（boot 里填）：武器图标、武器台的 3D 预览 */
   gfx: {
     icon: (_kind: string, _tier?: number): string => '',
+    /** 某个型号的侧视图标（对战的购买菜单）：模型还在加载时是空串 */
+    gunIcon: (_id: string): string => '',
     preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number): void; resize(w: number, h: number): void; dispose(): void } | null => null,
   },
   /** 这一局每把枪涨的熟练度击杀（结算页显示） */
@@ -69,10 +112,14 @@ export const ui = reactive({
   canEndless: false,
   /** 当前在训练场（暂停菜单换成"离开训练场"） */
   inTraining: false,
-  /** 当前在团队死斗 */
+  /** 当前在 8v8 对战 */
   inTdm: false,
-  /** 团队死斗结算 */
-  tdmResult: null as { winner: -1 | 0 | 1; score: [number, number]; kills: number; deaths: number } | null,
+  /** 8v8 的人机难度：大厅里选的那一档；进了对战就是这一场用的那一档 */
+  tdmLevel: savedTdmLevel(),
+  /** 对战结算 */
+  tdmResult: null as { winner: -1 | 0 | 1; score: [number, number]; kills: number; deaths: number; level: TdmLevel } | null,
+  /** 对战的局间提示（第几局、谁赢了、换边）：id 自增让组件重播动画 */
+  tdmNote: { title: '', sub: '', tone: '' as '' | 'win' | 'lose', id: 0 },
   /** 训练场：显示弹道偏离表（H 切换） */
   dropHint: true,
   /** 这个黎明还能重抽几次 */
@@ -95,7 +142,12 @@ export const ui = reactive({
     continueRun: () => {},
     training: () => {},
     daily: () => {},
-    tdm: () => {},
+    /** 开一场 8v8：level = 人机难度（0 普通 / 1 困难 / 2 专家），不给就用 ui.tdmLevel */
+    tdm: (_level?: number) => {},
+    /** 对战里的购买菜单：买枪、买护甲 / 手雷、关掉菜单 */
+    buyGun: (_id: string) => {},
+    buyGear: (_id: string) => {},
+    closeBuy: () => {},
     buyMeta: (_id: string) => {},
     resume: () => {},
     restart: () => {},
@@ -122,6 +174,16 @@ export const ui = reactive({
     cloudSignOut: () => {},
   },
 });
+
+/** 换一档人机难度，并记在本机（下次进对战还是这一档） */
+export function setTdmLevel(level: TdmLevel): void {
+  ui.tdmLevel = level;
+  try {
+    localStorage.setItem(TDM_LEVEL_KEY, String(level));
+  } catch {
+    // 隐私模式 / 存储被禁用：这一次照样生效，只是下次不记得
+  }
+}
 
 export function toast(text: string, warn = false): void {
   ui.toast = { text, warn, id: ui.toast.id + 1 };

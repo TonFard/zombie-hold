@@ -1,5 +1,6 @@
 import type { AudioSystem } from '../audio';
 import type { Game } from '../game/sim';
+import { PLAYER } from '../game/systems/tdm';
 import { bumpPop, hud, markBoxTaken, markDropTaken, procCard } from '../ui/hud';
 import { ui } from '../ui/store';
 
@@ -10,6 +11,9 @@ import { ui } from '../ui/store';
  */
 export function wireEvents(game: Game, audio: AudioSystem): () => void {
   const off: Array<() => void> = [];
+  /** 对战：自己刚从背后砍中一刀（tdmStab 后面紧跟着的那个 soldierHit 把命中标记画成橙色）；记下时间，隔了一步就不算 */
+  let backstab = false;
+  let backstabAt = -1;
   off.push(
     game.events.on('zombieHit', (e) => {
       // 准星上的命中标记只认自己打的：炮塔、地刺、队友打中的不闪
@@ -57,6 +61,30 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
       const p = game.player;
       // 方位由 syncHud 每次按当前视线重算
       hud.hurtMarks.push({ a: 0, world: Math.atan2(zombie.x - p.x, zombie.z - p.z), life: 1 });
+      if (hud.hurtMarks.length > 6) hud.hurtMarks.shift();
+    }),
+    // 对战：自己打中 / 打死对面的人（枪、刀、手雷都从 tdmHurt 发这两个事件），准星上的命中标记；被打中时显示是从哪边来的
+    game.events.on('tdmStab', (e) => {
+      backstab = e.id === PLAYER && e.back;
+      backstabAt = game.run.time;
+    }),
+    game.events.on('soldierHit', (e) => {
+      if (!e.byPlayer) return;
+      hud.hitHead = e.head || (hud.hit > 0.9 && hud.hitHead);
+      hud.hitCrit = backstab && backstabAt === game.run.time;
+      backstab = false;
+      hud.hit = 1;
+    }),
+    game.events.on('soldierDied', (e) => {
+      if (!e.byPlayer) return;
+      hud.killHead = e.head || (hud.kill > 0.9 && hud.killHead);
+      hud.kill = 1;
+    }),
+    game.events.on('tdmHurt', ({ fromId }) => {
+      const s = game.tdm.soldiers.find((x) => x.id === fromId);
+      if (!s) return;
+      const p = game.player;
+      hud.hurtMarks.push({ a: 0, world: Math.atan2(s.x - p.x, s.z - p.z), life: 1 });
       if (hud.hurtMarks.length > 6) hud.hurtMarks.shift();
     }),
     game.events.on('coreDamaged', () => {

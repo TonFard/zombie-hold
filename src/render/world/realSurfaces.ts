@@ -34,11 +34,11 @@ export interface SurfaceManifest {
   textures: Record<string, string>;
 }
 
-type Kit = { diff: Texture; nor: Texture; arm: Texture };
+export type Kit = { diff: Texture; nor: Texture; arm: Texture };
 
 const BASE = `${import.meta.env.BASE_URL}props/`;
 
-async function loadKit(loader: TextureLoader, dir: string, anisotropy: number): Promise<Kit> {
+export async function loadKit(loader: TextureLoader, dir: string, anisotropy: number): Promise<Kit> {
   const [diff, nor, arm] = (await Promise.all(['diff', 'nor', 'arm'].map((n) => loader.loadAsync(`${BASE}${dir}${n}.jpg`)))) as [Texture, Texture, Texture];
   for (const t of [diff, nor, arm]) {
     t.wrapS = t.wrapT = RepeatWrapping;
@@ -53,7 +53,7 @@ async function loadKit(loader: TextureLoader, dir: string, anisotropy: number): 
 // ---------------------------------------------------------------- 墙
 
 /** 盒子 UV 按世界尺寸展开：每个面 1 次平铺 = tile 米 */
-function worldBox(w: number, h: number, d: number, tile: number): BoxGeometry {
+export function worldBox(w: number, h: number, d: number, tile: number): BoxGeometry {
   const g = new BoxGeometry(w, h, d);
   const uv = g.getAttribute('uv');
   const n = g.getAttribute('normal');
@@ -192,7 +192,7 @@ function weightTextures(grid: Grid): [CanvasTexture, CanvasTexture] {
 }
 
 /** 把 6 张同尺寸贴图打包成一个贴图数组 */
-async function arrayTexture(urls: string[], srgb: boolean, anisotropy: number): Promise<DataArrayTexture> {
+export async function arrayTexture(urls: string[], srgb: boolean, anisotropy: number): Promise<DataArrayTexture> {
   const imgs = await Promise.all(
     urls.map(
       (u) =>

@@ -22,6 +22,7 @@ import { clamp, lerp } from '../../game/core/math';
 import type { WeaponKind } from '../../game/data/weapons';
 import type { Lighting } from '../core/lighting';
 import { loadTacz, loadTaczManifest, TACZ_SCALE, type TaczRig } from '../tacz/rig';
+import { worldKnife } from '../tacz/worldgun';
 import { Arm } from './arms';
 import { handFits, type GunFit } from './hand-fit';
 import { buildWeapon, hasGunModel, type WeaponModel } from './';
@@ -57,10 +58,20 @@ const FLASH_SIZE: Record<WeaponKind, number> = { pistol: 0.8, smg: 0.75, shotgun
 /** FLASH_SIZE 按枪口离镜头这么远（米，程序模型腰射时大约的距离）调的；更近就按比例缩小 */
 const FLASH_REF_DIST = 0.55;
 /**
- * TACZ 枪上的程序手臂相对 TACZ_SCALE 再放大多少（手部调节面板的「大小」再乘在上面）：
- * MC 方块手 4 像素宽（0.25 格），手套手掌 0.078 米 × 1.6 ≈ 0.125 格，约方块手一半宽
+ * TACZ 枪上的程序手臂相对 TACZ_SCALE 再放大多少（手部摆放参数里的「大小」再乘在上面）。
+ * 手臂模型按真人尺寸（米）做；枪包里的枪和真枪一样大，1 像素 ≈ 2.1 厘米（AK-12 全长 44.7 像素、Glock 17 高 6.6 像素），
+ * 所以 1 米 ≈ 48 像素 = 3 格。以前是 1.6 × 1.3：手只有真人的七成大，包不住护木
  */
-const TACZ_ARM = 1.6;
+const TACZ_ARM = 3;
+/** TACZ 枪上程序手臂的上臂 / 前臂（肘到手腕）长度（米）和手腕最多弯多少（弧度） */
+const TACZ_UPPER = 0.3;
+const TACZ_FORE = 0.25;
+const TACZ_WRIST_BEND = 1.0;
+/**
+ * 肩膀在视角相机空间里的位置（像素：往外 / 往上 / 往后）：真人肩宽 40 厘米，举枪时肩关节在眼睛下方约 24 厘米、后面约 13 厘米。
+ * 以前肩膀跟着枪包的手臂方块走、还往下拉了半米，前臂总是从正下方直戳上来
+ */
+const TACZ_SHOULDER = { x: 9.5, y: -11.5, z: 6 };
 const PX = 1 / 16;
 const DEG = Math.PI / 180;
 /** 开火时整枪后坐的力度 */
@@ -73,6 +84,77 @@ const VM_FOV_ADS = 50;
 const ease = (x: number) => x * x * (3 - 2 * x);
 /** 0→1→0 的平滑脉冲，峰值在 peak 处 */
 const pulse = (x: number, peak = 0.3) => (x <= 0 || x >= 1 ? 0 : x < peak ? ease(x / peak) : ease(1 - (x - peak) / (1 - peak)));
+
+// ---------------------------------------------------------------- 第一人称的刀（对战）
+/** 拿刀的手按多大画：和 TACZ 枪上的手一样大（换刀时手不会变大变小）。下面的位置都是真人尺寸（米），整体再乘它 */
+const KNIFE_VM = TACZ_SCALE * TACZ_ARM;
+/**
+ * 视角相机空间（+x 右、+y 上、−z 前）里的右肩；肘在肩的哪边（只用来算小臂的方向）、肘往哪边弯。
+ * 手伸得比 KNIFE_REACH 远的时候肩膀跟着往前送（真人出刀也是送肩），不然上臂的袖子会被拉成一根长管子
+ */
+const KNIFE_SHOULDER = new Vector3(0.2, -0.25, 0.04);
+const KNIFE_ELBOW_OFF = new Vector3(0.1, -0.2, -0.1);
+const KNIFE_POLE = new Vector3(0.6, -1, 0.1);
+const KNIFE_REACH = 0.5;
+/** 刀把在手套坐标里的位置（攥在拳头里）和朝向：刀尖从拇指那侧出去（+X），刀背朝手腕（−Z），刀刃朝指节 */
+const KNIFE_IN_HAND = new Vector3(0.002, -0.03, 0.02);
+const KNIFE_GRIP = new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(new Vector3(0, -1, 0), new Vector3(0, 0, -1), new Vector3(1, 0, 0)));
+const Y_AXIS = new Vector3(0, 1, 0);
+const NO_ROT = new Quaternion();
+const NO_MOVE = new Vector3();
+
+/**
+ * 拿刀的一个姿势：at = 这一下挥到哪了（0–1）；x / y / z = 手心在哪；
+ * roll = 小臂转了多少（0 = 拇指朝上像握手，正 = 往掌心朝下转，负 = 往掌心朝上转）；
+ * dev = 手腕往小指那边压多少（刀尖往前倒）；tilt = 刀在拳头里再往前斜多少。角度都是弧度
+ */
+type KnifeKey = readonly [at: number, x: number, y: number, z: number, roll: number, dev: number, tilt: number];
+const KNIFE_HOLD: KnifeKey = [0, 0.2, -0.23, -0.42, 0.35, 0.25, 0.3];
+const KNIFE_MOVES: ReadonlyArray<readonly KnifeKey[]> = [
+  // 从右往左横挥：手抬到右边、掌心半朝上，扫到左边时掌心翻下去
+  [
+    [0.16, 0.38, -0.13, -0.36, -0.6, 0.1, 0.25],
+    [0.38, 0.02, -0.15, -0.5, 1.05, 0.4, 0.5],
+    [0.55, -0.24, -0.2, -0.38, 1.45, 0.45, 0.5],
+  ],
+  // 从左往右（反手）：手先收到左边、掌心朝下，再往右甩开
+  [
+    [0.16, -0.14, -0.13, -0.38, 1.6, 0.3, 0.4],
+    [0.38, 0.12, -0.15, -0.5, 0.5, 0.4, 0.5],
+    [0.55, 0.4, -0.18, -0.36, -0.7, 0.35, 0.35],
+  ],
+  // 捅：手收到腰边，再直着送出去（刀尖顺着小臂朝前），停一下收回来
+  [
+    [0.18, 0.25, -0.24, -0.26, 0.5, 0.45, 0.75],
+    [0.35, 0.07, -0.15, -0.56, 0.75, 0.5, 0.98],
+    [0.62, 0.08, -0.16, -0.53, 0.75, 0.5, 0.98],
+  ],
+];
+const _kn = [0, 0, 0, 0, 0, 0];
+/** 这一下挥到 k（0–1，-1 = 没在挥）时的姿势：x, y, z, roll, dev, tilt。返回的数组是共用的，马上读走 */
+function knifePose(kind: 0 | 1 | 2, k: number): number[] {
+  let a = KNIFE_HOLD;
+  let b = KNIFE_HOLD;
+  let t = 0;
+  if (k >= 0) {
+    const keys = KNIFE_MOVES[kind] as readonly KnifeKey[];
+    for (let i = 0; i <= keys.length; i++) {
+      const next = i < keys.length ? (keys[i] as KnifeKey) : KNIFE_HOLD;
+      const end = i < keys.length ? next[0] : 1;
+      if (k > end && i < keys.length) continue;
+      const prev = i > 0 ? (keys[i - 1] as KnifeKey) : KNIFE_HOLD;
+      const start = i > 0 ? prev[0] : 0;
+      a = prev;
+      b = next;
+      const u = clamp((k - start) / Math.max(1e-4, end - start), 0, 1);
+      // 出刀那一段是加速甩出去的，其余的缓进缓出
+      t = i === 1 ? u * u : ease(u);
+      break;
+    }
+  }
+  for (let j = 0; j < 6; j++) _kn[j] = lerp(a[j + 1] as number, b[j + 1] as number, t);
+  return _kn;
+}
 
 function flashTexture(): CanvasTexture {
   const S = 128;
@@ -126,6 +208,11 @@ export interface ViewModelState {
   side: number;
   /** 这一类枪现在的型号（TACZ 枪包里的 id）；空 = 只用程序模型 */
   gun?: string;
+  /**
+   * 对战里手里拿的是刀（枪收起来了）：swing = 这一下挥到哪了 0–1（-1 = 没在挥），
+   * kind = 0 从右往左横挥 / 1 从左往右横挥 / 2 捅。null / 不给 = 手里是枪
+   */
+  knife?: { swing: number; kind: 0 | 1 | 2 } | null;
 }
 
 export class ViewModel {
@@ -173,10 +260,11 @@ export class ViewModel {
   private readonly tmp = new Vector3();
   /** TACZ 枪的肩膀位置：每帧按手臂骨骼算（程序枪用上面固定的 shoulderR / shoulderL） */
   private readonly taczSh = new Vector3();
+  private readonly taczPole = new Vector3();
   private readonly taczFwd = new Vector3();
   private readonly taczPalm = new Vector3();
-  private readonly taczUp = new Vector3();
   private readonly fitQ = new Quaternion();
+  private readonly fitOff = new Vector3();
   private readonly fitE = new Euler(0, 0, 0, 'YXZ');
 
   /**
@@ -220,6 +308,10 @@ export class ViewModel {
   private adsK = 0;
   private fovNow = VM_FOV_HIP;
   private mainAspect = 1;
+  /** 对战里手里是刀：枪藏着；刀的网格挂在右手上；刚拿出来时从下面抬上来 */
+  private knifeOn = false;
+  private knifeMesh: Mesh | null = null;
+  private knifeRaise = 0;
 
   private readonly hemi = new HemisphereLight(0xffffff, 0x444444, 1);
   private readonly sun = new DirectionalLight(0xffffff, 1);
@@ -470,6 +562,11 @@ export class ViewModel {
   }
 
   update(dt: number, s: ViewModelState): void {
+    if (s.knife) {
+      this.updateKnife(dt, s, s.knife);
+      return;
+    }
+    if (this.knifeOn) this.leaveKnife();
     this.setWeapon(s.kind, s.tier, s.gun);
     if (this.taczRig) {
       this.updateTacz(dt, s, this.taczRig);
@@ -633,6 +730,8 @@ export class ViewModel {
     const loose = 1 - 0.85 * aimK;
     const meleeK = s.melee >= 0 ? pulse(s.melee, 0.25) : 0;
 
+    // 瞄准镜跟着玩法走：狙击枪一直有，步枪升到 scopeTier 才装上（adsAt().scope）
+    rig.setScope(s.scope);
     this.fovNow = lerp(rig.fov.hip, rig.fov.ads, aimK);
     if (Math.abs(this.camera.fov - this.fovNow) > 0.01 || this.camera.aspect !== this.mainAspect) {
       this.camera.fov = this.fovNow;
@@ -679,9 +778,9 @@ export class ViewModel {
     });
     this.cameraAnim.copy(rig.cameraAnim);
 
-    // 程序手臂：手套跟着 TACZ 手臂方块（会随动画动）的手掌端和朝向——手指沿方块指向手端，掌心朝方块贴着枪的那一面；
-    // 在这之上叠每把枪自己的摆放参数（hand-fit.ts，F9 手部调节面板里调）：位置偏移、旋转、手指弯曲、肩膀位置。
-    // 偏移的「右 / 上 / 前」是视角相机的方向，和屏幕上看到的一致；单位是 TACZ 像素
+    // 程序手臂：手套跟着 TACZ 手臂方块（会随动画动）的手掌端和朝向，在这之上叠每把枪自己的摆放参数
+    // （hand-fit.ts）：旋转、按手套坐标的位置偏移（像素）、手指 / 拇指姿势、肩膀偏移（屏幕方向）。
+    // 肩膀固定在镜头下方，肘由两段骨头 IK 求出、手腕弯得太厉害时往手背方向扳回来（见 Arm.solveTacz）
     rig.root.updateMatrixWorld(true);
     const fit = tune.fitOverride ?? handFits.get(this.lastGun);
     const ak = TACZ_SCALE * TACZ_ARM * fit.scale;
@@ -697,23 +796,18 @@ export class ViewModel {
       const h = left ? fit.L : fit.R;
       arm.root.visible = true;
       arm.root.scale.setScalar(ak);
-      arm.setGrip(h.curl, h.thumb);
+      arm.setGrip(h.curl, h.thumb, h.tip, h.index, h.thumbUp);
       const fwd = this.taczFwd.subVectors(grip, this.tmp).normalize();
-      grip.x += h.x * pxU;
-      grip.y += h.y * pxU;
-      grip.z -= h.z * pxU;
-      // 肩膀：从方块的肘端沿手臂方向再往后一段，再加偏移（屏幕方向）
-      const sh = this.taczSh.copy(this.tmp).addScaledVector(fwd, -0.06);
-      sh.x += h.sx * pxU * 4;
-      sh.y += h.sy * pxU * 4;
-      sh.z -= h.sz * pxU * 4;
-      sh.multiplyScalar(k);
+      const out = left ? -1 : 1;
+      const sh = this.taczSh.set(out * TACZ_SHOULDER.x + h.sx * 4, TACZ_SHOULDER.y + h.sy * 4, TACZ_SHOULDER.z - h.sz * 4);
+      sh.multiplyScalar(pxU * k);
       grip.multiplyScalar(k);
       this.fitQ.setFromEuler(this.fitE.set(h.rx * DEG, h.ry * DEG, h.rz * DEG, 'YXZ'));
-      // 肘部朝向：默认朝外下方，elbow 往外 / 往里撇
-      const pole = this.taczUp.copy(left ? this.poleL : this.poleR);
-      pole.x += (left ? -1 : 1) * h.elbow;
-      arm.solve(sh, grip, pole, fwd, this.taczPalm, 0, this.fitQ);
+      // 握点偏移在手套自己的坐标里（x = 拇指那侧，y = 手背那侧，z = 手指方向），跟着动画一起转
+      const off = this.fitOff.set(h.x * (left ? -1 : 1), h.y, h.z).multiplyScalar(pxU * k);
+      // 肘往下、往身体外侧弯
+      const pole = this.taczPole.set(out * (0.55 + h.elbow), -1, 0.1);
+      arm.solveTacz(sh, grip, fwd, this.taczPalm, this.fitQ, off, TACZ_UPPER, TACZ_FORE, TACZ_WRIST_BEND, pole);
     }
 
     if (this.flashT > 0) {
@@ -726,6 +820,110 @@ export class ViewModel {
       }
     }
     this.visible = s.alive;
+  }
+
+  /** 对战里手里拿的是刀：枪藏起来，右手攥着刀（左手不进画面）；挥、捅按关键帧摆（KNIFE_MOVES） */
+  private updateKnife(dt: number, s: ViewModelState, k: { swing: number; kind: 0 | 1 | 2 }): void {
+    if (!this.knifeOn) {
+      this.knifeOn = true;
+      // 枪收起来（TACZ 的模型是缓存的，只藏不摘）
+      this.root.visible = false;
+      if (this.taczRig) this.taczRig.root.visible = false;
+      this.flash.visible = false;
+      this.flashT = 0;
+      this.flashLight.intensity = 0;
+      this.cameraAnim.identity();
+      // 按 V 直接挥的那一下不用慢慢掏
+      this.knifeRaise = k.swing >= 0 ? 0 : 1;
+    }
+    if (!this.knifeMesh) {
+      const wk = worldKnife();
+      if (wk) {
+        this.knifeMesh = new Mesh(wk.geometry, wk.material);
+        this.knifeMesh.position.copy(KNIFE_IN_HAND);
+        this.armR.hand.add(this.knifeMesh);
+      }
+    }
+    this.t += dt;
+    this.knifeRaise = Math.max(0, this.knifeRaise - dt / 0.26);
+    this.adsK = 0;
+    if (Math.abs(this.camera.fov - VM_FOV_HIP) > 0.01 || this.camera.aspect !== this.mainAspect) {
+      this.camera.fov = this.fovNow = VM_FOV_HIP;
+      this.camera.aspect = this.mainAspect;
+      this.camera.updateProjectionMatrix();
+    }
+
+    // 步伐起伏、视角转动时的滞后（和拿枪时一样）
+    this.bobAmp += (Math.min(1, s.speed / 3.4) - this.bobAmp) * (1 - Math.exp(-10 * dt));
+    this.bobT += dt * s.speed * 1.7;
+    this.sprintK += ((s.sprinting && s.speed > 1.2 ? 1 : 0) - this.sprintK) * (1 - Math.exp(-12 * dt));
+    if (this.haveLast && dt > 0) {
+      let dy = s.yaw - this.lastYaw;
+      if (dy > Math.PI) dy -= Math.PI * 2;
+      else if (dy < -Math.PI) dy += Math.PI * 2;
+      const yawRate = clamp(dy / dt, -9, 9);
+      const pitchRate = clamp((s.pitch - this.lastPitch) / dt, -9, 9);
+      const e = 1 - Math.exp(-10 * dt);
+      this.swayX += (clamp(yawRate * 0.011, -0.055, 0.055) - this.swayX) * e;
+      this.swayY += (clamp(-pitchRate * 0.011, -0.04, 0.04) - this.swayY) * e;
+    }
+    this.lastYaw = s.yaw;
+    this.lastPitch = s.pitch;
+    this.haveLast = true;
+    if (!Number.isFinite(this.swayX + this.swayY + this.bobAmp + this.sprintK)) this.swayX = this.swayY = this.bobAmp = this.sprintK = 0;
+
+    const m = knifePose(k.kind, k.swing);
+    const raise = ease(this.knifeRaise);
+    const bob = this.bobAmp * (1 + this.sprintK);
+    const P = this.gripR.set(
+      (m[0] as number) + this.swayX * 1.2 + Math.sin(this.bobT) * 0.02 * bob,
+      (m[1] as number) + this.swayY * 1.2 + Math.sin(this.bobT * 2) * 0.014 * bob + Math.sin(this.t * 1.7) * 0.004 - 0.42 * raise - 0.05 * this.sprintK,
+      (m[2] as number) + 0.1 * raise,
+    );
+    // 肩膀：手伸得太远就跟着往前送
+    const sh = this.fitOff.copy(KNIFE_SHOULDER);
+    const far = P.distanceTo(sh) - KNIFE_REACH;
+    if (far > 0) sh.addScaledVector(this.taczFwd.subVectors(P, sh).normalize(), far);
+    // 小臂的方向 f（肘 → 手）；拇指那一侧 x：先取"朝上"、绕小臂转 roll，再往小臂方向倒 dev
+    const f = this.taczFwd.copy(P).sub(sh).sub(KNIFE_ELBOW_OFF).normalize();
+    const x = this.tmp
+      .set(0, 1, 0)
+      .addScaledVector(f, -f.y)
+      .normalize()
+      .applyAxisAngle(f, -(m[3] as number) - 0.5 * raise);
+    const cd = Math.cos(m[4] as number);
+    const sd = Math.sin(m[4] as number);
+    // 手指的方向 z = cos·f − sin·x；拇指侧 x' = cos·x + sin·f；掌心的方向 = x' × z
+    const z = this.taczSh.copy(f).multiplyScalar(cd).addScaledVector(x, -sd);
+    x.multiplyScalar(cd).addScaledVector(f, sd);
+    const palm = this.taczPalm.crossVectors(x, z);
+
+    const arm = this.armR;
+    arm.root.visible = true;
+    arm.root.scale.setScalar(KNIFE_VM);
+    this.armL.root.visible = false;
+    arm.setGrip(1.1, 0, 1, 1, 0);
+    arm.solveTacz(sh, P, z, palm, NO_ROT, NO_MOVE, TACZ_UPPER, TACZ_FORE, 1.1, KNIFE_POLE);
+    if (this.knifeMesh) {
+      this.knifeMesh.visible = true;
+      this.knifeMesh.quaternion.setFromAxisAngle(Y_AXIS, -(m[5] as number)).multiply(KNIFE_GRIP);
+    }
+    this.visible = s.alive;
+  }
+
+  /** 刀收起来：枪回到手里，重新举一遍 */
+  private leaveKnife(): void {
+    this.knifeOn = false;
+    if (this.knifeMesh) this.knifeMesh.visible = false;
+    this.root.visible = true;
+    for (const r of this.tacz.values()) r.root.visible = true;
+    this.armL.root.visible = true;
+    this.armR.setGrip(1, 0, 1, 1, 0);
+    if (this.taczRig) this.taczRig.draw();
+    else {
+      this.raise = 1;
+      this.armR.root.scale.setScalar(1);
+    }
   }
 
   /** 机构动作：套筒 / 拉机柄后坐、泵动、拉栓、转轮、弹链、换弹时弹匣掉出再插回 */
@@ -832,6 +1030,8 @@ export class ViewModel {
     for (const rig of this.tacz.values()) rig.dispose();
     this.tacz.clear();
     this.onSound = this.onTaczReady = null;
+    // 刀的几何体是和士兵手里的那把共用的，不在这里释放
+    this.knifeMesh?.removeFromParent();
     this.scene.traverse((o) => {
       const m = o as Mesh;
       m.geometry?.dispose();

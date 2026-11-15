@@ -1,5 +1,6 @@
-import { AmbientLight, Box3, DirectionalLight, Group, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, ACESFilmicToneMapping, type Object3D } from 'three';
+import { AmbientLight, Box3, DirectionalLight, Group, Mesh, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, ACESFilmicToneMapping, type Object3D } from 'three';
 import { WEAPON_ORDER, type WeaponKind } from '../../game/data/weapons';
+import { worldGun } from '../tacz/worldgun';
 import { buildWeapon, hasGunModel } from './index';
 
 /**
@@ -83,6 +84,37 @@ export function weaponIcon(kind: WeaponKind, tier = 0, w = 240, h = 96): string 
   s.camera.updateProjectionMatrix();
   s.renderer.render(s.scene, s.camera);
   const url = s.renderer.domElement.toDataURL('image/png');
+  icons.set(key, url);
+  return url;
+}
+
+/**
+ * 某个型号的侧视图标（TACZ 模型，对战的购买菜单用）。模型是按需加载的：还没加载好返回空串，过一会儿再来要。
+ * 手枪按 0.45 米取景（不然会被放大成和步枪一样长）
+ */
+export function gunIcon(id: string, w = 240, h = 84): string {
+  const key = `gun:${id}:${w}x${h}`;
+  const hit = icons.get(key);
+  if (hit) return hit;
+  const wg = worldGun(id);
+  if (!wg) return '';
+  const s = setup();
+  s.renderer.setSize(w, h, false);
+  const mesh = new Mesh(wg.geometry, wg.material);
+  const box = new Box3().setFromObject(mesh);
+  const size = box.getSize(new Vector3());
+  mesh.position.sub(box.getCenter(new Vector3()));
+  s.holder.clear();
+  s.holder.add(mesh);
+  s.camera.aspect = w / h;
+  const tanH = Math.tan((s.camera.fov * Math.PI) / 360);
+  const dist = Math.max(Math.max(size.z, 0.45) / 2 / (tanH * (w / h)), size.y / 2 / tanH) * 1.08 + size.x / 2;
+  s.camera.position.set(dist, dist * 0.08, 0);
+  s.camera.lookAt(0, 0, 0);
+  s.camera.updateProjectionMatrix();
+  s.renderer.render(s.scene, s.camera);
+  const url = s.renderer.domElement.toDataURL('image/png');
+  s.holder.clear();
   icons.set(key, url);
   return url;
 }

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" href="data:," />
+    <title>黎明 · 废土（开放世界预览）</title>
+    <style>
+      :root { color-scheme: dark; font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif; }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #0d1014; color: #e9e4d8; }
+      canvas#c { display: block; width: 100%; height: 100%; }
+      #status { position: fixed; left: 50%; top: 46%; transform: translate(-50%, -50%); padding: 14px 22px; border: 1px solid #ffffff22; border-radius: 6px; background: #0b0e12e6; font-size: 15px; letter-spacing: .06em; }
+      #hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
+      .compass { position: absolute; left: 50%; top: 14px; width: 480px; height: 30px; margin-left: -240px; overflow: hidden; mask-image: linear-gradient(90deg, transparent, #000 22%, #000 78%, transparent); }
+      .compass .strip { position: absolute; left: 240px; top: 6px; display: flex; white-space: nowrap; will-change: transform; }
+      .compass .strip span { display: inline-block; width: 40px; text-align: center; font-size: 11px; color: #ffffff70; }
+      .compass .strip span.mid { color: #ffffffb0; font-size: 12px; }
+      .compass .strip span.big { color: #ffe1a0; font-size: 15px; font-weight: bold; }
+      .compass .mark { position: absolute; left: 50%; bottom: 0; width: 2px; height: 7px; margin-left: -1px; background: #ffd36a; }
+      .mini-wrap { position: absolute; right: 18px; top: 16px; width: 220px; height: 220px; border-radius: 50%; background: #0b0e12; box-shadow: 0 0 0 2px #ffffff30, 0 6px 24px #000a; }
+      .mini { position: absolute; inset: 0; }
+      .mini-n { position: absolute; left: 0; top: 0; width: 14px; text-align: center; font-size: 13px; font-weight: bold; color: #ff9a7a; text-shadow: 0 1px 3px #000; }
+      .coords { position: absolute; left: 0; right: 0; bottom: -22px; text-align: center; font-size: 11px; color: #ffffff90; text-shadow: 0 1px 3px #000; }
+      .clock { position: absolute; left: 0; right: 0; bottom: -42px; text-align: center; font-size: 13px; color: #f0e6cc; text-shadow: 0 1px 3px #000; letter-spacing: .05em; }
+      .banner { position: absolute; left: 50%; top: 22%; transform: translateX(-50%); text-align: center; opacity: 0; transition: opacity .6s; text-shadow: 0 2px 10px #000; }
+      .banner.show { opacity: 1; }
+      .banner .name { font-size: 34px; letter-spacing: .3em; font-weight: bold; }
+      .banner .danger { margin-top: 6px; font-size: 18px; letter-spacing: .25em; }
+      .stats { position: absolute; left: 14px; top: 14px; display: none; padding: 9px 12px; border-radius: 5px; background: #000000a8; font: 12px/1.6 Consolas, monospace; color: #c8f0c0; }
+      .stats.open { display: block; }
+      .cross { position: absolute; left: 50%; top: 50%; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%; background: #ffffffc0; box-shadow: 0 0 2px #000; }
+      .hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 8px 16px; border-radius: 20px; background: #000000a0; font-size: 13px; color: #e8e0cc; transition: opacity .5s; }
+      .hint.dim { opacity: .35; }
+      .full { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: #05070acc; }
+      .full.open { display: flex; }
+      .full canvas { width: min(88vh, 88vw); height: min(88vh, 88vw); border: 2px solid #ffffff30; box-shadow: 0 10px 50px #000; }
+      .legend { position: absolute; left: 24px; bottom: 24px; font-size: 13px; line-height: 1.7; color: #e8e0cc; }
+      .legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 50%; }
+      #veh-hud { position: fixed; inset: 0; pointer-events: none; user-select: none; }
+      .veh-prompt { position: absolute; left: 50%; top: 27%; transform: translateX(-50%); padding: 7px 16px; border-radius: 4px; background: #000000a8; font-size: 15px; letter-spacing: .08em; color: #ffe1a0; opacity: 0; transition: opacity .2s; white-space: nowrap; }
+      .veh-prompt.show { opacity: 1; }
+      .veh-prompt i { display: none; height: 3px; margin-top: 6px; border-radius: 2px; background: #ffd36a; }
+      .veh-dash { position: absolute; right: 26px; bottom: 26px; width: 290px; padding: 12px 16px 10px; border-radius: 8px; background: linear-gradient(#0b0e12d0, #0b0e12f0); box-shadow: 0 6px 24px #000a; display: none; }
+      .veh-dash.show { display: block; }
+      .veh-dash .name { font-size: 12px; letter-spacing: .12em; color: #ffffff90; }
+      .veh-dash .speed { margin-top: 2px; font-family: Consolas, monospace; }
+      .veh-dash .speed b { font-size: 46px; font-weight: bold; color: #f4efe2; }
+      .veh-dash .speed span { margin-left: 6px; font-size: 13px; color: #ffffff90; }
+      .veh-dash .gear { position: absolute; right: 16px; top: 26px; width: 40px; height: 40px; border: 2px solid #ffd36a; border-radius: 6px; text-align: center; font: bold 26px/36px Consolas, monospace; color: #ffd36a; }
+      .veh-dash .rpm { margin-top: 4px; height: 6px; border-radius: 3px; background: #ffffff18; overflow: hidden; }
+      .veh-dash .rpm i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, #7fbf6a, #ffd36a); }
+      .veh-dash .rpm i.red { background: linear-gradient(90deg, #ffd36a, #e0563c); }
+      .veh-dash .hint { display: none; position: absolute; right: 0; bottom: calc(100% + 8px); padding: 6px 12px; border-radius: 4px; background: #000000b0; font-size: 13px; letter-spacing: .06em; color: #ffe1a0; white-space: nowrap; }
+      .veh-dash .fuel { display: flex; align-items: center; gap: 8px; margin-top: 9px; font-size: 12px; color: #ffffffb0; }
+      .veh-dash .fuel em { flex: none; width: 18px; height: 18px; border-radius: 3px; background: #ffffff22; text-align: center; font: bold 11px/18px sans-serif; color: #f4efe2; }
+      .veh-dash .fuel .bar { position: relative; flex: 1; height: 8px; border-radius: 4px; background: #ffffff18; overflow: hidden; }
+      .veh-dash .fuel .bar i { display: block; height: 100%; width: 0; background: #8fc7a0; transition: width .25s; }
+      .veh-dash .fuel .bar u { position: absolute; left: 15%; top: 0; width: 1px; height: 100%; background: #ffffff70; }
+      .veh-dash .fuel span { flex: none; min-width: 124px; text-align: right; font-family: Consolas, monospace; white-space: nowrap; }
+      .veh-dash .fuel.low .bar i { background: #ffc24a; }
+      .veh-dash .fuel.low span, .veh-dash .fuel.low em { color: #ffc24a; }
+      .veh-dash .fuel.crit .bar i, .veh-dash .fuel.empty .bar i { background: #e0563c; }
+      .veh-dash .fuel.crit span, .veh-dash .fuel.crit em, .veh-dash .fuel.empty span, .veh-dash .fuel.empty em { color: #ff7a5c; }
+      .veh-dash .fuel.crit em, .veh-dash .fuel.empty em { animation: veh-blink .8s steps(2, jump-none) infinite; }
+      @keyframes veh-blink { 50% { opacity: .25; } }
+      .veh-dash .parts { display: none; margin-top: 7px; font-size: 11px; line-height: 1.5; letter-spacing: .04em; color: #9fd0ff; }
+      .veh-dash .keys { margin-top: 8px; font-size: 11px; color: #ffffff80; }
+    </style>
+  </head>
+  <body>
+    <canvas id="c"></canvas>
+    <div id="hud"></div>
+    <div id="status">载入中……</div>
+    <script type="module" src="/src/open/main.ts"></script>
+  </body>
+</html>

@@ -1,6 +1,6 @@
 {
   "name": "zombie-hold",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "description": "黎明：第一人称 3D 据点防守",
@@ -29,6 +29,7 @@
     "check:props": "tsx scripts/tools/check-props.ts",
     "check:deps": "tsx scripts/tools/check-deps.ts",
     "tacz:import": "node scripts/tools/tacz-import.mjs",
+    "melee:import": "node scripts/tools/melee-import.mjs",
     "tacz:shots": "node scripts/tools/tacz-shots.mjs",
     "props:import": "node scripts/tools/props-import.mjs",
     "zombies:build": "\"E:/Blender Foundation/Blender 5.2/blender.exe\" -b --factory-startup --python scripts/tools/zombies/build.py --",
@@ -39,6 +40,7 @@
     "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
+    "meshoptimizer": "^1.1.1",
     "three": "^0.187.0",
     "vue": "^3.5.44"
   },

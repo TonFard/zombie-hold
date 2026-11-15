@@ -171,6 +171,22 @@ export class Effects {
         // 少量血雾向上
         for (let i = 0; i < 4; i++) this.blood(z.x, 0.9 * s, z.z, this.rng.range(-1, 1), this.rng.range(2, 5), this.rng.range(-1, 1), 0.07);
       }),
+      // 对战：挨了一刀溅血（顺着挥刀的方向；玩家自己挨刀不喷——粒子贴着镜头是满屏的大方块）
+      e.on('tdmStab', (k) => {
+        if (k.victim === -1) return;
+        const from = k.id === -1 ? this.game.player : this.game.tdm.soldiers.find((x) => x.id === k.id);
+        const dx = from ? k.x - from.x : 0;
+        const dz = from ? k.z - from.z : 1;
+        const d = Math.hypot(dx, dz) || 1;
+        this.bloodSpray(k.x, k.z, dx / d, dz / d, k.back ? 12 : 7, 1, k.y);
+        if (k.id === -1) this.rig.addShake(0.14);
+      }),
+      // 对战：人机跳下来落在地上，脚边扬一点土
+      e.on('tdmJump', (j) => {
+        if (!j.land || j.id === -1) return;
+        const who = this.game.tdm.soldiers.find((x) => x.id === j.id);
+        if (who && who.y < 0.05) this.dust(j.x, j.z, 3);
+      }),
       e.on('scrap', (s) => this.text.scrap(s.x, 1.2, s.z, s.amount)),
       e.on('explosion', (x) => this.onExplosion(x.x, x.z, x.radius, x.big)),
       e.on('acid', (a) => this.onAcid(a.x, a.z, a.radius)),
@@ -430,7 +446,8 @@ export class Effects {
       let off = this.bulletOff.get(b.id);
       if (!off) {
         off = new Vector3();
-        if (this.rig.mode === 'fps') off.set(this.muzzle.x - (b.x - dx * b.traveled), this.muzzle.y - (b.y - dy * b.traveled), this.muzzle.z - (b.z - dz * b.traveled));
+        // 只有玩家自己打的才往枪口偏；对战里人机的子弹从它自己那儿出来，不动
+        if (this.rig.mode === 'fps' && (b.owner ?? -1) === -1) off.set(this.muzzle.x - (b.x - dx * b.traveled), this.muzzle.y - (b.y - dy * b.traveled), this.muzzle.z - (b.z - dz * b.traveled));
         this.bulletOff.set(b.id, off);
       }
       const f = Math.max(0, 1 - b.traveled / 8);

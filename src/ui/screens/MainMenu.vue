@@ -24,6 +24,10 @@ const openSettings = (): void => {
   ui.lobbyTab = 'settings';
 };
 const quit = (): void => window.close();
+/** 生存世界 / 生化模式是另一个页面（open.html）：桌面版没有地址栏，只能从这里进 */
+const openWorld = (mode?: 'bio'): void => {
+  window.location.href = `${import.meta.env.BASE_URL}open.html${mode ? `?mode=${mode}` : ''}`;
+};
 </script>
 
 <template>
@@ -47,6 +51,8 @@ const quit = (): void => window.close();
           <b>{{ cp ? '指挥中心' : '开始生存' }}</b><small>{{ cp ? 'COMMAND · 出征 / 武器台 / 军械库' : 'NEW GAME · 进入据点' }}</small>
         </button>
         <button class="item" @click="ui.actions.training()"><b>训练场</b><small>TRAINING · 试枪、练爆头</small></button>
+        <button class="item" @click="openWorld()"><b>生存世界</b><small>OPEN WORLD · 空手开局、搜刮、开车</small></button>
+        <button class="item" @click="openWorld('bio')"><b>生化模式</b><small>INFECTION · 母体感染，撑到天黑</small></button>
         <button class="item" @click="help = true"><b>操作说明</b><small>CONTROLS</small></button>
         <button class="item" @click="openSettings()"><b>设置</b><small>SETTINGS · 音量 / 画质 / 灵敏度</small></button>
         <button v-if="desktop" class="item" @click="quit()"><b>退出游戏</b><small>EXIT</small></button>

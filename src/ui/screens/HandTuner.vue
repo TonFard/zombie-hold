@@ -52,12 +52,15 @@ const GROUPS: Array<{ title: string; rows: Row[] }> = [
   {
     title: '手指',
     rows: [
-      { k: 'curl', name: '弯曲', min: 0, max: 1.8, step: 0.02 },
-      { k: 'thumb', name: '拇指张开', min: -60, max: 90, step: 1 },
+      { k: 'curl', name: '弯曲', min: 0, max: 2.2, step: 0.02 },
+      { k: 'tip', name: '指尖弯曲', min: 0, max: 8, step: 0.02 },
+      { k: 'index', name: '食指', min: 0, max: 1.5, step: 0.02 },
+      { k: 'thumb', name: '拇指张开', min: -60, max: 120, step: 1 },
+      { k: 'thumbUp', name: '拇指内压', min: -30, max: 90, step: 1 },
     ],
   },
   {
-    title: '前臂方向（肩膀位置，像素×4）',
+    title: '前臂方向（肩膀相对默认位置的偏移，像素×4）',
     rows: [
       { k: 'sx', name: '肩·左右', min: -8, max: 8, step: 0.1 },
       { k: 'sy', name: '肩·上下', min: -8, max: 8, step: 0.1 },
@@ -281,7 +284,7 @@ const CLS_NAME: Record<WeaponKind, string> = { pistol: '手枪', smg: '冲锋枪
 
     <div class="row scale">
       <span class="name">手臂大小</span>
-      <input type="range" min="0.4" max="2.5" step="0.01" :value="fit.scale" @input="fit.scale = Number(($event.target as HTMLInputElement).value)" />
+      <input type="range" min="0.5" max="1.5" step="0.01" :value="fit.scale" @input="fit.scale = Number(($event.target as HTMLInputElement).value)" />
       <span class="val">{{ fit.scale.toFixed(2) }}</span>
     </div>
 

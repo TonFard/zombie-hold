@@ -33,7 +33,7 @@ export interface Blueprint {
  * 多格家具只在左上角那个字母处放一次，其余格写同一个字母即可（会被跳过）。
  * face：家具正面朝哪个方向（蓝图坐标里，0 = 朝 -y / 北，1 = 东，2 = 南，3 = 西）。
  */
-const FURNITURE: Record<string, { kind: PropKind; f?: FurnitureKind; size: [number, number]; h?: number; face?: number }> = {
+export const FURNITURE: Record<string, { kind: PropKind; f?: FurnitureKind; size: [number, number]; h?: number; face?: number }> = {
   b: { kind: 'furniture', f: 'bed', size: [1, 2], h: 0.6 },
   s: { kind: 'furniture', f: 'sofa', size: [2, 1], h: 0.85 },
   t: { kind: 'furniture', f: 'table', size: [2, 1], h: 0.8 },
@@ -53,7 +53,7 @@ const FURNITURE: Record<string, { kind: PropKind; f?: FurnitureKind; size: [numb
 };
 
 /** 把蓝图坐标 (x, y)（宽 w、高 h）按 rot 转到摆放后的局部坐标 */
-function turn(x: number, y: number, w: number, h: number, rot: number): [number, number] {
+export function turn(x: number, y: number, w: number, h: number, rot: number): [number, number] {
   switch (rot & 3) {
     case 1:
       return [h - 1 - y, x];
@@ -218,7 +218,7 @@ export function placeModule(b: MapBuilder, bp: Blueprint, ox: number, oy: number
 export const FURN_IDS: FurnitureKind[] = ['bed', 'sofa', 'table', 'chair', 'kitchen', 'fridge', 'wardrobe', 'shelf', 'tv', 'stove', 'desk'];
 
 /** 家具背靠墙：哪一侧贴着墙，正面就朝反方向（0 北 1 东 2 南 3 西） */
-function facing(ch: (x: number, y: number) => string, x: number, y: number, w: number, d: number): number {
+export function facing(ch: (x: number, y: number) => string, x: number, y: number, w: number, d: number): number {
   const wallish = (c: string) => c === '#' || c === '|' || c === 'W';
   const side = (cells: Array<[number, number]>) => cells.filter(([a, b2]) => wallish(ch(a, b2))).length / cells.length;
   const n = side(Array.from({ length: w }, (_, i) => [x + i, y - 1] as [number, number]));

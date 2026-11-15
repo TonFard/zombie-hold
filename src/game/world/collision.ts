@@ -9,8 +9,9 @@ export interface Pos {
 /**
  * 把圆从阻挡格里推出来，沿墙面滑动而不是停下。
  * 返回是否发生过碰撞。
+ * pass：这些格子不挡（对战里人跳起来 / 站在箱子上时，脚比它高的矮掩体）
  */
-export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number, fine = false, crawler = false): boolean {
+export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number, fine = false, crawler = false, pass?: (cx: number, cy: number) => boolean): boolean {
   let hit = false;
   for (let iter = 0; iter < 3; iter++) {
     let moved = false;
@@ -19,6 +20,7 @@ export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number, fine = false,
     for (let cy = cy0 - 1; cy <= cy0 + 1; cy++) {
       for (let cx = cx0 - 1; cx <= cx0 + 1; cx++) {
         if (crawler ? !grid.blocksCrawler(cx, cy) : !grid.isBlocked(cx, cy)) continue;
+        if (pass?.(cx, cy)) continue;
         // 精细碰撞（玩家用）：细障碍按圆柱处理，可以贴着树干、灯杆走过去
         const ci = grid.idx(cx, cy);
         const post = fine && grid.inBounds(cx, cy) && (grid.structure[ci] as number) < 0 ? (grid.post[ci] as number) : 0;
@@ -71,7 +73,7 @@ export function resolveCircleVsGrid(grid: Grid, p: Pos, r: number, fine = false,
         } else {
           // 圆心落在格子内部：沿最近的边推出去，但只往外侧是空格的那条边推。
           // 否则在一排墙里会被推进隔壁的墙格，隔壁又推回来，来回弹，永远出不去
-          const open = (ox: number, oy: number): boolean => (crawler ? !grid.blocksCrawler(cx + ox, cy + oy) : !grid.isBlocked(cx + ox, cy + oy));
+          const open = (ox: number, oy: number): boolean => (crawler ? !grid.blocksCrawler(cx + ox, cy + oy) : !grid.isBlocked(cx + ox, cy + oy)) || !!pass?.(cx + ox, cy + oy);
           const l = open(-1, 0) ? p.x - minX : Infinity;
           const rr = open(1, 0) ? maxX - p.x : Infinity;
           const t = open(0, -1) ? p.z - minZ : Infinity;

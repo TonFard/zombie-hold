@@ -173,7 +173,495 @@
       "error": 0.05
     },
     "metal_office_desk": {},
-    "painted_wooden_cabinet_02": {}
+    "painted_wooden_cabinet_02": {},
+    "tree_pine_a": {
+      "source": "sketchfab",
+      "uid": "d45218a3fab349e5b1de040f29e7b6f9"
+    },
+    "tree_pine_b": {
+      "source": "sketchfab",
+      "uid": "a50a5df3164246a5af97992cec33a143"
+    },
+    "tree_leaf_a": {
+      "source": "sketchfab",
+      "uid": "0983d8933531491f9be71c669e8a907b"
+    },
+    "tree_leaf_b": {
+      "source": "sketchfab",
+      "uid": "aa842dffd9654d33b8b91170ce83c172"
+    },
+    "bush_a": {
+      "source": "sketchfab",
+      "uid": "7a0f2bf2982c4ff8bacc67856fdbfae2"
+    },
+    "bush_b": {
+      "source": "sketchfab",
+      "uid": "f6ed4c70fc024ac88e8e6a19991695af"
+    },
+    "grass_clump_a": {
+      "source": "sketchfab",
+      "uid": "bf459c87d1ed4667a777b92079586923"
+    },
+    "grass_clump_dry": {
+      "source": "sketchfab",
+      "uid": "d1484537470441b999d37077aeb9b47a"
+    },
+    "namaqualand_boulder_04": {
+      "tris": 1500,
+      "error": 0.05
+    },
+    "dead_tree_trunk": {
+      "tris": 1500,
+      "error": 0.05
+    },
+    "namaqualand_boulder_05": {
+      "tris": 1500,
+      "error": 0.05
+    },
+    "mil_truck": {
+      "source": "sketchfab",
+      "uid": "f953c51a5dbc4a15949f4dcc0905c4e8"
+    },
+    "mil_tent": {
+      "source": "sketchfab",
+      "uid": "979c0784868b4fdeb2b4563f65e0b5b4"
+    },
+    "watchtower": {
+      "source": "sketchfab",
+      "uid": "963071f5fe404970a40b166bcee430b8"
+    },
+    "power_pole": {
+      "source": "sketchfab",
+      "uid": "19be5e32d7a44fcf8c6eb4f83e17bd25"
+    },
+    "fuel_tank": {
+      "source": "sketchfab",
+      "uid": "57be2eaf4d6b4d2980bcee4ccb35f780"
+    },
+    "mil_apc": {
+      "source": "sketchfab",
+      "uid": "004c8509eb1e4aad8093eba9b4707e79"
+    },
+    "van_wreck": {
+      "source": "sketchfab",
+      "uid": "bb4OJb5V4L0hgYjM3vtGvPB7ZMt"
+    },
+    "road_sign": {
+      "source": "sketchfab",
+      "uid": "2225bb40891b4ed083a75bd17e447dd0"
+    },
+    "heli_wreck": {
+      "source": "sketchfab",
+      "uid": "004d68143e1a4df88e136dbc0a05f181"
+    },
+    "painted_wooden_nightstand": {
+      "open": true,
+      "tex": 512
+    },
+    "painted_wooden_shelves": {
+      "open": true,
+      "tex": 512
+    },
+    "painted_wooden_cabinet": {
+      "open": true,
+      "tex": 512
+    },
+    "painted_wooden_bench": {
+      "open": true,
+      "tex": 512
+    },
+    "painted_wooden_stool": {
+      "open": true,
+      "tex": 512
+    },
+    "painted_wooden_sofa": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "painted_wooden_chair_02": {
+      "open": true,
+      "tex": 512
+    },
+    "ArmChair_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "Sofa_01": {
+      "open": true,
+      "tex": 512
+    },
+    "modern_coffee_table_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 2500,
+      "error": 0.05
+    },
+    "side_table_01": {
+      "open": true,
+      "tex": 512
+    },
+    "WoodenTable_02": {
+      "open": true,
+      "tex": 512
+    },
+    "dining_table": {
+      "open": true,
+      "tex": 512
+    },
+    "plastic_monobloc_chair_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 2000,
+      "error": 0.05
+    },
+    "vintage_wooden_drawer_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "steel_frame_shelves_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "steel_frame_shelves_03": {
+      "open": true,
+      "tex": 512,
+      "tris": 4000,
+      "error": 0.05
+    },
+    "wooden_display_shelves_01": {
+      "open": true,
+      "tex": 512
+    },
+    "Shelf_01": {
+      "open": true,
+      "tex": 256
+    },
+    "vintage_day_bed": {
+      "open": true,
+      "tex": 512
+    },
+    "Television_01": {
+      "open": true,
+      "tex": 512
+    },
+    "barrel_stove": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "modern_arm_chair_01": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "metal_stool_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "vintage_microwave": {
+      "open": true,
+      "tex": 256,
+      "tris": 2500,
+      "error": 0.05
+    },
+    "pot_enamel_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "brass_pan_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 900,
+      "error": 0.05
+    },
+    "brass_pot_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 900,
+      "error": 0.05
+    },
+    "can_rusted": {
+      "open": true,
+      "tex": 256,
+      "tris": 500,
+      "error": 0.05
+    },
+    "bleach_bottle": {
+      "open": true,
+      "tex": 256,
+      "tris": 600,
+      "error": 0.05
+    },
+    "multi_cleaner_5_litre": {
+      "open": true,
+      "tex": 256,
+      "tris": 600,
+      "error": 0.05
+    },
+    "wooden_bucket_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "vintage_suitcase": {
+      "open": true,
+      "tex": 512,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "throw_pillows_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "office_notepads": {
+      "open": true,
+      "tex": 256
+    },
+    "stationery_supplies": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "classic_laptop": {
+      "open": true,
+      "tex": 256,
+      "tris": 2000,
+      "error": 0.05
+    },
+    "boombox": {
+      "open": true,
+      "tex": 256,
+      "tris": 2000,
+      "error": 0.05
+    },
+    "CashRegister_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 2500,
+      "error": 0.05
+    },
+    "WetFloorSign_01": {
+      "open": true,
+      "tex": 256
+    },
+    "wall_clock": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "hanging_picture_frame_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "hanging_picture_frame_02": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "fancy_picture_frame_01": {
+      "open": true,
+      "tex": 256
+    },
+    "dartboard": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "hanging_industrial_lamp": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "modern_ceiling_lamp_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "mounted_fluorescent_lights": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "vintage_oil_lamp": {
+      "open": true,
+      "tex": 256,
+      "tris": 1200,
+      "error": 0.05
+    },
+    "propane_tank": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "korean_fire_extinguisher_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "cement_bag": {
+      "open": true,
+      "tex": 256
+    },
+    "hand_truck": {
+      "open": true,
+      "tex": 512,
+      "tris": 2500,
+      "error": 0.05
+    },
+    "wooden_ladder_02": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "crowbar_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "sledgehammer_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "handsaw_wood": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "Drill_01": {
+      "open": true,
+      "tex": 256,
+      "tris": 1000,
+      "error": 0.05
+    },
+    "oil_tin": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "spray_paint_bottles": {
+      "open": true,
+      "tex": 256,
+      "tris": 1000,
+      "error": 0.05
+    },
+    "plastic_crate_02": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "plastic_jerrycan": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "bolt_action_rifle_7_62": {
+      "open": true,
+      "tex": 512,
+      "tris": 3000,
+      "error": 0.05
+    },
+    "stick_grenade": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "old_gas_mask": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "metal_jerrycan_green": {
+      "open": true,
+      "tex": 256,
+      "tris": 2000,
+      "error": 0.05
+    },
+    "old_military_crate": {
+      "open": true,
+      "tex": 512,
+      "tris": 2500,
+      "error": 0.05
+    },
+    "medical_box": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "binoculars": {
+      "open": true,
+      "tex": 256,
+      "tris": 1500,
+      "error": 0.05
+    },
+    "vintage_radio_transceiver": {
+      "open": true,
+      "tex": 512,
+      "tris": 4000,
+      "error": 0.05
+    },
+    "pastic_torch_6v": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "baseball_bat": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "machete": {
+      "open": true,
+      "tex": 256,
+      "tris": 800,
+      "error": 0.05
+    },
+    "hatchet": {
+      "open": true,
+      "tex": 256,
+      "tris": 900,
+      "error": 0.05
+    }
   },
   "textures": {
     "asphalt": "asphalt_02",
@@ -188,6 +676,18 @@
     "wall_metal": "corrugated_iron_02",
     "trim_metal": "rusty_metal_sheet",
     "roof": "bitumen",
-    "floor_tile": "worn_tile_floor"
+    "floor_tile": "worn_tile_floor",
+    "grass_green": "leafy_grass",
+    "forest_floor": "forest_leaves_03",
+    "rock_cliff": "mossy_rock",
+    "sand": "dense_sand",
+    "mud": "brown_mud_03",
+    "roof_tiles": "roof_09",
+    "planks": "weathered_brown_planks",
+    "plaster_old": "plastered_wall_03",
+    "carpet": "dirty_carpet",
+    "rug": "quatrefoil_jacquard_fabric",
+    "cloth": "curly_teddy_checkered",
+    "wallpaper": "decrepit_wallpaper"
   }
 }

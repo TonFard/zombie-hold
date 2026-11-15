@@ -38,12 +38,13 @@ export interface PropsManifest {
   hdri: string | null;
   /** 夜晚的 HDRI（M19）：偏冷的夜空，夜里换成它做环境反射 */
   hdriNight?: string | null;
-  assets: Record<string, { file: string; tris: number }>;
+  /** open = 只有开放世界用（室内的小物件等），主游戏不加载 */
+  assets: Record<string, { file: string; tris: number; open?: boolean }>;
   textures: Record<string, string>;
 }
 
 /** 归一化后的模型：长的水平边沿 X，底面在 y=0，水平居中 */
-interface Model {
+export interface Model {
   parts: Array<{ geo: BufferGeometry; mat: Material | Material[]; local: Matrix4 }>;
   size: Vector3;
 }
@@ -103,7 +104,7 @@ const GROUND_PCT: Record<string, number> = {
 
 const TRUNK_CENTERED = new Set(['tree_dead', 'tree_winter']);
 
-async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Model> {
+export async function loadModel(loader: GLTFLoader, file: string, id = ''): Promise<Model> {
   const gltf = await loader.loadAsync(`${BASE}${file}`);
   const root = gltf.scene;
   root.updateMatrixWorld(true);
@@ -603,7 +604,7 @@ export async function buildRealProps(map: MapData, manifest: PropsManifest, rend
   const loader = new GLTFLoader();
   const models = new Map<string, Model>();
   // 同时最多加载 4 个：一次性解码一百多张贴图，内存吃紧时浏览器会让部分图片解码失败
-  const queue = Object.entries(manifest.assets);
+  const queue = Object.entries(manifest.assets).filter(([, a]) => !a.open);
   const worker = async () => {
     for (let job = queue.shift(); job; job = queue.shift()) {
       const [id, a] = job;

@@ -403,7 +403,7 @@ function updatePickups(g: Game): void {
 
 export function updateRun(g: Game, dt: number): void {
   const r = g.run;
-  // 团队死斗：没有白天 / 夜晚、不刷僵尸、死了会复活，只走时钟
+  // 8v8 对战：没有白天 / 夜晚、不刷僵尸，只走时钟（回合在 systems/tdm.ts 里管）
   if (g.tdm.on) {
     r.time += dt;
     return;

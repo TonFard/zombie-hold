@@ -36,15 +36,20 @@ export class InputController {
   }
 
   private readonly onKeyDown = (e: KeyboardEvent) => {
+    // 对战里空格是跳：拦掉默认动作（按住时的重复按键也拦），不然焦点还留在某个按钮上时会顺手点它一下
+    if (e.code === 'Space' && this.enabled && this.game.tdm.on) e.preventDefault();
     if (e.repeat) return;
     this.keys.add(e.code);
     const g = this.game.input;
     if (!this.enabled) return;
-    // 按住 Tab 看面板时，Q / E 是翻页（screens.ts 处理），不能顺手放出电击脉冲或者打开工坊
-    if (this.keys.has('Tab') && (e.code === 'KeyQ' || e.code === 'KeyE')) return;
+    // 按住 Tab 看面板时，Q / E 是翻页（screens.ts 处理），不能顺手放出电击脉冲或者打开工坊。
+    // 对战的计分板没有分页：按着 Tab 照样能 Q 换枪、E 捡枪
+    if (!this.game.tdm.on && this.keys.has('Tab') && (e.code === 'KeyQ' || e.code === 'KeyE')) return;
+    // 空格：跳（只有对战里能跳，别的模式按了没反应）。鼠标还没锁定时（模拟停着）不记，免得点回画面的那一刻自己蹦一下
+    if (e.code === 'Space' && this.game.tdm.on && this.locked) g.jump = true;
     if (e.code === 'KeyR') g.reload = true;
-    // F：开关建造模式；E：交互（工坊由应用层处理，其余时候修理）；V：近战
-    if (e.code === 'KeyF') g.toggleBuild = true;
+    // F：开关建造模式；E：交互（工坊由应用层处理，其余时候修理）；V：近战。对战里没有建造
+    if (e.code === 'KeyF' && !this.game.tdm.on) g.toggleBuild = true;
     if (e.code === 'KeyE' && !this.onInteract?.()) g.use = true;
     if (e.code === 'KeyV') g.melee = true;
     // I：检视武器（纯表现，逻辑层不知道）
@@ -52,8 +57,8 @@ export class InputController {
     if (e.code === 'KeyG') g.grenade = true;
     if (e.code === 'KeyQ') g.pulse = true;
     if (e.code === 'KeyT') g.flashlight = !g.flashlight;
-    // B：切换手雷种类（爆炸 / 燃烧）
-    if (e.code === 'KeyB') this.game.hz.useFire = !this.game.hz.useFire;
+    // B：切换手雷种类（爆炸 / 燃烧）；对战里 B 是购买菜单（screens.ts 处理，菜单开着时这里收不到按键）
+    if (e.code === 'KeyB' && !this.game.tdm.on) this.game.hz.useFire = !this.game.hz.useFire;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') g.confirm = true;
     if (e.code >= 'Digit1' && e.code <= 'Digit6') g.select = Number(e.code.slice(5));
   };
@@ -178,6 +183,7 @@ export class InputController {
       g.sell = false;
       g.confirm = false;
       g.melee = false;
+      g.jump = false;
       g.crouch = false;
       g.ads = false;
       return;

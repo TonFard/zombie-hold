@@ -13,7 +13,10 @@ import { STRUCTURES } from '../game/data/structures';
 import { ZOMBIES, type ZombieKind } from '../game/data/zombies';
 import { HEAL_TICK, POOL_PER_TICK } from '../game/data/heal';
 import { bossFor } from '../game/data/waves';
-import { TDM } from '../game/systems/tdm';
+import { LEVELS, TDM, aliveCount, canBuy, playerPrimary } from '../game/systems/tdm';
+import { playerAirborne } from '../game/systems/tdm-gear';
+import { NADE } from '../game/data/shop';
+import { GUN_BY_ID } from '../game/data/guns';
 import { RISKS, RISK_FX, type RiskId } from '../game/systems/events';
 import { LOOT, isDanger, lootAvailable } from '../game/systems/loot';
 import { liveBreakdown, weaponBreakdown, type Part, type SourceKind } from '../game/stats/breakdown';
@@ -215,18 +218,57 @@ export const hud = reactive({
   boxDist: 99,
   /** 卡牌「战意」当前的伤害加成（0.12 = +12%） */
   comboDmg: 0,
-  /** 团队死斗 */
+  /** 8v8 对战 */
   tdm: {
     on: false,
+    /** 两队各赢了几局、先赢几局、现在第几局 */
     score: [0, 0] as [number, number],
-    target: 50,
+    target: 8,
+    round: 1,
+    phase: 'freeze' as 'freeze' | 'live' | 'end',
+    /** 这个阶段还剩多久（秒） */
     time: 0,
-    respawn: 0,
-    shield: 0,
+    /** 两队还活着几个、每队几个人 */
+    alive: [0, 0] as [number, number],
+    size: 8,
+    money: 0,
+    armor: 0,
+    helmet: false,
+    canBuy: false,
+    /** 玩家死了；正在看哪个队友的镜头（空 = 还没切过去 / 队友都死了） */
+    dead: false,
+    spectate: '',
+    spectateGun: '',
+    spectateHp: 0,
     kills: 0,
     deaths: 0,
-    feed: [] as Array<{ killer: string; victim: string; kt: 0 | 1; vt: 0 | 1; weapon: string; head: boolean; life: number }>,
-    board: [] as Array<{ name: string; team: 0 | 1; kills: number; deaths: number; you: boolean; alive: boolean; weapon: string }>,
+    /** 身上的主武器 / 手枪型号（主武器没有就是空串） */
+    primary: '',
+    pistol: '',
+    /** 人机难度（0 普通 / 1 困难 / 2 专家）和它的名字 */
+    level: 1 as 0 | 1 | 2,
+    levelName: '',
+    /** 身上的手雷 / 最多带几颗；正在抬手扔 */
+    nades: 0,
+    nadeMax: 1,
+    throwing: false,
+    /** 手里拿的是刀（右下角显示「匕首」，不显示弹药） */
+    knife: false,
+    /** 武器栏里亮哪一格（拿着枪按 V 抽刀挥的那一下也算刀） */
+    held: 'pistol' as 'primary' | 'pistol' | 'knife',
+    /** 武器栏：两把枪的名字和「弹匣 / 备弹」（没有主武器就是空串） */
+    primaryName: '',
+    primaryAmmo: '',
+    pistolName: '',
+    pistolAmmo: '',
+    /** 脚边能捡的枪（空串 = 没有）：名字、弹匣和备弹、捡了会换下身上的哪一把 */
+    pickup: '',
+    pickupMag: 0,
+    pickupReserve: 0,
+    pickupSwap: '',
+    /** self = 自己把自己炸死；kind = 用刀 / 手雷（击杀信息里换个颜色） */
+    feed: [] as Array<{ killer: string; victim: string; kt: 0 | 1; vt: 0 | 1; gun: string; head: boolean; life: number; self: boolean; kind: '' | 'knife' | 'nade' }>,
+    board: [] as Array<{ name: string; team: 0 | 1; kills: number; deaths: number; you: boolean; alive: boolean; gun: string; money: number }>,
   },
   /** Tab 面板：按住时显示，只在显示时刷新 */
   tab: {
@@ -494,18 +536,52 @@ function syncTdm(game: Game): void {
   const h = hud.tdm;
   h.on = t.on;
   if (!t.on) return;
+  const gunName = (id: string): string => GUN_BY_ID[id]?.name ?? id;
   h.score = [t.score[0], t.score[1]];
-  h.target = TDM.score;
-  h.time = Math.max(0, t.time);
-  h.respawn = game.player.alive ? 0 : Math.max(0, t.playerRespawn);
-  h.shield = t.playerShield;
+  h.target = TDM.winRounds;
+  h.size = TDM.size;
+  h.round = t.round;
+  h.phase = t.phase;
+  h.time = Math.max(0, t.phaseT);
+  h.alive = aliveCount(game);
+  h.money = t.money;
+  h.armor = Math.ceil(t.armor);
+  h.helmet = t.helmet;
+  h.canBuy = canBuy(game);
+  h.dead = !game.player.alive;
+  const watch = t.spectate === null ? undefined : t.soldiers.find((s) => s.id === t.spectate);
+  h.spectate = watch ? watch.name : '';
+  h.spectateGun = watch ? (watch.knife ? '匕首' : gunName(watch.gun)) : '';
+  h.spectateHp = watch ? Math.max(0, Math.ceil(watch.hp)) : 0;
   h.kills = t.playerKills;
   h.deaths = t.playerDeaths;
-  h.feed = t.feed.map((f) => ({ killer: f.killer, victim: f.victim, kt: f.kt, vt: f.vt, weapon: WEAPONS[f.weapon].name, head: f.head, life: 1 - f.t / 6 }));
-  if (hud.tab.open || t.over) {
+  const primary = playerPrimary(game);
+  h.primary = primary ? game.config.guns[primary] : '';
+  h.pistol = game.config.guns.pistol;
+  h.level = t.level;
+  h.levelName = LEVELS[t.level].name;
+  h.nades = t.nades;
+  h.nadeMax = NADE.max;
+  h.throwing = game.hz.throwT > 0;
+  h.knife = t.knife;
+  h.held = t.knife || t.swingT >= 0 ? 'knife' : game.player.weapon === 'pistol' ? 'pistol' : 'primary';
+  const ammoOf = (k: WeaponKind): string => `${game.loadout[k].mag} / ${t.reserve[k]}`;
+  h.primaryName = primary ? gunName(game.config.guns[primary]) : '';
+  h.primaryAmmo = primary ? ammoOf(primary) : '';
+  h.pistolName = gunName(game.config.guns.pistol);
+  h.pistolAmmo = ammoOf('pistol');
+  // 脚边能捡的枪：捡了会换下同一个枪位上的那一把（手枪换手枪，别的换主武器）
+  const drop = t.pickup === null ? undefined : t.drops.find((d) => d.id === t.pickup);
+  const swapped = drop && GUN_BY_ID[drop.gun]?.cls === 'pistol' ? 'pistol' : primary;
+  h.pickup = drop ? gunName(drop.gun) : '';
+  h.pickupMag = drop ? drop.mag : 0;
+  h.pickupReserve = drop ? drop.reserve : 0;
+  h.pickupSwap = drop && swapped ? gunName(game.config.guns[swapped]) : '';
+  h.feed = t.feed.map((f) => ({ killer: f.killer, victim: f.victim, kt: f.kt, vt: f.vt, gun: f.gun, head: f.head, life: 1 - f.t / 6, self: f.killer === f.victim && f.kt === f.vt, kind: f.gun === '匕首' ? ('knife' as const) : f.gun === '手雷' ? ('nade' as const) : ('' as const) }));
+  if (hud.tab.open || t.over || t.phase === 'end') {
     h.board = [
-      { name: '你', team: 0 as const, kills: t.playerKills, deaths: t.playerDeaths, you: true, alive: game.player.alive, weapon: WEAPONS[game.player.weapon].name },
-      ...t.soldiers.map((s) => ({ name: s.name, team: s.team, kills: s.kills, deaths: s.deaths, you: false, alive: s.alive, weapon: WEAPONS[s.weapon].name })),
+      { name: '你', team: 0 as const, kills: t.playerKills, deaths: t.playerDeaths, you: true, alive: game.player.alive, gun: t.knife ? '匕首' : gunName(game.config.guns[game.player.weapon]), money: t.money },
+      ...t.soldiers.map((s) => ({ name: s.name, team: s.team, kills: s.kills, deaths: s.deaths, you: false, alive: s.alive, gun: s.knife ? '匕首' : gunName(s.gun), money: s.money })),
     ].sort((a, b) => a.team - b.team || b.kills - a.kills || a.deaths - b.deaths);
   }
 }
@@ -596,8 +672,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   // 准星随散布和后坐力张开
   // 准星随散布、移动、后坐力张开，瞄准时收拢（和 fireWeapon 里的散布同一套系数）
   const moveK = Math.min(1, Math.hypot(p.vx, p.vz) / 3.4);
-  const hip = (1 + 0.35 * moveK) * (1 - 0.2 * p.crouch);
+  const hip = (1 + 0.35 * moveK + (playerAirborne(game) ? 2.2 : 0)) * (1 - 0.2 * p.crouch);
   hud.spread = (6 + st.spread * 2.4 * hip + p.recoil * 10 + (p.sprinting ? 10 : 0)) * (1 - 0.8 * p.ads);
+  // 对战里手上是刀：没有散布，准星收成一个小十字
+  if (game.tdm.on && game.tdm.knife) hud.spread = 5;
   const run = game.run;
   hud.phase = run.phase;
   hud.night = run.night;

@@ -17,7 +17,9 @@ import TrainingPanel from './ui/hud/TrainingPanel.vue';
 import ExtrasHud from './ui/hud/ExtrasHud.vue';
 import TabPanel from './ui/hud/TabPanel.vue';
 import TdmHud from './ui/hud/TdmHud.vue';
-import HandTuner from './ui/screens/HandTuner.vue';
+import BuyMenu from './ui/screens/BuyMenu.vue';
+// 手部调节面板（F9）：参数已经烘焙进 hand-fit.json，只在开发环境里留着微调用
+const HandTuner = import.meta.env.DEV ? defineAsyncComponent(() => import('./ui/screens/HandTuner.vue')) : null;
 import Lobby from './ui/screens/Lobby.vue';
 import MainMenu from './ui/screens/MainMenu.vue';
 import PauseMenu from './ui/screens/PauseMenu.vue';
@@ -89,6 +91,7 @@ onBeforeUnmount(() => {
   <ExtrasHud v-if="!ui.inTdm" />
   <TabPanel v-if="!ui.inTdm" />
   <TdmHud />
+  <BuyMenu />
   <MainMenu />
   <Lobby />
   <PauseMenu />
@@ -96,7 +99,7 @@ onBeforeUnmount(() => {
   <Cards />
   <Result v-if="!ui.inTdm" />
   <Toast />
-  <HandTuner v-if="appRef" :app="appRef" />
+  <component :is="HandTuner" v-if="HandTuner && appRef" :app="appRef" />
   <component :is="RenderLab" v-if="RenderLab && renderLab && appRef" :render="appRef.render" />
   <AuthGate v-if="needLogin" :busy="authBusy" :error="authError" :submit="submit" />
   <Transition name="fade">

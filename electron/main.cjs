@@ -3,13 +3,14 @@
 // 和网页版一样有自己的源，localStorage（存档）、指针锁定、fetch 都照常工作。
 // 用法：npm run desktop（先打包再启动）/ npm run desktop:dev（连 vite 开发服务器）/ npm run dist:win（出安装包）
 const { app, BrowserWindow, protocol, net, shell } = require('electron');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 const DEV = process.argv.includes('--dev');
 const DEV_URL = 'http://127.0.0.1:5173/';
 const DIST = path.join(__dirname, '..', 'dist');
-const CSP = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' blob: data: http://47.94.82.70:8092; worker-src 'self' blob:; font-src 'self' data:";
+const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; connect-src 'self' blob: data: http://47.94.82.70:8092; worker-src 'self' blob:; font-src 'self' data:";
 
 // ---- 性能：用独立显卡、不限制后台、跳过显卡黑名单 ----
 app.commandLine.appendSwitch('force_high_performance_gpu');
@@ -26,17 +27,31 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: t
 // 只开一个窗口：存档在 localStorage 里，两个实例同时写会互相覆盖
 if (!app.requestSingleInstanceLock()) app.quit();
 
+/**
+ * 只供本机的素材（车、消耗品包、挥刀动作：授权不允许随安装包分发）不进 dist，
+ * 放在 用户数据目录（%APPDATA%\zombie-hold）\local-assets\<目录>\ 里；包里没有、这里有就用这里的。别的机器上没有这个目录，游戏走自己的替代品。
+ */
+const LOCAL_DIRS = ['vehicles/', 'stims/', 'melee/'];
+
 /** app://game/<路径> → dist/<路径>；不允许跳出 dist（../ 之类） */
 function serveDist() {
+  const LOCAL = path.join(app.getPath('userData'), 'local-assets');
   protocol.handle('app', (req) => {
     const { pathname } = new URL(req.url);
     let rel = decodeURIComponent(pathname).replace(/^\/+/, '');
     if (rel === '') rel = 'index.html';
-    const file = path.normalize(path.join(DIST, rel));
+    let file = path.normalize(path.join(DIST, rel));
     if (file !== DIST && !file.startsWith(DIST + path.sep)) return new Response('forbidden', { status: 403 });
+    if (!fs.existsSync(file) && LOCAL_DIRS.some((d) => rel.startsWith(d))) {
+      const alt = path.normalize(path.join(LOCAL, rel));
+      if (alt.startsWith(LOCAL + path.sep) && fs.existsSync(alt)) file = alt;
+    }
+    // 没有的文件给 404（和网页版一样），不让 fetch 变成网络错误
+    if (!fs.existsSync(file)) return new Response('not found', { status: 404 });
     return net.fetch(pathToFileURL(file).toString()).then((res) => {
       if (!file.endsWith('.html')) return res;
-      // 页面只能加载自己（app://game）的脚本和资源；Vue 的运行时模板编译用不到 eval
+      // 页面只能加载自己（app://game）的脚本和资源；Vue 的运行时模板编译用不到 eval。
+      // wasm-unsafe-eval 只放行 WebAssembly 编译（开放世界的 meshopt 模型解码要用），JS 的 eval 仍然禁止
       const headers = new Headers(res.headers);
       headers.set('Content-Security-Policy', CSP);
       return new Response(res.body, { status: res.status, headers });

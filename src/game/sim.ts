@@ -27,6 +27,7 @@ import { updatePlayer } from './systems/player';
 import { newRunState, updateRun, type Phase, type RunState } from './systems/run';
 import { stepZombies } from './systems/zombie-ai';
 import { newTdm, updateTdm, type TdmState } from './systems/tdm';
+import { arenaStats } from './data/shop';
 import type { WeaponKind as WK } from './data/weapons';
 import { resolveCircleVsGrid } from './world/collision';
 import { Grid, GRID_H, GRID_W, HALF_H, HALF_W } from './world/grid';
@@ -73,6 +74,9 @@ export interface PlayerState {
   crouchHeld: boolean;
   /** 眼睛离地高度（米），子弹从这里出膛 */
   eye: number;
+  /** 脚离地多高（米）：跳起来、站在箱子上（只有对战里能跳）；竖直速度 */
+  air: number;
+  vy: number;
   /** 滑铲剩余时间、冷却、方向 */
   slide: number;
   slideCd: number;
@@ -107,6 +111,8 @@ export interface PlayerInput {
   crouch: boolean;
   /** 边沿触发：V 近战 */
   melee: boolean;
+  /** 边沿触发：空格 跳（只有对战里有） */
+  jump: boolean;
   fire: boolean;
   sprint: boolean;
   /** 边沿触发，逻辑层读取后清零 */
@@ -285,13 +291,25 @@ export interface GameEvents {
   grenadeThrown: { fire: boolean };
   /** 开始拉环抬手（还没出手） */
   grenadeWindup: { fire: boolean };
-  // ---- 团队死斗 ----
-  soldierShot: { id: number; kind: WK; x: number; y: number; z: number; yaw: number };
+  // ---- 8v8 对战 ----
+  soldierShot: { id: number; kind: WK; gun: string; x: number; y: number; z: number; yaw: number };
   soldierHit: { id: number; amount: number; head: boolean; byPlayer: boolean; x: number; y: number; z: number };
-  soldierDied: { id: number; team: 0 | 1; byPlayer: boolean; head: boolean };
+  /** (dx, dz) = 打死它的那颗子弹飞的方向 */
+  soldierDied: { id: number; team: 0 | 1; byPlayer: boolean; head: boolean; dx: number; dz: number };
   tdmHurt: { fromId: number };
   tdmRespawn: { yaw: number };
   tdmOver: { winner: -1 | 0 | 1; score: [number, number] };
+  /** 一局的几个节点：冻结时间开始 / 开打 / 打完（winner、reason、income 这时才有意义）/ 换边 */
+  tdmRound: { stage: 'freeze' | 'live' | 'end' | 'half'; round: number; winner: -1 | 0 | 1; reason: string; income: number };
+  /** 玩家买了一样东西（枪的型号 id，或 vest / helmet / nade） */
+  tdmBuy: { id: string };
+  /** 有人挥刀（id = 士兵 id，-1 = 玩家）；hit = 砍中人了 */
+  tdmSwing: { id: number; kind: 0 | 1 | 2; x: number; z: number };
+  tdmStab: { id: number; victim: number; back: boolean; x: number; y: number; z: number };
+  /** 玩家捡了一把枪 */
+  tdmPickup: { gun: string };
+  /** 有人起跳 / 落地（id = 士兵 id，-1 = 玩家） */
+  tdmJump: { id: number; land: boolean; x: number; z: number };
   shove: { hits: number };
   pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
   spit: { x: number; z: number };
@@ -395,6 +413,7 @@ export class Game {
     ads: false,
     crouch: false,
     melee: false,
+    jump: false,
     fire: false,
     sprint: false,
     reload: false,
@@ -481,7 +500,7 @@ export class Game {
   };
   /** 爆炸物、危险区、手雷、推搡、电击脉冲（M12） */
   readonly hz: HazardState = newHazards();
-  /** 5v5 团队死斗（mapId = 'arena' 时开） */
+  /** 8v8 回合制对战（mapId = 'arena'，地图「北港仓库」） */
   readonly tdm: TdmState = newTdm();
   /** 白天的空投补给（M13） */
   readonly airdrop: AirdropState = newAirdrop();
@@ -551,6 +570,8 @@ export class Game {
       crouch: 0,
       crouchHeld: false,
       eye: EYE_HEIGHT,
+      air: 0,
+      vy: 0,
       slide: 0,
       slideCd: 0,
       slideDirX: 0,
@@ -823,6 +844,8 @@ export class Game {
   /** 这把枪现在的实际属性：局内等级 + 型号 + 大厅工作台强化 */
   statsOf(kind: WeaponKind, tier = this.loadout[kind].tier): WeaponStats {
     const c = this.config;
+    // 对战：用商店里的那一套数值（射程按对战地图放大过），和人机手里的同一把枪一模一样
+    if (this.tdm.on && this.gunOf(kind)) return arenaStats(c.guns[kind]);
     return effectiveStats(kind, tier, c.weaponMods[kind], this.gunOf(kind));
   }
 
@@ -853,6 +876,8 @@ export class Game {
 
   /** 这把枪还有多少备弹（手枪 / 不限弹药时为 Infinity） */
   reserveOf(kind: WeaponKind): number {
+    // 对战：每把枪带几个弹匣的量，手枪也一样有数
+    if (this.tdm.on) return this.tdm.reserve[kind];
     if (!this.config.ammo || kind === 'pistol') return Infinity;
     return this.ammo[kind] ?? 0;
   }
@@ -862,7 +887,8 @@ export class Game {
     const have = this.reserveOf(kind);
     if (have === Infinity) return n;
     const k = Math.max(0, Math.min(n, have));
-    this.ammo[kind] = have - k;
+    if (this.tdm.on) this.tdm.reserve[kind] = have - k;
+    else this.ammo[kind] = have - k;
     return k;
   }
 

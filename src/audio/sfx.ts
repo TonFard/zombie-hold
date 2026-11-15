@@ -13,46 +13,58 @@ export class Sfx {
 
   // ---------------- 武器 ----------------
 
-  shot(kind: WeaponKind): void {
+  /**
+   * 枪声。at = 别人开的枪（对战里的人机）：按位置做距离衰减和左右声像；自己的枪声不衰减。
+   * 别人的枪声单独限流（key 不一样），不会把自己的那一声挤掉
+   */
+  shot(kind: WeaponKind, at?: { x: number; z: number }): void {
     this.e.channel = 'weapons';
     const e = this.e;
     if (!e.ready) return;
     const j = jit();
+    const key = at ? `shot-far-${kind}` : `shot-${kind}`;
+    // 枪声传得远：比别的声音响一截，40 米外还听得见一点
+    const exit = (g: number): AudioNode | undefined => (at ? e.spatial(at.x, at.z, g * 1.7) : e.flat(g)) ?? undefined;
     switch (kind) {
       case 'pistol': {
-        if (!e.gate('shot-pistol', 0.05)) return;
-        const out = e.flat(0.9) ?? undefined;
+        if (!e.gate(key, 0.05)) return;
+        const out = exit(0.9);
+        if (at && !out) return;
         e.noise({ dur: 0.09, vol: 0.5, filter: { type: 'highpass', freq: 1400 * j }, out });
         e.tone({ freq: 520 * j, to: 110, dur: 0.1, vol: 0.32, type: 'triangle', out });
         e.tone({ freq: 170, to: 60, dur: 0.14, vol: 0.28, out });
         break;
       }
       case 'smg': {
-        if (!e.gate('shot-smg', 0.035)) return;
-        const out = e.flat(0.75) ?? undefined;
+        if (!e.gate(key, 0.035)) return;
+        const out = exit(0.75);
+        if (at && !out) return;
         e.noise({ dur: 0.06, vol: 0.42, filter: { type: 'bandpass', freq: 2300 * j, q: 0.8 }, out });
         e.tone({ freq: 320 * j, to: 90, dur: 0.065, vol: 0.2, type: 'square', filter: { type: 'lowpass', freq: 1800 }, out });
         break;
       }
       case 'shotgun': {
-        if (!e.gate('shot-shotgun', 0.1)) return;
-        const out = e.flat(1) ?? undefined;
+        if (!e.gate(key, 0.1)) return;
+        const out = exit(1);
+        if (at && !out) return;
         e.noise({ dur: 0.34, vol: 0.85, filter: { type: 'lowpass', freq: 3600, to: 260 }, out });
         e.noise({ dur: 0.05, vol: 0.5, filter: { type: 'highpass', freq: 2500 }, out });
         e.tone({ freq: 150 * j, to: 36, dur: 0.32, vol: 0.75, out });
         break;
       }
       case 'rifle': {
-        if (!e.gate('shot-rifle', 0.06)) return;
-        const out = e.flat(0.95) ?? undefined;
+        if (!e.gate(key, 0.06)) return;
+        const out = exit(0.95);
+        if (at && !out) return;
         e.noise({ dur: 0.14, vol: 0.62, filter: { type: 'bandpass', freq: 1700 * j, q: 0.6 }, out });
         e.tone({ freq: 210 * j, to: 48, dur: 0.22, vol: 0.62, out });
         e.noise({ dur: 0.4, vol: 0.14, delay: 0.05, filter: { type: 'lowpass', freq: 650, to: 200 }, out });
         break;
       }
       case 'sniper': {
-        if (!e.gate('shot-sniper', 0.2)) return;
-        const out = e.flat(1) ?? undefined;
+        if (!e.gate(key, 0.2)) return;
+        const out = exit(1);
+        if (at && !out) return;
         // 很响的爆裂声 + 低沉的回声，0.35 秒后拉栓
         e.noise({ dur: 0.16, vol: 0.85, filter: { type: 'highpass', freq: 900 * j }, out });
         e.tone({ freq: 240 * j, to: 40, dur: 0.3, vol: 0.8, out });
@@ -62,8 +74,9 @@ export class Sfx {
         break;
       }
       case 'lmg': {
-        if (!e.gate('shot-lmg', 0.05)) return;
-        const out = e.flat(0.9) ?? undefined;
+        if (!e.gate(key, 0.05)) return;
+        const out = exit(0.9);
+        if (at && !out) return;
         e.noise({ dur: 0.1, vol: 0.55, filter: { type: 'bandpass', freq: 1300 * j, q: 0.7 }, out });
         e.tone({ freq: 180 * j, to: 52, dur: 0.14, vol: 0.5, out });
         break;
@@ -144,6 +157,114 @@ export class Sfx {
     const out = e.flat(0.7) ?? undefined;
     e.noise({ dur: 0.05, vol: 0.2, filter: { type: 'bandpass', freq: 1800, q: 2 }, out });
     e.noise({ dur: 0.04, vol: 0.2, delay: 0.09, filter: { type: 'bandpass', freq: 2800, q: 3 }, out });
+  }
+
+  // ---------------- 对战：刀、手雷、捡枪、跳 ----------------
+
+  /** 挥刀的风声。stab = 捅（短、闷一点）；at = 别人挥的（按位置衰减，轻得多） */
+  knifeSwing(stab: boolean, at?: { x: number; z: number }): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate(at ? 'knife-swing-far' : 'knife-swing', 0.08)) return;
+    const out = at ? e.spatial(at.x, at.z, 0.7) : e.flat(0.85);
+    if (!out) return;
+    const j = jit(0.1);
+    if (stab) {
+      e.noise({ dur: 0.12, vol: 0.5, attack: 0.02, filter: { type: 'bandpass', freq: 900 * j, to: 2200, q: 0.9 }, out });
+      return;
+    }
+    // 横挥：一道从低扫到高的风声，尾巴上带一点刀刃的嘶声
+    e.noise({ dur: 0.2, vol: 0.22, attack: 0.05, filter: { type: 'bandpass', freq: 700 * j, to: 3200, q: 1.6 }, out });
+    e.noise({ dur: 0.1, vol: 0.08, delay: 0.1, filter: { type: 'highpass', freq: 4200 }, out });
+  }
+
+  /**
+   * 刀砍中人：划开衣服的一声 + 肉的闷响。back = 从背后来的那一下，重得多（多一声往下沉的撞击）。
+   * at = 不是自己砍的（别人砍别人、别人砍自己）
+   */
+  knifeHit(back: boolean, at?: { x: number; z: number }): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate(at ? 'knife-hit-far' : 'knife-hit', 0.06)) return;
+    const out = at ? e.spatial(at.x, at.z, 1) : e.flat(0.9);
+    if (!out) return;
+    const j = jit(0.12);
+    e.noise({ dur: 0.07, vol: 0.5, filter: { type: 'bandpass', freq: 1900 * j, q: 1.2 }, out });
+    e.noise({ dur: 0.12, vol: 0.5, delay: 0.015, filter: { type: 'lowpass', freq: 700, to: 260 }, out });
+    e.tone({ freq: 150 * j, to: 60, dur: 0.12, vol: 0.4, out });
+    if (!back) return;
+    e.tone({ freq: 90, to: 34, dur: 0.34, vol: 0.7, out });
+    e.noise({ dur: 0.26, vol: 0.4, delay: 0.03, filter: { type: 'lowpass', freq: 420, to: 110 }, out });
+    e.tone({ freq: 620 * j, to: 240, dur: 0.16, vol: 0.14, type: 'triangle', delay: 0.02, out });
+  }
+
+  /** 按下 G：拉环、保险片弹开 */
+  grenadePin(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('nade-pin', 0.2)) return;
+    const out = e.flat(0.8) ?? undefined;
+    e.noise({ dur: 0.03, vol: 0.3, filter: { type: 'bandpass', freq: 4200, q: 4 }, out });
+    e.tone({ freq: 2900, to: 2300, dur: 0.05, vol: 0.12, type: 'triangle', delay: 0.02, out });
+    e.noise({ dur: 0.04, vol: 0.22, delay: 0.09, filter: { type: 'bandpass', freq: 2600, q: 3 }, out });
+  }
+
+  /** 手雷出手：胳膊甩出去的一道风声。at = 别人扔的 */
+  grenadeThrow(at?: { x: number; z: number }): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate(at ? 'nade-throw-far' : 'nade-throw', 0.1)) return;
+    const out = at ? e.spatial(at.x, at.z, 0.8) : e.flat(0.8);
+    if (!out) return;
+    e.noise({ dur: 0.22, vol: 0.3, attack: 0.06, filter: { type: 'bandpass', freq: 500, to: 1800, q: 1.2 }, out });
+    e.noise({ dur: 0.05, vol: 0.14, delay: 0.02, filter: { type: 'lowpass', freq: 700 }, out });
+  }
+
+  /** 手雷落地弹了一下：铁疙瘩磕在地上（听见这一声就该跑了）。hard 0–1 = 砸得多重 */
+  grenadeBounce(x: number, z: number, hard: number): void {
+    this.e.channel = 'world';
+    const e = this.e;
+    if (!e.gate('nade-bounce', 0.05)) return;
+    const out = e.spatial(x, z, 0.55 + 0.6 * hard);
+    if (!out) return;
+    const j = jit(0.1);
+    e.tone({ freq: 1500 * j, to: 900, dur: 0.07, vol: 0.3, type: 'triangle', out });
+    e.noise({ dur: 0.04, vol: 0.4, filter: { type: 'bandpass', freq: 3200 * j, q: 2.5 }, out });
+    e.tone({ freq: 190, to: 90, dur: 0.07, vol: 0.3, out });
+  }
+
+  /** 捡起一把枪：背带和金属件响一下，然后握住 */
+  gunPickup(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('gun-pickup', 0.15)) return;
+    const out = e.flat(0.8) ?? undefined;
+    e.noise({ dur: 0.09, vol: 0.2, filter: { type: 'bandpass', freq: 900, to: 1600, q: 1 }, out });
+    e.noise({ dur: 0.04, vol: 0.34, delay: 0.07, filter: { type: 'bandpass', freq: 2400, q: 3 }, out });
+    e.tone({ freq: 1100, to: 700, dur: 0.05, vol: 0.12, type: 'square', delay: 0.07, filter: { type: 'bandpass', freq: 1400, q: 3 }, out });
+    e.noise({ dur: 0.05, vol: 0.26, delay: 0.16, filter: { type: 'lowpass', freq: 1000 }, out });
+  }
+
+  /** 起跳：脚蹬地、衣服响一下（只有自己的） */
+  jump(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('jump', 0.15)) return;
+    const out = e.flat(0.6) ?? undefined;
+    e.noise({ dur: 0.1, vol: 0.4, attack: 0.02, filter: { type: 'bandpass', freq: 700, to: 1300, q: 0.9 }, out });
+  }
+
+  /** 跳下来落地：脚砸在地上的闷响 + 身上的装备晃一下。at = 别人落地（按位置衰减，很轻） */
+  land(at?: { x: number; z: number }): void {
+    this.e.channel = at ? 'world' : 'weapons';
+    const e = this.e;
+    if (!e.gate(at ? 'land-far' : 'land', at ? 0.08 : 0.15)) return;
+    const out = at ? e.spatial(at.x, at.z, 0.4) : e.flat(0.8);
+    if (!out) return;
+    const j = jit(0.1);
+    e.tone({ freq: 110 * j, to: 46, dur: 0.14, vol: 0.5, out });
+    e.noise({ dur: 0.1, vol: 0.34, filter: { type: 'lowpass', freq: 600, to: 200 }, out });
+    e.noise({ dur: 0.05, vol: 0.12, delay: 0.02, filter: { type: 'bandpass', freq: 2200, q: 1 }, out });
   }
 
   // ---------------- 命中与爆炸 ----------------
@@ -533,6 +654,31 @@ export class Sfx {
     e.tone({ freq: 523, dur: 0.25, vol: 0.14, type: 'triangle', out });
     e.tone({ freq: 784, dur: 0.4, vol: 0.14, type: 'triangle', delay: 0.09, out });
     e.noise({ dur: 0.2, vol: 0.08, filter: { type: 'highpass', freq: 4500 }, out });
+  }
+
+  /** 对战里打死一个人（不是爆头）：短促的两下确认音 */
+  killConfirm(): void {
+    this.e.channel = 'weapons';
+    const e = this.e;
+    if (!e.gate('kill-confirm', 0.08)) return;
+    const out = e.flat(0.6) ?? undefined;
+    if (!out) return;
+    e.tone({ freq: 880, dur: 0.06, vol: 0.2, type: 'triangle', out });
+    e.tone({ freq: 1320, dur: 0.1, vol: 0.2, type: 'triangle', delay: 0.06, out });
+  }
+
+  /** 对战的局间提示音：冻结时间开始、开打、这一局赢了 / 输了 */
+  roundCue(kind: 'freeze' | 'live' | 'win' | 'lose'): void {
+    this.e.channel = 'ui';
+    const e = this.e;
+    if (!e.ready) return;
+    const out = e.flat(0.8) ?? undefined;
+    if (kind === 'freeze') e.tone({ freq: 520, dur: 0.16, vol: 0.12, type: 'triangle', attack: 0.01, out });
+    else if (kind === 'live') {
+      e.tone({ freq: 660, dur: 0.12, vol: 0.14, type: 'square', filter: { type: 'lowpass', freq: 1800 }, out });
+      e.tone({ freq: 990, dur: 0.3, vol: 0.14, type: 'square', filter: { type: 'lowpass', freq: 2200 }, delay: 0.13, out });
+    } else if (kind === 'win') [523, 659, 784].forEach((f, i) => e.tone({ freq: f, dur: 0.5, vol: 0.12, type: 'triangle', attack: 0.02, delay: i * 0.11, out }));
+    else [392, 330, 262].forEach((f, i) => e.tone({ freq: f, dur: 0.5, vol: 0.11, type: 'sawtooth', filter: { type: 'lowpass', freq: 800 }, attack: 0.03, delay: i * 0.16, out }));
   }
 
   win(): void {

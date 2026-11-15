@@ -290,6 +290,9 @@ export class GameView {
     this.rig.setAspect(w / h);
   }
 
+  /** 观战时正在看的士兵 id（换人时镜头直接跳过去） */
+  private watching: number | null = null;
+
   /** 每帧调用：dt 为真实时间（秒） */
   render(dt: number): void {
     this.time += dt;
@@ -327,7 +330,16 @@ export class GameView {
     if (env && this.scene.environment !== env) this.scene.environment = env;
 
     const fps = this.rig.mode === 'fps';
-    if (fps) {
+    // 对战里玩家死了以后：跟着一个队友的越肩镜头（不画自己的枪）
+    const watch = fps && game.tdm.on && game.tdm.spectate !== null ? game.tdm.soldiers.find((s) => s.id === game.tdm.spectate && s.alive) : undefined;
+    if (watch) {
+      const want = 2.3;
+      const back = Math.max(0.35, game.grid.rayDist(watch.x, watch.z, -Math.sin(watch.aimYaw), -Math.cos(watch.aimYaw), want + 0.35) - 0.35);
+      this.rig.updateChase(dt, { x: watch.x, z: watch.z, y: watch.y, yaw: watch.aimYaw, pitch: watch.aimPitch, back, fresh: this.watching !== watch.id });
+      this.watching = watch.id;
+      this.rig.camera.updateMatrixWorld();
+    } else if (fps) {
+      this.watching = null;
       const p = game.player;
       // 视线 = 鼠标 + 逻辑层的后坐力（和子弹用的是同一个角度，准星就是弹着点）
       this.rig.updateFps(dt, {
@@ -339,6 +351,7 @@ export class GameView {
         sprinting: p.sprinting,
         alive: p.alive,
         eye: p.eye,
+        air: game.tdm.on ? p.air : 0,
         ads: p.ads,
         zoom: adsAt(p.weapon, p.tier).zoom,
         kickYaw: p.kickYaw,
@@ -361,7 +374,8 @@ export class GameView {
         yaw: this.look.yaw,
         pitch: this.look.pitch,
         ads: p.ads,
-        melee: p.meleeTimer > 0 ? 1 - p.meleeTimer / MELEE_TIME : -1,
+        // 对战里近战是刀（下面的 knife），不是挥枪托
+        melee: !game.tdm.on && p.meleeTimer > 0 ? 1 - p.meleeTimer / MELEE_TIME : -1,
         crouch: p.crouch,
         sliding: p.slide > 0,
         sprintOut: p.sprintOut,
@@ -371,13 +385,14 @@ export class GameView {
         fwd: p.vx * Math.sin(this.look.yaw) + p.vz * Math.cos(this.look.yaw),
         side: -p.vx * Math.cos(this.look.yaw) + p.vz * Math.sin(this.look.yaw),
         gun: game.config.guns[p.weapon],
+        knife: game.tdm.on && (game.tdm.knife || game.tdm.swingT >= 0) ? { swing: game.tdm.swingT >= 0 ? game.tdm.swingT / game.tdm.swingDur : -1, kind: game.tdm.swingKind } : null,
       });
       // TACZ 枪的摄像机动画（开枪、换弹时镜头的轻微晃动）
       this.rig.camera.quaternion.multiply(this.viewmodel.cameraAnim);
     }
     // 瞄准镜完全举起时，镜框遮罩由界面层画，枪模藏起来
     const scoped = fps && adsAt(game.player.weapon, game.player.tier).scope && game.player.ads > 0.85;
-    this.post.setOverlayVisible(fps && this.viewmodel.visible && !scoped);
+    this.post.setOverlayVisible(fps && !watch && this.viewmodel.visible && !scoped);
     this.updateRoofs();
     this.lighting.follow(this.rig.focus.x, this.rig.focus.z, dt);
     this.rig.camera.updateMatrixWorld();
@@ -398,7 +413,8 @@ export class GameView {
    */
   private updateRoofs(): void {
     const roofs = this.roofs.length ? this.roofs : this.map.roofs;
-    const p = this.game.player;
+    // 第一人称时镜头的焦点就是玩家脚下；观战时是被看的那个人
+    const p = this.rig.mode === 'fps' ? this.rig.focus : this.game.player;
     const cx = Math.floor(p.x + GRID_W / 2);
     const cy = Math.floor(p.z + GRID_H / 2);
     const fps = this.rig.mode === 'fps';

@@ -188,9 +188,101 @@ function resolveRoles(names, fireMode) {
   };
 }
 
+// ---------------------------------------------------------------- 配件（瞄具）
+
+/** 配件输出目录：public/tacz/_att/<配件 id>/，几把枪共用同一个镜子 */
+const ATT_DIR = '_att';
+
+/** 只有 display 里写了 "scope": true 的才是筒状放大镜；其它（红点、全息、原厂机瞄）当瞄具 */
+function readAttachment(packDir, attId) {
+  const r = rl(attId.includes(':') ? attId : `tacz:${attId}`);
+  const indexFile = path.join(packDir, 'data', r.ns, 'index/attachments', `${r.p}.json`);
+  if (!fs.existsSync(indexFile)) return { err: `枪包里没有配件 ${attId}` };
+  const index = readJson(indexFile);
+  const dr = rl(index.display);
+  const display = readJson(path.join(packDir, 'assets', dr.ns, 'display/attachments', `${dr.p}.json`));
+  if (!display.model || !display.texture) return { err: `配件 ${attId} 没有模型（转接口类配件，不用单独画）` };
+  const mr = rl(display.model);
+  const tr = rl(display.texture);
+  const geoFile = path.join(packDir, 'assets', mr.ns, 'geo_models', `${mr.p}.json`);
+  const texFile = path.join(packDir, 'assets', tr.ns, 'textures', `${tr.p}.png`);
+  if (!fs.existsSync(geoFile)) return { err: `找不到配件模型 ${path.relative(process.cwd(), geoFile)}` };
+  if (!fs.existsSync(texFile)) return { err: `找不到配件贴图 ${path.relative(process.cwd(), texFile)}` };
+  return { id: r.p, index, display, geoFile, texFile };
+}
+
+/** 写 public/tacz/_att/<id>/att.json + att.png；返回 null = 成功 */
+function exportAttachment(att, outRoot) {
+  const geo = readJson(att.geoFile)['minecraft:geometry'][0];
+  const d = att.display;
+  const out = {
+    id: att.id,
+    texture: { w: geo.description.texture_width, h: geo.description.texture_height },
+    bones: convertBones(geo.bones ?? []),
+    display: {
+      scope: !!d.scope,
+      sight: !!d.sight,
+      zoom: Array.isArray(d.zoom) ? d.zoom : [],
+      // 每档放大用第几个瞄准点（1 = scope_view，2 = scope_view_2……）；我们只用第一档
+      views: Array.isArray(d.views) && d.views.length ? d.views : [1],
+      fov: typeof d.fov === 'number' ? d.fov : null,
+      showMount: d.show_mount !== false,
+      heightAdjust: typeof d.idle_scope_height_adjust === 'number' ? d.idle_scope_height_adjust : 0,
+    },
+  };
+  const dir = path.join(outRoot, ATT_DIR, att.id);
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'att.json'), JSON.stringify(out));
+  fs.copyFileSync(att.texFile, path.join(dir, 'att.png'));
+}
+
+function convertBones(list) {
+  return list.map((b) => {
+    const o = { name: b.name, pivot: b.pivot ?? [0, 0, 0] };
+    if (b.parent) o.parent = b.parent;
+    if (b.rotation) o.rotation = b.rotation;
+    if (b.mirror) o.mirror = true;
+    if (b.cubes?.length) {
+      o.cubes = b.cubes.map((c) => {
+        const q = { origin: c.origin, size: c.size, uv: c.uv };
+        if (c.rotation) q.rotation = c.rotation;
+        if (c.pivot) q.pivot = c.pivot;
+        if (c.inflate) q.inflate = c.inflate;
+        if (c.mirror) q.mirror = true;
+        return q;
+      });
+    }
+    return o;
+  });
+}
+
+/**
+ * 这把枪要装的瞄具：
+ *   scope = 游戏里这把枪"有瞄准镜"时装（狙击枪一直有；步枪升到 scopeTier 才有），没有就不装镜；
+ *   sight = 没装镜时装的瞄具（红点 / 原厂机瞄），没有就用枪自己的机械瞄具。
+ * 来源：配置里写的 scope / sight ← 枪包的内置配件（字符串形式 = 一直装着；default_attached / display_attachment = 默认装着）
+ */
+function pickAttachments(packDir, data, w) {
+  let scope = w.scope ?? null;
+  let sight = w.sight ?? null;
+  const b = data.builtin_attachments?.scope;
+  if (b) {
+    const def = typeof b === 'string' ? b : (b.default_attached ?? b.display_attachment ?? null);
+    if (def) {
+      const a = readAttachment(packDir, def);
+      if (!a.err) {
+        if (a.display.scope) scope ??= def;
+        else sight ??= def;
+      }
+    }
+  }
+  const strip = (id) => (id ? rl(id.includes(':') ? id : `tacz:${id}`).p : null);
+  return { scope: strip(scope), sight: strip(sight) };
+}
+
 // ---------------------------------------------------------------- 一把枪
 
-function importGun({ kind, gunId, packDir, defaultsDir, outRoot, write, fireMode }) {
+function importGun({ kind, gunId, packDir, defaultsDir, outRoot, write, fireMode, w }) {
   const errors = [];
   const warnings = [];
   const assetPath = (id, dir, ext) => {
@@ -268,23 +360,27 @@ function importGun({ kind, gunId, packDir, defaultsDir, outRoot, write, fireMode
   for (const n of used) if (all[n]) anims[n] = convertAnim(all[n], soundName);
   if (stats.molang) warnings.push(`跳过 ${stats.molang} 处 Molang 表达式（按 0 处理）`);
 
-  const bones = (geo.bones ?? []).map((b) => {
-    const o = { name: b.name, pivot: b.pivot ?? [0, 0, 0] };
-    if (b.parent) o.parent = b.parent;
-    if (b.rotation) o.rotation = b.rotation;
-    if (b.mirror) o.mirror = true;
-    if (b.cubes?.length) {
-      o.cubes = b.cubes.map((c) => {
-        const q = { origin: c.origin, size: c.size, uv: c.uv };
-        if (c.rotation) q.rotation = c.rotation;
-        if (c.pivot) q.pivot = c.pivot;
-        if (c.inflate) q.inflate = c.inflate;
-        if (c.mirror) q.mirror = true;
-        return q;
-      });
+  const bones = convertBones(geo.bones ?? []);
+
+  // 瞄具配件：枪上要有 scope_pos 挂点
+  const attach = pickAttachments(packDir, data, w ?? {});
+  const atts = {};
+  for (const slot of ['scope', 'sight']) {
+    const id = attach[slot];
+    if (!id) continue;
+    if (!boneNames.has('scope_pos')) {
+      warnings.push(`模型没有 scope_pos，装不了${slot === 'scope' ? '瞄准镜' : '瞄具'} ${id}`);
+      attach[slot] = null;
+      continue;
     }
-    return o;
-  });
+    const a = readAttachment(packDir, id);
+    if (a.err) {
+      errors.push(a.err);
+      attach[slot] = null;
+      continue;
+    }
+    atts[slot] = a;
+  }
 
   const ds = {};
   for (const [k, v] of Object.entries(display.sounds ?? {})) ds[k] = soundName(v);
@@ -306,7 +402,8 @@ function importGun({ kind, gunId, packDir, defaultsDir, outRoot, write, fireMode
   if (!fs.existsSync(texFile)) errors.push(`找不到贴图 ${path.relative(process.cwd(), texFile)}`);
 
   const cubes = bones.reduce((n, b) => n + (b.cubes?.length ?? 0), 0);
-  const summary = `${bones.length} 骨骼 / ${cubes} 方块 / ${Object.keys(anims).length} 动画 / ${sounds.size - missing.length} 音效`;
+  const attLabel = [attach.scope && `镜 ${attach.scope}`, attach.sight && `瞄具 ${attach.sight}`].filter(Boolean).join(' / ');
+  const summary = `${bones.length} 骨骼 / ${cubes} 方块 / ${Object.keys(anims).length} 动画 / ${sounds.size - missing.length} 音效${attLabel ? ` / ${attLabel}` : ''}`;
   if (!write || (errors.length && !args.force)) return { errors, warnings, summary };
 
   const out = {
@@ -329,7 +426,9 @@ function importGun({ kind, gunId, packDir, defaultsDir, outRoot, write, fireMode
       bolt: data.bolt,
       reload: data.reload ?? null,
     },
+    attach: { scope: attach.scope, sight: attach.sight },
   };
+  for (const a of Object.values(atts)) exportAttachment(a, outRoot);
   const dir = path.join(outRoot, gunId);
   fs.rmSync(dir, { recursive: true, force: true });
   fs.mkdirSync(path.join(dir, 'sfx'), { recursive: true });
@@ -357,6 +456,8 @@ const write = args.check !== 'true';
 const only = args.only;
 
 const kinds = Object.keys(config.weapons ?? {}).filter((k) => !only || k === only);
+// 全量导入时配件目录重新生成（去掉不再用的镜子）
+if (write && !only) fs.rmSync(path.join(outRoot, ATT_DIR), { recursive: true, force: true });
 if (only && !kinds.length) {
   console.error(`配置里没有栏位 ${only}`);
   process.exit(1);
@@ -379,7 +480,7 @@ for (const kind of kinds) {
   }
   let r;
   try {
-    r = importGun({ kind, gunId: w.gun, packDir, defaultsDir, outRoot, write, fireMode: w.fireMode ?? FIRE_MODE[kind] ?? 'auto' });
+    r = importGun({ kind, gunId: w.gun, packDir, defaultsDir, outRoot, write, fireMode: w.fireMode ?? FIRE_MODE[kind] ?? 'auto', w });
   } catch (e) {
     r = { errors: [`读取失败：${e.message}`], warnings: [] };
   }
@@ -396,7 +497,7 @@ for (const kind of kinds) {
 if (write) {
   // 全量导入时清掉不再使用的旧目录
   if (!only && fs.existsSync(outRoot)) {
-    const keep = new Set(Object.values(manifest.weapons).map((w) => w.dir));
+    const keep = new Set([...Object.values(manifest.weapons).map((w) => w.dir), ATT_DIR]);
     for (const d of fs.readdirSync(outRoot, { withFileTypes: true })) if (d.isDirectory() && !keep.has(d.name)) fs.rmSync(path.join(outRoot, d.name), { recursive: true, force: true });
   }
   fs.mkdirSync(outRoot, { recursive: true });

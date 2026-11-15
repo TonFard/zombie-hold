@@ -5,8 +5,10 @@ import { AMMO_LIMITED, WEAPON_ORDER, type WeaponKind } from '../game/data/weapon
 import { FINAL_NIGHT } from '../game/data/waves';
 import type { ZombieKind } from '../game/data/zombies';
 import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
-import { applyDaily, applyMeta, applyTraining, configFor, sidearmOk, widenMeta } from '../game/meta/loadout';
-import { startTdm } from '../game/systems/tdm';
+import { applyDaily, applyMeta, applyTraining, sidearmOk, widenMeta } from '../game/meta/loadout';
+import { LEVELS, TDM, buyGear, buyGun, canBuy, startTdm } from '../game/systems/tdm';
+import { sandboxConfig } from '../game/config';
+import type { GearId } from '../game/data/shop';
 import { bonusesOf, buyMeta, difficultyUnlocked, medalsFor, settleRun, type RunOutcome } from '../game/meta/progress';
 import { RUN_KEY, loadCheckpoint, peekCheckpoint, serialize } from '../game/save/checkpoint';
 import { isMapId, type MapId } from '../game/world/maps';
@@ -14,7 +16,7 @@ import { chapterUnlocked } from '../game/data/chapters';
 import { buyAmmo, buyBench, cloneMeta, gunsFor, lockedGuns, pickGun, suppliesFor, unlockGun } from '../game/meta/progress';
 import { GUN_BY_ID } from '../game/data/guns';
 import { buildReplay } from '../game/stats/replay';
-import { createPreview, weaponIcon } from '../render/weapons/preview';
+import { createPreview, gunIcon, weaponIcon } from '../render/weapons/preview';
 import { acceptRisk } from '../game/systems/events';
 import type { BenchLine } from '../game/data/bench';
 import { SAVE_KEY } from '../game/save/schema';
@@ -24,7 +26,7 @@ import { Training } from '../game/systems/training';
 import { GameView } from '../render/core/view';
 import { buildWeapon } from '../render/weapons';
 import { hud, syncHud } from '../ui/hud';
-import { toast, ui } from '../ui/store';
+import { asTdmLevel, setTdmLevel, toast, ui } from '../ui/store';
 import { wireEvents } from './events-wiring';
 import { InputController } from './input';
 import { Loop } from './loop';
@@ -56,7 +58,8 @@ export interface App {
 /**
  * 开发调试入口：?night=1 切到夜晚，?demo=horde 持续刷怪，?nopost=1 关闭后期，?quality=low|mid|high 临时指定画质；
  * ?autostart=1 跳过菜单直接开一局（沙盒规则：什么都解锁，不存档）；?lobby=1 直接进大厅；?training=1 直接进训练场；
- * ?continue=1 读检查点继续；?deploy=normal|hard|nightmare 按局外进度出征
+ * ?continue=1 读检查点继续；?deploy=normal|hard|nightmare 按局外进度出征；
+ * ?tdm=1 开一场 8v8，?level=0|1|2 指定这一场的人机难度（普通 / 困难 / 专家；不写就用本机上次选的）
  */
 function readParams() {
   const q = new URLSearchParams(window.location.search);
@@ -76,6 +79,8 @@ function readParams() {
     sidearm: q.get('sidearm'),
     chapter: q.get('chapter'),
     tdm: q.get('tdm') === '1',
+    /** 8v8 人机难度：只管这一场 */
+    level: asTdmLevel(q.get('level')),
     /** 无头截图用：没有真实鼠标，假装已锁定指针 */
     nolock: q.get('nolock') === '1',
     quality,
@@ -193,7 +198,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   const loop = new Loop({
     shouldSimulate: () => screens.simulating && !app.paused,
     beforeSimulate: () => {
-      if (screens.isPlaying) input.update();
+      // 购买菜单开着时输入是关着的：照样调一次，把移动 / 开火清零（不然人会按着开菜单前的方向一直走）
+      if (screens.isPlaying || ui.screen === 'buy') input.update();
     },
     simulate: (step) => {
       game.update(step);
@@ -235,6 +241,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       // 黎明选卡：每帧检查，而不是只在 1.5 秒后检查一次。
       // 之前那一刻刚好在暂停 / 指针锁丢了，卡牌界面就永远不出来，游戏卡在"黎明"没有下一天
       if (game.run.phase === 'cards' && ui.screen === 'play' && performance.now() >= cardsAt) screens.set('cards');
+      // 对战：过了能买东西的时间（或者人走出了出生区），购买菜单自己关掉
+      if (ui.screen === 'buy' && !canBuy(game)) screens.set('play');
       view.render(dt);
       // 瞄准放大时鼠标灵敏度跟着降低
       input.zoom = view.rig.mode === 'fps' ? view.rig.zoomNow : 1;
@@ -280,10 +288,31 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   };
 
   /** 进入第一人称，面朝 (tx, tz) */
-  // 团队死斗：复活时视角转回出生朝向；比赛结束弹结算
-  game.events.on('tdmRespawn', ({ yaw }) => input.setLook(yaw, -0.03));
+  // 8v8 对战：每局开始视角转回出生朝向（镜头从倒地 / 观战回到第一人称）；局间提示；比赛结束弹结算
+  game.events.on('tdmRespawn', ({ yaw }) => {
+    input.setLook(yaw, -0.03);
+    if (view.rig.mode === 'fps') view.rig.enterFps();
+  });
+  game.events.on('tdmRound', ({ stage, round, winner, reason, income }) => {
+    const note = (title: string, sub: string, tone: '' | 'win' | 'lose' = ''): void => {
+      ui.tdmNote = { title, sub, tone, id: ui.tdmNote.id + 1 };
+    };
+    if (stage === 'freeze') {
+      const [a, b] = game.tdm.score;
+      const point = Math.max(a, b) === TDM.winRounds - 1 ? ' · 赛点' : '';
+      if (round === TDM.half + 1) note(`第 ${round} 局 · 换边${point}`, '双方交换出生点，金币和武器重新来 · 按 B 买枪');
+      else note(`第 ${round} 局${point}`, round === 1 ? '冻结时间 · 按 B 买枪' : `冻结时间 · 按 B 买枪 · 上局收入 +$${income}`);
+      audio.sfx.roundCue('freeze');
+    } else if (stage === 'live') {
+      note('开 始', '消灭对面全部敌人');
+      audio.sfx.roundCue('live');
+    } else if (stage === 'end') {
+      note(winner === 0 ? '本局胜利' : winner === 1 ? '本局失败' : '本局平局', `${reason} · 收入 +$${income}`, winner === 0 ? 'win' : winner === 1 ? 'lose' : '');
+      audio.sfx.roundCue(winner === 0 ? 'win' : 'lose');
+    }
+  });
   game.events.on('tdmOver', ({ winner }) => {
-    ui.tdmResult = { winner, score: [...game.tdm.score] as [number, number], kills: game.tdm.playerKills, deaths: game.tdm.playerDeaths };
+    ui.tdmResult = { winner, score: [...game.tdm.score] as [number, number], kills: game.tdm.playerKills, deaths: game.tdm.playerDeaths, level: game.tdm.level };
     later(1800, () => screens.set('result'));
   });
   const enterPlay = (screen: 'play' | 'training', tx = game.core.x, tz = game.core.z): void => {
@@ -382,7 +411,25 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   ui.actions.continueRun = () => reload('?continue=1');
   ui.actions.training = () => reload('?training=1');
   ui.actions.daily = () => reload('?daily=1');
-  ui.actions.tdm = () => reload('?tdm=1');
+  ui.actions.tdm = (level) => {
+    // 选了哪一档人机就记在本机，下次还是这一档
+    const lv = asTdmLevel(level) ?? ui.tdmLevel;
+    setTdmLevel(lv);
+    reload(`?tdm=1&level=${lv}`);
+  };
+  ui.actions.buyGun = (id) => {
+    if (buyGun(game, id) === 'ok') audio.sfx.uiBuy();
+    else audio.sfx.uiDeny();
+    refreshHud();
+  };
+  ui.actions.buyGear = (id) => {
+    if (buyGear(game, id as GearId) === 'ok') audio.sfx.uiBuy();
+    else audio.sfx.uiDeny();
+    refreshHud();
+  };
+  ui.actions.closeBuy = () => {
+    if (ui.screen === 'buy') screens.set('play');
+  };
   ui.actions.buyMeta = (id) => {
     const [next, r] = buyMeta(ui.save.meta, id);
     if (r === 'ok') {
@@ -422,6 +469,8 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   };
   ui.actions.resume = () => screens.set(screens.playScreen);
   ui.actions.restart = () => {
+    // 对战：重新开一场，人机还是这一档
+    if (ui.inTdm) return reload(`?tdm=1&level=${game.tdm.level}`);
     // 正式局：重新开始 = 放弃这一局（结算）再用同样的设置出征
     if (ranked) {
       if (game.run.phase !== 'won' && game.run.phase !== 'lost') settle(false, 'abandon');
@@ -472,6 +521,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     save({ ...ui.save, sensitivity });
   };
   ui.gfx.icon = (k, tier = 0) => weaponIcon(k as WeaponKind, tier);
+  ui.gfx.gunIcon = (id) => gunIcon(id);
   ui.gfx.preview = (w, h) => {
     const p = createPreview(w, h);
     return { canvas: p.canvas, setWeapon: (k, tier) => p.setWeapon(k as WeaponKind, tier), resize: (w2, h2) => p.resize(w2, h2), dispose: () => p.dispose() };
@@ -586,24 +636,20 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
     startRun(game);
     enterPlay('play');
   } else if (params.tdm) {
-    // 5v5 团队死斗：不结算勋章、不存检查点；用当前解锁的枪，工坊升到 3 级
-    game.config = { ...configFor(bonuses, 'normal', 'outpost', ui.save.meta.bench), extras: false, ammo: false, endless: false };
+    // 8v8 对战（北港仓库）：不结算勋章、不存检查点。枪都在局里用金币买，和大厅的解锁、改装、星级无关
+    game.config = sandboxConfig();
     game.run.phase = 'night';
     game.scrap = 0;
-    // 玩家用一把步枪（没解锁就用冲锋枪 / 手枪）
-    const k: WeaponKind = (['rifle', 'smg'] as WeaponKind[]).find((w) => bonuses.weapons.has(w)) ?? 'rifle';
-    const slot = game.loadout[k];
-    slot.owned = slot.carried = true;
-    slot.tier = 2;
-    slot.mag = game.statsOf(k, 2).mag;
-    game.player.weapon = k;
-    game.player.tier = 2;
-    game.loadout.pistol.tier = 2;
+    // 人机难度：网址里的 ?level= 优先，没有就用本机上次选的（startTdm 会留着 tdm.level）
+    const level = params.level ?? ui.tdmLevel;
+    game.tdm.level = level;
+    ui.tdmLevel = level;
     startTdm(game);
     ui.inTdm = true;
-    view.setNight(0.05, true);
+    // 光线用最亮的那一档（黄昏）：对战要看得清远处的人
+    view.setNight(0, true);
     enterPlay('play', game.player.x, game.player.z - 10);
-    toast('团队死斗 · 先到 50 杀获胜');
+    toast(`北港仓库 · 8v8 · 人机 ${LEVELS[level].name} · 先赢 ${TDM.winRounds} 局`);
   } else if (daily) {
     // 每日挑战：算正式局（结算勋章、记录成绩），但不存检查点
     ranked = true;

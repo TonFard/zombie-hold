@@ -3,8 +3,9 @@ import baked from './hand-fit.json';
 /**
  * TACZ 枪上程序手臂的摆放参数（每把枪一份，左右手各一套）。
  *
- * 手的位置来自枪包里的手臂方块（lefthand_pos / righthand_pos，会跟着动画动）。这里的参数都是相对那个方块的：
- * 位置单位是 TACZ 像素（1/16 格），方向按举枪待机时的画面说（右 / 上 / 前）；旋转单位是度，在手套自己的坐标里转。
+ * 手的位置来自枪包里的手臂方块（lefthand_pos / righthand_pos，会跟着动画动）。这里的位置 / 旋转都是相对那个方块的：
+ * 位置单位是 TACZ 像素（1/16 格，约 2.1 厘米）；旋转单位是度，在手套自己的坐标里转。
+ * 手臂大小 1 = 真人比例（枪模和真枪一样大）。
  *
  * 数值来源：hand-fit.json（调好后烘焙进去的）← 本机 localStorage（F9 手部调节面板里改的，还没烘焙）。
  * 面板「复制全部」导出的 JSON 就是 hand-fit.json 的格式，直接替换即可。
@@ -18,11 +19,17 @@ export interface HandFit {
   rx: number;
   ry: number;
   rz: number;
-  /** 手指弯曲（1 = 默认握拳程度，0 = 伸直） */
+  /** 手指弯曲（1 = 握住握把的程度，0 = 伸直） */
   curl: number;
-  /** 拇指张开角度（度，正 = 往外张） */
+  /** 手指后两节相对第一节的弯曲倍数（托着方护木时第一节弯得多、后两节少） */
+  tip: number;
+  /** 食指相对其它三根手指的弯曲倍数（右手食指搭在扳机上，比握着握把的手指直） */
+  index: number;
+  /** 拇指张开角度（度，0 = 搭在食指上，正 = 往外张） */
   thumb: number;
-  /** 肩膀位置偏移（像素，画面方向：右 / 上 / 前）：决定前臂从哪个方向伸过来 */
+  /** 拇指往掌心那边压多少度（托护木时拇指贴着枪的侧面往上） */
+  thumbUp: number;
+  /** 肩膀位置偏移（×4 像素，画面方向：右 / 上 / 前）。肩膀默认在镜头下方真人肩膀的位置，决定前臂从哪个方向伸过来 */
   sx: number;
   sy: number;
   sz: number;
@@ -37,15 +44,18 @@ export interface GunFit {
   L: HandFit;
 }
 
-export const HAND_KEYS: Array<keyof HandFit> = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'curl', 'thumb', 'sx', 'sy', 'sz', 'elbow'];
+export const HAND_KEYS: Array<keyof HandFit> = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'curl', 'tip', 'index', 'thumb', 'thumbUp', 'sx', 'sy', 'sz', 'elbow'];
 
-const hand = (left: boolean): HandFit => ({ x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, curl: 1, thumb: 0, sx: left ? -1.6 : 1.6, sy: -2.4, sz: 0, elbow: 0 });
+const hand = (): HandFit => ({ x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: 0, curl: 1, tip: 1, index: 1, thumb: 0, thumbUp: 0, sx: 0, sy: 0, sz: 0, elbow: 0 });
 
-export const defaultGunFit = (): GunFit => ({ scale: 1, R: hand(false), L: hand(true) });
+export const defaultGunFit = (): GunFit => ({ scale: 1, R: hand(), L: hand() });
 
 type PartialFit = { scale?: number; R?: Partial<HandFit>; L?: Partial<HandFit> };
 
-const LS_KEY = 'zombie-hold-handfit-v1';
+/**
+ * v1 = 烘焙之前手调了一半的值；v2 = 手臂还是七成大小、肩膀跟着方块走时调的值（参数含义不一样了）。都不再读
+ */
+const LS_KEY = 'zombie-hold-handfit-v3';
 
 function num(v: unknown, d: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? v : d;

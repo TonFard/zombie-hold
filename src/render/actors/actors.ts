@@ -4,10 +4,11 @@ import { ELITE_SCALE } from '../../game/data/modifiers';
 import { ZOMBIES } from '../../game/data/zombies';
 import type { Zombie } from '../../game/entities/zombie';
 import type { Game } from '../../game/sim';
+import { startDeath, updateDeath, type DeathState } from './deaths';
 import { ATTACK_TIME, poseZombie } from './poses';
 import { B, type RigActor } from './rig';
 import { GlbZombie, hasZombieModel } from './zombie-glb';
-import { MODEL_SCALE, attachParts, createZombieActor, type ZombieParts } from './zombie-models';
+import { attachParts, createZombieActor, type ZombieParts } from './zombie-models';
 import { skillPose } from '../../game/systems/boss';
 
 interface ZActor {
@@ -31,9 +32,8 @@ interface Corpse {
   glb: GlbZombie | null;
   group: Group;
   age: number;
-  side: number;
-  yaw: number;
-  scale: number;
+  /** 程序僵尸的死法和倒地的进度（模型僵尸用自己的死亡动画，这里是 null） */
+  death: DeathState | null;
   /** 爆头击杀：脖子断口还要冒多久的血（秒） */
   spurt: number;
   spurtAcc: number;
@@ -44,7 +44,6 @@ const MAX_CORPSES = 36;
 const SPURT_TIME = 1.3;
 /** 嘶吼动作的时长（秒） */
 const SCREAM_TIME = 1.3;
-const ease = (x: number) => x * x * (3 - 2 * x);
 
 /** 把逻辑层的僵尸同步成骨骼模型，驱动动画（第一人称不画玩家身体，手和枪由视角模型负责） */
 const ELITE_RING = new RingGeometry(0.42, 0.55, 32);
@@ -107,20 +106,31 @@ export class Actors {
     this.zombies.delete(z.id);
     za.actor?.setFlash(false);
     za.glb?.die(z.seed, head);
-    // 爆头击杀：头没了（头骨骼缩到脖子顶上那一点），尸体照常倒下
-    if (head) za.actor?.bone(B.head).scale.setScalar(0.001);
     za.group.rotation.order = 'YXZ';
-    this.corpses.push({
-      actor: za.actor,
-      glb: za.glb,
-      group: za.group,
-      age: 0,
-      side: (z.seed % 2 ? 1 : -1) * (0.15 + (z.seed % 7) * 0.04),
-      yaw: z.yaw,
-      scale: MODEL_SCALE[z.kind],
-      spurt: head ? SPURT_TIME : 0,
-      spurtAcc: 1,
-    });
+    let death: DeathState | null = null;
+    if (za.actor) {
+      // 爆头击杀：头没了（头骨骼缩到脖子顶上那一点），尸体照常倒下
+      if (head) za.actor.bone(B.head).scale.setScalar(0.001);
+      // 精英脚下的光环跟着人一起没
+      for (const ch of za.group.children) if ((ch as Mesh).material === ELITE_MAT) ch.visible = false;
+      // 怎么死的决定怎么倒：打死它的那一下往哪推、多猛，它当时在跑还是在半空；倒下 / 飞出去的距离不穿墙
+      const grid = this.game.grid;
+      death = startDeath(za.actor, {
+        kind: z.kind,
+        seed: z.seed,
+        head,
+        x: z.x,
+        z: z.z,
+        yaw: z.yaw,
+        air: z.airY,
+        kbx: z.kbx,
+        kbz: z.kbz,
+        vx: z.vx,
+        vz: z.vz,
+        room: (dx, dz, want) => Math.max(0, grid.rayDist(z.x, z.z, dx, dz, want + 0.15) - 0.15),
+      });
+    }
+    this.corpses.push({ actor: za.actor, glb: za.glb, group: za.group, age: 0, death, spurt: head ? SPURT_TIME : 0, spurtAcc: 1 });
     while (this.corpses.length > MAX_CORPSES) this.removeCorpse(0);
   }
 
@@ -221,19 +231,7 @@ export class Actors {
         this.spurt(c, dt);
         continue;
       }
-      const a = c.actor as RigActor;
-      const fall = ease(clamp(c.age / 0.65, 0, 1));
-      a.group.rotation.set(-fall * Math.PI * 0.5, c.yaw, c.side * fall);
-      a.group.position.y = 0.15 * c.scale * fall - sink;
-      a.bone(B.armUL).rotation.set(-0.3 * fall, 0, 0.85 * fall);
-      a.bone(B.armUR).rotation.set(-0.5 * fall, 0, -0.7 * fall);
-      a.bone(B.armLL).rotation.x = -0.5 * fall;
-      a.bone(B.armLR).rotation.x = -0.3 * fall;
-      a.bone(B.legUL).rotation.set(0.1 * fall, 0, 0.3 * fall);
-      a.bone(B.legUR).rotation.set(-0.2 * fall, 0, -0.22 * fall);
-      a.bone(B.legLL).rotation.x = 0.3 * fall;
-      a.bone(B.head).rotation.set(0.35 * fall, 0, 0.2 * fall);
-      a.bone(B.chest).rotation.x = 0;
+      updateDeath(c.actor as RigActor, c.death as DeathState, c.age, sink);
       this.spurt(c, dt);
     }
   }

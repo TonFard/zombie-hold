@@ -100,4 +100,28 @@ export interface GunJson {
       cooldown?: { empty: number; tactical: number };
     } | null;
   };
+  /** 装在 scope_pos 上的配件 id（public/tacz/_att/<id>/）：scope = 游戏里有瞄准镜时装，sight = 没镜子时装 */
+  attach?: { scope: string | null; sight: string | null };
+}
+
+/** public/tacz/_att/<id>/att.json：瞄具配件 */
+export interface AttJson {
+  id: string;
+  texture: { w: number; h: number };
+  bones: Bone[];
+  display: {
+    /** 筒状放大镜（TACZ 用模板缓冲画镜内画面；我们满举镜时换成 HUD 镜框） */
+    scope: boolean;
+    /** 红点 / 全息 */
+    sight: boolean;
+    zoom: number[];
+    /** 每档放大用第几个瞄准点：1 = scope_view，n = scope_view_n（只用第一档） */
+    views: number[];
+    /** 举镜时枪和镜子的渲染视野（度），null = 用枪自己的 */
+    fov: number | null;
+    /** 枪上的 mount（导轨）骨骼要不要显示 */
+    showMount: boolean;
+    /** 腰射时整枪往下放多少像素（镜子高，免得挡视线） */
+    heightAdjust: number;
+  };
 }

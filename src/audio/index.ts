@@ -1,6 +1,7 @@
 import { ALIVE_CAP, bossFor } from '../game/data/waves';
 import type { WeaponKind } from '../game/data/weapons';
 import type { Game, GameEvents } from '../game/sim';
+import { PLAYER, type TdmGrenade } from '../game/systems/tdm';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import { surfaceAt } from '../game/world/surface';
 import { Ambience } from './ambience';
@@ -53,6 +54,44 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   on('reload', (e) => {
     if (!sampled(e.kind)) sfx.reload(e.start, e.kind);
   });
+  // 对战：人机的枪声（带位置）；自己打中头（没打死）叮一声，打死了再响一声
+  on('soldierShot', (e) => sfx.shot(e.kind, e));
+  on('soldierHit', (e) => {
+    if (e.byPlayer && e.head && (game.tdm.soldiers.find((s) => s.id === e.id)?.hp ?? 0) > 0) sfx.headshot();
+  });
+  on('soldierDied', (e) => {
+    if (!e.byPlayer) return;
+    if (e.head) sfx.headshotKill();
+    else sfx.killConfirm();
+  });
+  // 对战：刀（自己挥的不衰减，别人的带位置）、捡枪、跳下来落地（人机的很轻）
+  on('tdmSwing', (e) => sfx.knifeSwing(e.kind === 2, e.id === PLAYER ? undefined : e));
+  on('tdmStab', (e) => sfx.knifeHit(e.back, e.id === PLAYER ? undefined : e));
+  on('tdmPickup', () => sfx.gunPickup());
+  on('tdmJump', (e) => {
+    if (e.id !== PLAYER) {
+      if (e.land) sfx.land(e);
+    } else if (e.land) sfx.land();
+    else sfx.jump();
+  });
+  // 对战里自己扔雷：拉环、出手（炸的那一声走 explosion）。打僵尸的那套手雷以前就没有这两声，不动它
+  on('grenadeWindup', () => {
+    if (game.tdm.on) sfx.grenadePin();
+  });
+  on('grenadeThrown', () => {
+    if (game.tdm.on) sfx.grenadeThrow();
+  });
+  // 人机扔的雷、雷落地弹起来的那一下：逻辑层没有事件，每帧看一眼飞着的雷自己认（update 里调）
+  const nadeVy = new WeakMap<TdmGrenade, number>();
+  const trackNades = (): void => {
+    for (const n of game.tdm.grenades) {
+      const prev = nadeVy.get(n);
+      if (prev === undefined) {
+        if (n.owner !== PLAYER) sfx.grenadeThrow(n);
+      } else if (prev < -1.2 && n.vy >= 0) sfx.grenadeBounce(n.x, n.z, Math.min(1, -prev / 8));
+      nadeVy.set(n, n.vy);
+    }
+  };
   on('weaponSwitch', () => sfx.weaponSwitch());
   on('slide', () => sfx.slide());
   on('meleeSwing', () => sfx.melee(false));
@@ -178,6 +217,7 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
       engine.lx = game.player.x;
       engine.lz = game.player.z;
       engine.lyaw = getYaw();
+      trackNades();
       ambience.update(dt, Math.min(1, game.zombies.length / (ALIVE_CAP * 0.6)));
     },
     dispose() {

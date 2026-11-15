@@ -1,6 +1,7 @@
+import type { GunCat } from '../data/guns';
 import type { WeaponKind } from '../data/weapons';
 
-/** 5v5 团队死斗里的一个士兵（人机）。玩家自己不是 Soldier，用的还是 PlayerState */
+/** 8v8 对战里的一个士兵（人机）。玩家自己不是 Soldier，用的还是 PlayerState */
 export interface Soldier {
   id: number;
   /** 0 = 玩家这一队（蓝），1 = 敌队（红） */
@@ -17,11 +18,15 @@ export interface Soldier {
   hp: number;
   maxHp: number;
   alive: boolean;
-  /** 死了以后多久复活 */
-  respawnT: number;
-  /** 出生无敌剩余时间 */
-  spawnShield: number;
+  /** 手里的枪：型号（data/guns.ts 的 id）和它的枪类 */
+  gun: string;
   weapon: WeaponKind;
+  /** 金币、护甲（0–100）、头盔 */
+  money: number;
+  armor: number;
+  helmet: boolean;
+  /** 爱买哪一类枪 */
+  taste: GunCat;
   mag: number;
   reloadT: number;
   fireT: number;
@@ -35,6 +40,23 @@ export interface Soldier {
   sinceShot: number;
   /** 最近一次被打至今（受击闪一下、AI 找掩体） */
   sinceHurt: number;
+  /** 脚离地多高（米）：跳起来、站在箱子上；竖直速度 */
+  y: number;
+  vy: number;
+  /** 手里这把枪的备弹 */
+  reserve: number;
+  /** 身上的另一把枪（手里是主武器时它是手枪，换成手枪以后它是主武器）；没有就是 null */
+  alt: { gun: string; mag: number; reserve: number } | null;
+  /** 手里拿的是刀（枪收起来了） */
+  knife: boolean;
+  /** 挥刀：开始挥到现在多久（秒；< 0 = 没在挥）和哪一种（0 = 从右往左横挥，1 = 从左往右，2 = 捅） */
+  meleeT: number;
+  meleeKind: 0 | 1 | 2;
+  /** 身上的手雷；正在扔：抬手还剩多久（> 0 = 手里攥着雷，到 0 出手） */
+  nades: number;
+  throwT: number;
+  /** 掏枪 / 换枪还要多久才能开火 */
+  drawT: number;
   // ---- AI ----
   brain: Brain;
 }
@@ -69,8 +91,31 @@ export interface Brain {
   /** 侧移（交火时左右晃，难打中）方向和剩余时间 */
   strafe: number;
   strafeT: number;
-  /** 负责的路线：0 左翼 1 中路 2 右翼 */
+  /** 走哪条路（map-warehouse 的 ROUTES 下标）、下一个要到的点、顺着走还是倒着走 */
   lane: number;
+  wp: number;
+  dir: 1 | -1;
+  /** 开局先站一会儿再走（大家不同时起步，不然挤成一串）；蹲点的时候也用它 */
+  holdT: number;
+  /** 这一局打算在自己半场的路口蹲多久（秒）再往前压；0 = 直接冲。到了路口就把它换成 holdT */
+  camp: number;
   /** 上次重新思考到现在 */
   thinkT: number;
+  /** 灵活的人：会翻过矮掩体抄近路、挨打的时候跳着躲 */
+  agile: boolean;
+  /** 这一帧想跳；顶着东西走不动多久了 */
+  jump: boolean;
+  stuckT: number;
+  /** 要去捡的那把枪（掉在地上的枪的 id）；多久以后再找一次 */
+  loot: number | null;
+  lootT: number;
+  /** 人躲到掩体后面了，打算往那扔一颗雷；扔的方向 */
+  wantNade: boolean;
+  nadeYaw: number;
+  nadePitch: number;
+  /** 多久以后才再考虑一次要不要躲（免得每一帧都掷骰子）；刚躲过一颗雷，多久以后才再躲 */
+  coverT: number;
+  fleeT: number;
+  /** 对这个目标瞄头还是瞄胸口（看见的时候定下来） */
+  headAim: boolean;
 }

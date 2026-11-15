@@ -77,6 +77,8 @@ export default defineConfig({
         main: fileURLToPath(new URL('./index.html', import.meta.url)),
         konbini: fileURLToPath(new URL('./konbini.html', import.meta.url)),
         assets: fileURLToPath(new URL('./assets.html', import.meta.url)),
+        // 开放世界（废土）预览
+        open: fileURLToPath(new URL('./open.html', import.meta.url)),
       },
     },
   },

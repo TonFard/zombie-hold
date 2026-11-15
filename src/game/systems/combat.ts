@@ -11,6 +11,7 @@ import { damageExplosive, explosiveAt } from './hazards';
 import { SAC_MULT, hitSac } from './boss';
 import { segmentVsZombie } from './hitvolume';
 import { tdmDamage, tdmPlayerShot, tdmSegHit } from './tdm';
+import { playerAirborne } from './tdm-gear';
 
 const DEG = Math.PI / 180;
 /** 母巢的卵囊长在背上：子弹从背后 ±70° 内打在身上算打中卵囊 */
@@ -96,19 +97,20 @@ export function fireWeapon(g: Game): void {
   const cp = Math.cos(pitch);
   const sp = Math.sin(pitch);
   let ox = p.x + sy * cp * MUZZLE_OFFSET;
-  let oy = p.eye + sp * MUZZLE_OFFSET;
+  let oy = p.eye + p.air + sp * MUZZLE_OFFSET;
   let oz = p.z + cy * cp * MUZZLE_OFFSET;
   // 枪口前方就是墙 / 路障时，从眼睛出膛，免得子弹一出来就卡在里面
   if (g.grid.isBlocked(g.grid.cellX(ox), g.grid.cellY(oz))) {
     ox = p.x;
-    oy = p.eye;
+    oy = p.eye + p.air;
     oz = p.z;
   }
   g.events.emit('shot', { kind, mx: ox, mz: oz, yaw: p.yaw });
 
   // 瞄准越充分，散布越小；蹲下再小 20%，滑铲 / 移动时腰射更散
   const moveK = Math.min(1, Math.hypot(p.vx, p.vz) / 3.4);
-  const hip = 1 + 0.35 * (def.moveSpread ?? 1) * moveK * (1 - p.ads) + (p.slide > 0 ? 0.6 : 0);
+  // 对战里跳在半空中开枪：散得很开（落地才打得准）
+  const hip = 1 + 0.35 * (def.moveSpread ?? 1) * moveK * (1 - p.ads) + (p.slide > 0 ? 0.6 : 0) + (playerAirborne(g) ? 2.2 : 0);
   // 升星：冲锋枪 ★2 移动中散布 −30%；轻机枪 ★1 持续开火 2 秒后散布 −40%
   const stars = g.config.stars;
   const starSpread = (kind === 'smg' && stars.smg >= 2 ? lerp(1, STAR_FX.smgMoveSpread, moveK) : 1) * (kind === 'lmg' && stars.lmg >= 1 && p.sustainT >= 2 ? STAR_FX.lmgSustainSpread : 1);
@@ -191,7 +193,7 @@ export function updateBullets(g: Game, dt: number): void {
     if (g.tdm.on) {
       const hit = tdmSegHit(g, b.team ?? 0, b.owner ?? -1, b.x, b.y, b.z, dx, dy, dz, stopT);
       if (hit) {
-        tdmDamage(g, hit, b.kind, b.damage, b.traveled + len * hit.t, b.range, b.owner ?? -1);
+        tdmDamage(g, hit, b.kind, b.damage, b.traveled + len * hit.t, b.range, b.owner ?? -1, ux, uz);
         g.events.emit('impact', { x: b.x + dx * hit.t, y: b.y + dy * hit.t, z: b.z + dz * hit.t, nx: -ux, nz: -uz, flesh: true, zone: hit.head ? 'head' : 'body', kind: b.kind });
         bs.splice(i, 1);
         continue;

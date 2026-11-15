@@ -1,7 +1,7 @@
-import { Euler, Group, Matrix3, Matrix4, Object3D, Quaternion, TextureLoader, Vector3 } from 'three';
+import { Euler, Group, Matrix3, Matrix4, Object3D, Quaternion, TextureLoader, Vector3, type Texture } from 'three';
 import { compileClip, CONSTRAINT, Pose, Track, type CompiledClip, type PlayMode, type Runner, type SfxFn } from './anim';
 import { TaczModel } from './model';
-import type { GunJson, TaczManifest } from './types';
+import type { AttJson, GunJson, TaczManifest } from './types';
 
 /**
  * TACZ 枪械的第一人称表现：模型 + 动画状态机 + 摄像机定位，规则照搬 TACZ 默认状态机
@@ -18,6 +18,9 @@ import type { GunJson, TaczManifest } from './types';
  *
  * 定位：腰射时把 idle_view 节点放到摄像机上，瞄准时换成 iron_view，中间插值；
  * 瞄准时再按 constraint 节点的系数把动画造成的晃动抵消掉一部分，准星才不会乱跳。
+ *
+ * 瞄具配件（AttachmentRender / FirstPersonRenderGunEvent）：镜子挂在枪的 scope_pos 上；装着镜子时瞄准定位
+ * 换成「枪的 scope_pos 路径 + 镜子的 scope_view 路径」，枪自己的 sight（机瞄）隐藏、sight_folded / mount 显示。
  */
 
 /** TACZ 模型空间（1 = 一格）到视角模型场景（米）的缩放。以摄像机为中心等比缩放，画面不变，只是数值接近真实尺寸 */
@@ -52,6 +55,21 @@ interface View {
   q: Quaternion;
 }
 
+/** 一个装在 scope_pos 上的瞄具配件 */
+interface Mount {
+  model: TaczModel;
+  disp: AttJson['display'];
+  /** 挂在 scope_pos 下面的容器（TACZ 渲染配件前先平移 (0, -1.5, 0)） */
+  holder: Group;
+  /** 举镜定位：scope_pos + 镜子的 scope_view；镜子没有 scope_view 时 null（退回机瞄） */
+  aim: View | null;
+}
+
+export interface TaczAttachments {
+  scope?: { json: AttJson; tex: Texture };
+  sight?: { json: AttJson; tex: Texture };
+}
+
 export class TaczRig {
   readonly root: Group;
   readonly model: TaczModel;
@@ -79,6 +97,12 @@ export class TaczRig {
   private readonly idle: View | null;
   private readonly iron: View | null;
   private readonly muzzle: Object3D | null;
+  private readonly mounts: { scope?: Mount; sight?: Mount } = {};
+  /** 现在装着的瞄具（null = 用枪自己的机瞄） */
+  private active: Mount | null = null;
+  private scopeSet: boolean | null = null;
+  /** 瞄准时放到摄像机上的定位（机瞄或镜子） */
+  private aimView: View | null = null;
 
   private moveState: 'idle' | 'walk' | 'run' = 'idle';
   private walkMode = -1;
@@ -104,8 +128,9 @@ export class TaczRig {
 
   constructor(
     readonly json: GunJson,
-    texture: import('three').Texture,
+    texture: Texture,
     private readonly baseUrl: string,
+    atts: TaczAttachments = {},
   ) {
     this.model = new TaczModel(json, texture);
     this.roles = json.roles;
@@ -124,6 +149,65 @@ export class TaczRig {
     const flashAt = this.obj('muzzle_flash') ?? this.muzzle;
     this.flashMount.rotation.y = Math.PI;
     flashAt?.add(this.flashMount);
+
+    const pos = this.obj('scope_pos');
+    if (pos && (atts.scope || atts.sight)) {
+      // 挂点本身的占位方块不画，镜子挂在它下面
+      for (const c of pos.children) c.visible = false;
+      this.model.setVisible('scope_pos', true);
+      for (const slot of ['scope', 'sight'] as const) {
+        const a = atts[slot];
+        if (!a) continue;
+        const model = new TaczModel(a.json, a.tex, 'attachment');
+        const holder = new Group();
+        holder.matrixAutoUpdate = false;
+        holder.matrix.makeTranslation(0, -1.5, 0);
+        holder.visible = false;
+        holder.add(model.root);
+        pos.add(holder);
+        this.mounts[slot] = { model, disp: a.json.display, holder, aim: this.mountView(model, a.json.display.views) };
+      }
+    }
+    this.setScope(false);
+  }
+
+  /**
+   * 镜子的举镜定位 = 镜子瞄准点路径的反向 × 枪 scope_pos 路径的反向（TACZ 把两段路径接起来一起求）。
+   * 瞄准点按 views 的第一档选：1 = scope_view，n = scope_view_n（HAMR 这类镜顶带红点的，主镜是 scope_view_2）
+   */
+  private mountView(att: TaczModel, views: number[] | undefined): View | null {
+    const n = views?.[0] ?? 1;
+    const a = att.positioningInverse(n > 1 ? `scope_view_${n}` : 'scope_view', new Matrix4()) ?? att.positioningInverse('scope_view', new Matrix4());
+    const g = this.model.positioningInverse('scope_pos', new Matrix4());
+    if (!a || !g) return null;
+    const t = new Vector3();
+    const q = new Quaternion();
+    a.multiply(g).decompose(t, q, new Vector3());
+    return { t, q };
+  }
+
+  /** 这把枪有没有可装的瞄准镜（狙击枪 / 升级后的步枪） */
+  get hasScope(): boolean {
+    return !!this.mounts.scope;
+  }
+
+  /**
+   * 游戏里这把枪现在有没有瞄准镜：有就装镜子，没有就装瞄具配件（有的话）或者用枪自己的机瞄。
+   * 每帧调用，没变化时什么都不做
+   */
+  setScope(on: boolean): void {
+    if (on === this.scopeSet) return;
+    this.scopeSet = on;
+    const m = (on ? (this.mounts.scope ?? this.mounts.sight) : this.mounts.sight) ?? null;
+    this.active = m;
+    for (const x of [this.mounts.scope, this.mounts.sight]) if (x) x.holder.visible = x === m;
+    const has = !!m;
+    this.model.setVisible('sight', !has);
+    this.model.setVisible('carry', !has);
+    this.model.setVisible('sight_folded', has);
+    this.model.setVisible('mount', has && !!m?.disp.showMount);
+    this.aimView = m?.aim ?? this.iron;
+    this.fov.ads = m?.disp.fov ?? this.json.display.zoomModelFov;
   }
 
   private obj(name: string): Object3D | null {
@@ -439,9 +523,12 @@ export class TaczRig {
     G.multiply(T.makeTranslation(0, 1.5, 0));
     // 基岩版模型是上下颠倒的，绕 Z 转 180° 翻回来
     G.multiply(T.makeRotationZ(Math.PI));
-    if (this.idle && this.iron) {
-      this.vt.lerpVectors(this.idle.t, this.iron.t, f.ads);
-      this.vq.slerpQuaternions(this.idle.q, this.iron.q, f.ads);
+    const aim = this.aimView ?? this.iron;
+    if (this.idle && aim) {
+      this.vt.lerpVectors(this.idle.t, aim.t, f.ads);
+      this.vq.slerpQuaternions(this.idle.q, aim.q, f.ads);
+      // 装着高的镜子时腰射整枪放低一点（TACZ 的 idle_scope_height_adjust，Java 空间 y 朝下）
+      if (this.active) this.vt.y += (this.active.disp.heightAdjust / 16) * (1 - f.ads);
       this.M.compose(this.vt, this.vq, this.one);
       G.multiply(T.makeTranslation(0, 1.5, 0));
       G.multiply(this.M);
@@ -555,17 +642,17 @@ export class TaczRig {
 
   dispose(): void {
     this.model.dispose();
+    for (const m of [this.mounts.scope, this.mounts.sight]) m?.model.dispose();
   }
 }
 
 /**
  * 读 public/tacz/manifest.json（npm run tacz:import 生成），返回「型号 id → 目录」。
- * 配置里 enabled=false 时不启用；URL 加 ?tacz=1 强制启用、?tacz=0 强制关闭，方便预览。
- * 没导入过（文件不存在）就当作没有 TACZ 枪。
+ * 配置里 enabled=false 时不启用（URL 加 ?tacz=1 强制启用）。旧的程序枪模已经不让选了（以前的 ?tacz=0 去掉了），
+ * 只在没导入过（文件不存在）或者模型还在加载的那一会儿顶一下。
  */
 export async function loadTaczManifest(): Promise<Record<string, string>> {
   const q = new URLSearchParams(window.location.search).get('tacz');
-  if (q === '0') return {};
   let m: TaczManifest;
   try {
     const res = await fetch(`${import.meta.env.BASE_URL}tacz/manifest.json`, { cache: 'no-cache' });
@@ -585,6 +672,21 @@ export async function loadTacz(id: string): Promise<TaczRig> {
   const res = await fetch(`${base}gun.json`);
   if (!res.ok) throw new Error(`${base}gun.json: HTTP ${res.status}`);
   const json = (await res.json()) as GunJson;
-  const tex = await new TextureLoader().loadAsync(`${base}gun.png`);
-  return new TaczRig(json, tex, base);
+  const loader = new TextureLoader();
+  const tex = await loader.loadAsync(`${base}gun.png`);
+  // 瞄具配件：加载失败就不装（枪照样能用，退回机瞄）
+  const atts: TaczAttachments = {};
+  for (const slot of ['scope', 'sight'] as const) {
+    const att = json.attach?.[slot];
+    if (!att) continue;
+    const ab = `${import.meta.env.BASE_URL}tacz/_att/${att}/`;
+    try {
+      const r = await fetch(`${ab}att.json`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      atts[slot] = { json: (await r.json()) as AttJson, tex: await loader.loadAsync(`${ab}att.png`) };
+    } catch (e) {
+      console.warn(`TACZ 配件 ${att} 加载失败：`, e);
+    }
+  }
+  return new TaczRig(json, tex, base, atts);
 }

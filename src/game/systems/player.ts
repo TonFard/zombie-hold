@@ -6,6 +6,9 @@ import { resolveCircleVsGrid } from '../world/collision';
 import type { Game } from '../sim';
 import { fireWeapon, melee } from './combat';
 import { DAZE_SLOW, shove, startPulse, throwGrenade } from './hazards';
+import { tdmFrozen } from './tdm';
+import { passAbove, playerPickup, playerVertical, tdmPlayerInput } from './tdm-gear';
+import { KNIFE } from '../data/shop';
 
 const BASE_SPEED = 3.4;
 const SPRINT_MULT = 1.5;
@@ -66,8 +69,27 @@ export function updatePlayer(g: Game, dt: number): void {
     inp.melee = false;
     inp.grenade = false;
     inp.pulse = false;
+    inp.jump = false;
+    inp.use = false;
     return;
   }
+
+  // 对战的冻结时间：站在原地，可以转头、切枪、买东西
+  if (tdmFrozen(g)) {
+    inp.moveX = 0;
+    inp.moveZ = 0;
+    inp.fire = false;
+    inp.melee = false;
+    inp.sprint = false;
+  }
+  // 对战：1 主武器 / 2 手枪 / 3 刀，Q 换回上一把，V 抽刀挥一下，G 手雷，E 捡枪（都在 tdm-gear.ts）
+  if (g.tdm.on) {
+    if (inp.use) {
+      inp.use = false;
+      playerPickup(g);
+    }
+    tdmPlayerInput(g, dt);
+  } else inp.jump = false;
 
   // ---- G 手雷 / Q 电击脉冲（M12） ----
   if (inp.grenade) {
@@ -162,14 +184,19 @@ export function updatePlayer(g: Game, dt: number): void {
       (wantSprint ? SPRINT_MULT : 1) *
       (1 - st.adsSlow * p.ads) *
       (1 - (1 - CROUCH_MULT) * (inp.crouch ? 1 : 0)) *
-      (g.hz.dazeT > 0 ? DAZE_SLOW : 1);
+      (g.hz.dazeT > 0 ? DAZE_SLOW : 1) *
+      (g.tdm.on && g.tdm.knife ? KNIFE.speed : 1);
     const k = Math.min(1, 14 * dt);
     p.vx += (mx * speed - p.vx) * k;
     p.vz += (mz * speed - p.vz) * k;
   }
   p.x += p.vx * dt;
   p.z += p.vz * dt;
-  if (resolveCircleVsGrid(g.grid, p, p.radius, true) && sliding) p.slide = Math.min(p.slide, 0.08);
+  if (g.tdm.on) {
+    // 对战里能跳：脚比矮掩体高的时候它不挡人，落下来站在它顶上
+    if (resolveCircleVsGrid(g.grid, p, p.radius, true, false, passAbove(g, p.air)) && sliding) p.slide = Math.min(p.slide, 0.08);
+    playerVertical(g, dt);
+  } else if (resolveCircleVsGrid(g.grid, p, p.radius, true) && sliding) p.slide = Math.min(p.slide, 0.08);
 
   // ---- 瞄准 ----
   const ax = inp.aimX - p.x;
@@ -177,7 +204,7 @@ export function updatePlayer(g: Game, dt: number): void {
   if (ax * ax + az * az > 0.04) p.yaw = Math.atan2(ax, az);
 
   // ---- 近战（V）：打断换弹，短暂不能开火 ----
-  if (p.meleeTimer > 0) {
+  if (p.meleeTimer > 0 && !g.tdm.on) {
     const before = p.meleeTimer;
     p.meleeTimer -= dt;
     if (before > MELEE_TIME - MELEE_HIT_AT && p.meleeTimer <= MELEE_TIME - MELEE_HIT_AT) {
@@ -186,7 +213,7 @@ export function updatePlayer(g: Game, dt: number): void {
       if (g.config.extras) shove(g);
     }
   }
-  if (inp.melee) {
+  if (inp.melee && !g.tdm.on) {
     inp.melee = false;
     // M12：V 就是推搡，冷却没好时按了不出手（之前冷却中也能挥一下，枪托的击退看起来和推搡一样）
     const cooling = g.config.extras && g.hz.shoveCd > 0;

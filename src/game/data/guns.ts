@@ -116,3 +116,44 @@ export function applyGun(st: WeaponStats, g: GunDef | undefined): void {
   if (g.add?.pellets) st.pellets += g.add.pellets;
   if (g.add?.pierce) st.pierce += g.add.pierce;
 }
+
+// ------------------------------------------------------------------------------------------ 细分类
+
+/**
+ * 细分类（买枪菜单、军械库里的标签）。枪类（cls）决定手感和数值的底子，只有 6 种；
+ * 细分类按"这把枪实际是什么"分，一共 7 种：多出来的「射手步枪」是从步枪 / 狙击 / 机枪三类里
+ * 挑出来的半自动、大口径的枪（它们的数值本来就偏向"射速慢、单发重"）
+ */
+export type GunCat = 'pistol' | 'smg' | 'shotgun' | 'rifle' | 'dmr' | 'sniper' | 'lmg';
+
+export const GUN_CATS: Array<{ id: GunCat; name: string; note: string }> = [
+  { id: 'pistol', name: '手枪', note: '副武器：便宜，没钱的时候就靠它' },
+  { id: 'smg', name: '冲锋枪', note: '近距离泼水，便宜、跑得快、击杀奖励高' },
+  { id: 'shotgun', name: '霰弹枪', note: '贴脸一枪一个，出了十几米就是挠痒' },
+  { id: 'rifle', name: '突击步枪', note: '全自动、远近都能打，主力' },
+  { id: 'dmr', name: '射手步枪', note: '半自动大口径：两三枪一个，要打得准' },
+  { id: 'sniper', name: '狙击步枪', note: '打中就倒；贵、慢，贴脸很吃亏' },
+  { id: 'lmg', name: '机枪', note: '大弹容压制，重、换弹久' },
+];
+
+/** 和枪类不一样的那几把 */
+const CAT_OVERRIDE: Record<string, GunCat> = {
+  // 7.62 短突：冲锋枪的底子，实际是把短步枪
+  type_81: 'rifle',
+  // 战斗步枪 / 半自动狙击：都归射手步枪
+  scar_h: 'dmr',
+  hk_g3: 'dmr',
+  fn_fal: 'dmr',
+  hcar: 'dmr',
+  sks_tactical: 'dmr',
+  mk14: 'dmr',
+  svd: 'dmr',
+};
+
+/** 这把枪的细分类 */
+export const catOf = (id: string): GunCat => CAT_OVERRIDE[id] ?? GUN_BY_ID[id]?.cls ?? 'rifle';
+
+/** 某个细分类里的枪（按 GUNS 里的顺序） */
+export const gunsIn = (cat: GunCat): GunDef[] => GUNS.filter((g) => catOf(g.id) === cat);
+
+export const catName = (cat: GunCat): string => GUN_CATS.find((c) => c.id === cat)?.name ?? cat;

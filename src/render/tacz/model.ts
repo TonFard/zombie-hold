@@ -35,6 +35,9 @@ const DEG = Math.PI / 180;
 /** 名字带 _pos 的挂点里只有双手是要画的（画的是手臂，不是挂点上的占位方块） */
 const HAND_POS = new Set(['lefthand_pos', 'righthand_pos']);
 
+/** TACZ 的配件挂点（AttachmentType + "_pos"）：BedrockGunModel 把它们隐藏，配件画在这个位置上 */
+const ATTACH_POS = /^(scope|muzzle|stock|grip|laser|extended_mag|bayonet|ammo)_pos$/;
+
 interface Node {
   bone: Bone;
   /** 静止位置（方块单位，Java 空间） */
@@ -60,8 +63,10 @@ export class TaczModel {
   private readonly ghostArm = new MeshBasicMaterial({ color: 0x46c8ff, transparent: true, opacity: 0.35, depthWrite: false });
 
   constructor(
-    readonly json: GunJson,
+    readonly json: Pick<GunJson, 'bones' | 'texture'>,
     texture: Texture,
+    /** 'attachment' = 瞄具配件：分划（division*）在 TACZ 里只透过镜片画，这里不画 */
+    kind: 'gun' | 'attachment' = 'gun',
   ) {
     texture.colorSpace = SRGBColorSpace;
     texture.magFilter = NearestFilter;
@@ -125,13 +130,15 @@ export class TaczModel {
     }
 
     this.setVisible('additional_magazine', false);
-    // 没装配件时的默认外观
+    // 没装配件时的默认外观：只有配件挂点（scope_pos、muzzle_pos……）上的占位方块不画；
+    // 别的 _pos 是普通骨骼（AWP 的 gun_pos 下面挂着 scope_pos），照常显示
     for (const [name] of this.nodes) {
-      if (name.endsWith('_pos') && !HAND_POS.has(name)) this.setVisible(name, false);
+      if (ATTACH_POS.test(name)) this.setVisible(name, false);
     }
     for (const name of ['mag_extended_1', 'mag_extended_2', 'mag_extended_3', 'mount', 'sight_folded', 'handguard_tactical']) this.setVisible(name, false);
     const adapter = this.nodes.get('attachment_adapter');
     if (adapter) for (const o of adapter.objs) for (const c of o.children) if (c.name) c.visible = false;
+    if (kind === 'attachment') for (const [name] of this.nodes) if (name.startsWith('division')) this.setVisible(name, false);
     this.setRest();
   }
 

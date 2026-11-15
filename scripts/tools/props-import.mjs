@@ -2,7 +2,7 @@
 //
 // 用法：
 //   npm run props:import               下载（有缓存就跳过）+ 减面 + 压贴图 + 生成 public/props/manifest.json
-//   npm run props:import -- --only car_sedan1
+//   npm run props:import -- --only car_sedan1          （逗号分隔可以给一串）
 //   npm run props:import -- --textures 只重新导入贴图和 HDRI（模型不动）
 //   npm run props:import -- --refetch  忽略 .vendor 缓存重新下载
 //
@@ -11,6 +11,7 @@
 //   sketchfab        CC-BY，需要 .vendor/sketchfab.token（账号 API token，不进仓库），署名写进 public/props/CREDITS.md。
 //
 // 处理：配置里写了 "tris": N 就用 meshoptimizer 把三角形减到 N 左右（只换索引，顶点不动）；
+// "tex": N = 这个模型的贴图上限（小物件用 512 / 256）；"open": true = 只有开放世界用（主游戏不加载，见 realProps.ts）。
 // 贴图统一缩到 maxTexture 以内，没有透明的转成 jpg（用本机 python + Pillow）。
 // 运行时（src/render/world/realProps.ts）读 manifest，enabled=false 时游戏照旧用程序模型，URL 加 ?props=1 预览。
 import fs from 'node:fs';
@@ -126,6 +127,8 @@ function simplify(gltf, bin, target, maxErr = 0.02) {
     const idx = readAccessor(gltf, bin, p.indices);
     const pos = readAccessor(gltf, bin, p.attributes.POSITION);
     const want = Math.max(36, Math.floor((idx.length * ratio) / 3) * 3);
+    // 很小的零件（表针、把手）：目标数比原来还大，简化器会断言失败，原样留着
+    if (want >= idx.length) continue;
     const [out] = MeshoptSimplifier.simplify(new Uint32Array(idx), pos, 3, want, maxErr, maxErr > 0.02 ? [] : ['LockBorder']);
     if (out.length < 3) continue;
     const pad = (4 - (len % 4)) % 4;
@@ -251,7 +254,7 @@ function writeModel(id, gltf, bin, srcDir, opt) {
       src = path.join(tmp, `img${i}`);
       fs.writeFileSync(src, bin.subarray(bv.byteOffset ?? 0, (bv.byteOffset ?? 0) + bv.byteLength));
     } else src = path.join(srcDir, decodeURIComponent(im.uri));
-    jobs.push([src, path.join(dst, 'textures', `${id}_${i}`), maxTex]);
+    jobs.push([src, path.join(dst, 'textures', `${id}_${i}`), opt.tex ?? maxTex]);
   });
   const outs = resizeImages(jobs);
   (gltf.images ?? []).forEach((im, i) => {
@@ -338,7 +341,7 @@ async function polyhavenTexture(key, id) {
 // ---------------------------------------------------------------- 主流程
 
 await MeshoptSimplifier.ready;
-const ids = args.textures ? [] : args.only ? [args.only] : Object.keys(cfg.assets);
+const ids = args.textures ? [] : args.only ? args.only.split(',').filter(Boolean) : Object.keys(cfg.assets);
 const manifestPath = path.join(outDir, 'manifest.json');
 const prev = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, 'utf8')) : {};
 const manifest = { enabled: !!cfg.enabled, hdri: prev.hdri ?? null, hdriNight: prev.hdriNight ?? null, assets: args.only || args.textures ? prev.assets ?? {} : {}, textures: prev.textures ?? {} };
@@ -349,7 +352,7 @@ for (const id of ids) {
   const opt = cfg.assets[id] ?? {};
   try {
     const r = opt.source === 'sketchfab' ? await sketchfabModel(id, opt) : await polyhavenModel(id, opt);
-    manifest.assets[id] = { file: r.file, tris: r.tris };
+    manifest.assets[id] = opt.open ? { file: r.file, tris: r.tris, open: true } : { file: r.file, tris: r.tris };
     credits[id] = r.credit;
   } catch (e) {
     failed++;

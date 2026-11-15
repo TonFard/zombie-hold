@@ -8,7 +8,8 @@ import { sidearmOk } from '../../game/meta/loadout';
 import { bonusesOf, difficultyUnlocked } from '../../game/meta/progress';
 import { nightMod } from '../../game/data/modifiers';
 import type { MapId } from '../../game/world/maps';
-import { ui } from '../store';
+import { LEVELS, TDM } from '../../game/systems/tdm';
+import { TDM_KEYS, TDM_LEVEL_NOTES, setTdmLevel, ui, type TdmLevel } from '../store';
 import MapPreview from './MapPreview.vue';
 
 /**
@@ -93,6 +94,9 @@ const summary = computed(() => {
   if (b.cardChoices > 3) out.push('卡牌四选一');
   return out;
 });
+
+/** 8v8 的规则和按键：点「？」向上展开 */
+const showTdm = ref(false);
 
 const daily = dailyFor(todayKey());
 const dailyBest = computed(() => ui.save.codex.daily[daily.key]);
@@ -191,7 +195,24 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         <button class="t-btn" :title="`「${nightMod(daily.mod).name}」· 只用${WEAPONS[daily.weapon].name}`" @click="ui.actions.daily()">
           每日挑战 <small>{{ daily.key.slice(5) }} · 最好 {{ dailyBest !== undefined ? `${dailyBest} 夜` : '—' }}</small>
         </button>
-        <button class="t-btn" @click="ui.actions.tdm()">5v5 团队死斗</button>
+        <!-- 8v8 对战：先选人机难度（记在本机），再开打；「？」里是规则和按键 -->
+        <div class="tdm">
+          <div v-if="showTdm" class="tdm-info t-panel">
+            <div class="t-head">8v8 对战 <small>北港仓库</small></div>
+            <p>先赢 {{ TDM.winRounds }} 局，每局一条命。开局的冻结时间里按 B 用金币买枪、护甲、手雷；打空了能捡地上的枪，刀人人都有。</p>
+            <p><b>人机 · {{ LEVELS[ui.tdmLevel].name }}</b>{{ TDM_LEVEL_NOTES[ui.tdmLevel] }}。队友和敌人是同一档。</p>
+            <p class="nob">不吃任何局外加成：大厅里买的生命 / 移速 / 射速、武器台的改装、枪的星级和解锁的型号都不带进去——所有人 {{ TDM.hp }} 血、同一套枪。</p>
+            <div class="tdm-keys">
+              <div v-for="k in TDM_KEYS" :key="k[0]"><kbd>{{ k[0] }}</kbd><span>{{ k[1] }}</span></div>
+            </div>
+          </div>
+          <span class="tdm-cap">8v8 人机</span>
+          <div class="t-seg tdm-seg" role="group" aria-label="8v8 人机难度">
+            <button v-for="(l, i) in LEVELS" :key="l.name" :class="{ on: ui.tdmLevel === i }" :aria-pressed="ui.tdmLevel === i" :title="TDM_LEVEL_NOTES[i]" @click="setTdmLevel(i as TdmLevel)">{{ l.name }}</button>
+          </div>
+          <button class="t-btn" :title="`人机${LEVELS[ui.tdmLevel].name} · 不吃局外加成`" @click="ui.actions.tdm(ui.tdmLevel)">8v8 对战 · 北港仓库</button>
+          <button class="tdm-q" :aria-expanded="showTdm" aria-label="8v8 的规则和按键" title="规则和按键" @click="showTdm = !showTdm">?</button>
+        </div>
       </div>
       <div class="go-wrap">
         <button v-if="confirming" class="t-btn" @click="confirming = false">取消</button>
@@ -465,6 +486,91 @@ em.open {
   color: #aeb8c2;
   background: rgba(111, 208, 232, 0.07);
   border: 1px solid rgba(111, 208, 232, 0.2);
+}
+/* 8v8：难度三选一 + 开打 + 说明 */
+.tdm {
+  position: relative;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-left: 12px;
+  border-left: 1px solid var(--t-line);
+}
+.tdm-cap {
+  margin-right: 2px;
+  font-size: 12px;
+  letter-spacing: 2px;
+  color: var(--t-muted);
+}
+.tdm-seg {
+  flex-wrap: nowrap;
+  gap: 3px;
+}
+.tdm-seg button {
+  flex: none;
+  padding: 9px 10px;
+  font-size: 12px;
+}
+.tdm-q {
+  width: 30px;
+  height: 38px;
+  background: rgba(111, 208, 232, 0.06);
+  border: 1px solid rgba(111, 208, 232, 0.3);
+  color: var(--t-cyan);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+}
+.tdm-q:hover,
+.tdm-q:focus-visible,
+.tdm-q[aria-expanded='true'] {
+  outline: none;
+  background: rgba(111, 208, 232, 0.16);
+  color: #fff;
+}
+.tdm-info {
+  position: absolute;
+  left: 12px;
+  bottom: calc(100% + 8px);
+  width: 470px;
+  padding: 14px 16px;
+  background: var(--t-panel-strong);
+  --corner: rgba(111, 208, 232, 0.7);
+}
+.tdm-info p {
+  margin-top: 8px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: #aeb8c2;
+}
+.tdm-info p b {
+  margin-right: 8px;
+  color: var(--t-gold);
+}
+.tdm-info p.nob {
+  color: var(--t-cyan);
+}
+.tdm-keys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px 14px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--t-line);
+  font-size: 12px;
+  color: var(--t-muted);
+}
+.tdm-keys kbd {
+  display: inline-block;
+  min-width: 22px;
+  margin-right: 8px;
+  padding: 0 6px;
+  border: 1px solid var(--t-line-strong);
+  border-radius: 2px;
+  font: 600 11px/17px var(--hud-font);
+  text-align: center;
+  color: var(--t-text);
 }
 .actions {
   grid-column: 1 / -1;

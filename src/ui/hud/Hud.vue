@@ -29,6 +29,8 @@ const scrapNum = computed(() => (reduced ? hud.scrap : hud.scrapShown));
 const gainOn = computed(() => hud.scrapGain.life > 0.02 && hud.scrapGain.n > 0);
 /** 白天才提示零件箱（夜里去搜刮是送死，不催） */
 const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hud.alive && ui.screen !== 'training');
+/** 对战里手上拿的是刀：右下角不显示弹药，换成刀的两个按键 */
+const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
 </script>
 
 <template>
@@ -127,29 +129,36 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
       <div class="stamina" :class="{ tired: stPct < 25 }"><div class="fill" :style="{ width: stPct + '%' }"></div></div>
     </div>
 
-    <!-- 右下：武器与弹药 -->
-    <div class="br">
+    <!-- 右下：武器与弹药（对战里阵亡以后不显示：人都倒了，枪也掉了） -->
+    <div v-if="!(hud.tdm.on && hud.tdm.dead)" class="br">
       <div class="wrow">
-        <div class="pips">
+        <div v-if="!ui.inTdm" class="pips">
           <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
         </div>
-        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ hud.weaponName }}<small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
+        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ knifeOut ? '匕首' : hud.weaponName }}<small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
       </div>
-      <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
+      <div v-if="knifeOut" class="knifebox">
+        <span><kbd>左键</kbd>横挥</span>
+        <span><kbd>右键</kbd>捅</span>
+        <small>从背后捅一刀毙命 · 拿着刀跑得快</small>
+      </div>
+      <div v-if="!knifeOut" class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
         <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
         <span class="cur">{{ hud.mag }}</span><span class="max">/ {{ hud.magMax }}</span>
         <span v-if="hud.reserve >= 0" class="res" :class="{ out: hud.reserve === 0 }">{{ hud.reserve }}</span>
       </div>
-      <div class="abar" :class="{ reloading: hud.reload >= 0 }">
+      <div v-if="!knifeOut" class="abar" :class="{ reloading: hud.reload >= 0 }">
         <div class="fill" :style="{ width: (hud.reload >= 0 ? hud.reload * 100 : magPct) + '%' }"></div>
       </div>
       <div class="meta">
         <span v-if="stance" class="stance">{{ stance }}</span>
-        <span class="range">射程 <b>{{ hud.range }}</b> 米</span>
+        <span v-if="!knifeOut" class="range">射程 <b>{{ hud.range }}</b> 米</span>
         <span v-if="hud.weightSpeed < 0.995" class="wt" :title="`负重 ${hud.weight.toFixed(1)} 千克`">负重 <b>−{{ Math.round((1 - hud.weightSpeed) * 100) }}%</b></span>
       </div>
       <div class="hint" :class="{ busy: hud.reload >= 0 }">
-        <template v-if="hud.reload >= 0">换弹中…</template>
+        <template v-if="knifeOut"></template>
+        <template v-else-if="hud.reload >= 0">换弹中…</template>
+        <template v-else-if="hud.mag === 0 && hud.reserve === 0 && hud.tdm.on">没子弹了 · 换枪，或按<kbd class="k3">3</kbd>拿刀</template>
         <template v-else-if="hud.mag === 0 && hud.reserve === 0">没子弹了 · 滚轮换枪</template>
         <template v-else-if="hud.mag === 0"><kbd>R</kbd>换弹</template>
       </div>
@@ -177,7 +186,7 @@ const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hu
     <div v-if="hud.locked && hud.alive && adsDot > 0.01" class="adsdot" :style="{ opacity: adsDot }"></div>
 
     <div v-if="!hud.locked && hud.alive && (ui.screen === 'play' || ui.screen === 'training')" class="lockhint">点击画面，继续游戏</div>
-    <div v-if="!hud.alive" class="dead"><span>你倒下了</span></div>
+    <div v-if="!hud.alive && !hud.tdm.on" class="dead"><span>你倒下了</span></div>
   </div>
 </template>
 
@@ -820,6 +829,25 @@ kbd {
 }
 .hint.busy {
   color: var(--hud-accent);
+}
+.hint .k3 {
+  margin: 0 4px;
+}
+/* 对战里手上是刀：弹药的位置换成刀的两个按键 */
+.knifebox {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  margin: 8px 0 4px;
+  font-size: 13px;
+  letter-spacing: 2px;
+  color: var(--hud-text);
+}
+.knifebox small {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--hud-muted);
 }
 
 /* ---------- 瞄准镜 ---------- */

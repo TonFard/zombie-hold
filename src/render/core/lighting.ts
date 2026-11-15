@@ -14,7 +14,6 @@ import {
   ShaderChunk,
   Vector3,
 } from 'three';
-import type { MapData } from '../../game/world/types';
 
 /**
  * 阴影边缘"跑起来就闪"的根因之一：three 的 PCF 用屏幕像素坐标（gl_FragCoord）算一个噪声去旋转 5 个采样点。
@@ -101,7 +100,7 @@ export class Lighting {
   /** 每盏点光源认领的路灯下标（-1 = 空着）和当前亮度 0–1 */
   private readonly lampOwner: number[] = [];
   private readonly lampLevel: number[] = [];
-  private readonly lampPos: Array<{ x: number; z: number }>;
+  private lampPos: ReadonlyArray<{ x: number; z: number; y?: number }>;
   private lampStrength = 1;
   /** 每根路灯下面一块常亮的暖色光斑（贴地加色面片），不算光照，全部一次画完 */
   private readonly lampPools: InstancedMesh;
@@ -116,8 +115,10 @@ export class Lighting {
 
   constructor(
     private readonly scene: Scene,
-    map: MapData,
+    map: { lamps: ReadonlyArray<{ x: number; z: number; y?: number }> },
     shadowSize: number,
+    /** 开放世界：路灯光斑预留多少个（路灯随地点加载而变，见 setLamps） */
+    lampCap = 0,
   ) {
     this.hemi = new HemisphereLight(0xffffff, 0x444444, 1);
     scene.add(this.hemi);
@@ -162,10 +163,10 @@ export class Lighting {
     this.poolMat = new MeshBasicMaterial({ map: poolTexture(), color: 0xffb860, transparent: true, depthWrite: false, blending: AdditiveBlending, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -2 });
     const pg = new PlaneGeometry(9, 9);
     pg.rotateX(-Math.PI / 2);
-    this.lampPools = new InstancedMesh(pg, this.poolMat, Math.max(1, map.lamps.length));
+    this.lampPools = new InstancedMesh(pg, this.poolMat, Math.max(1, map.lamps.length, lampCap));
     this.lampPools.count = map.lamps.length;
     const mtx = new Matrix4();
-    map.lamps.forEach((p, i) => this.lampPools.setMatrixAt(i, mtx.makeTranslation(p.x + 0.4, 0.04, p.z)));
+    map.lamps.forEach((p, i) => this.lampPools.setMatrixAt(i, mtx.makeTranslation(p.x + 0.4, (p.y ?? 0) + 0.04, p.z)));
     this.lampPools.renderOrder = 1;
     scene.add(this.lampPools);
     this.setNight(0);
@@ -198,23 +199,42 @@ export class Lighting {
   }
 
   /** 从目标指向太阳的单位向量 */
+  /** 开放世界：换一批路灯（玩家附近的地点变了）。点光源先全部放手，从 0 淡入 */
+  setLamps(list: ReadonlyArray<{ x: number; z: number; y?: number }>): void {
+    this.lampPos = list;
+    this.lampOwner.fill(-1);
+    this.lampLevel.fill(0);
+    const n = Math.min(list.length, this.lampPools.instanceMatrix.count);
+    const mtx = new Matrix4();
+    for (let i = 0; i < n; i++) {
+      const p = list[i] as { x: number; z: number; y?: number };
+      this.lampPools.setMatrixAt(i, mtx.makeTranslation(p.x + 0.4, (p.y ?? 0) + 0.04, p.z));
+    }
+    this.lampPools.count = n;
+    this.lampPools.instanceMatrix.needsUpdate = true;
+    this.lampPools.computeBoundingSphere();
+  }
+
   readonly dir = new Vector3();
+  /** 开放世界的白天：太阳方向由外面给（null = 按黄昏 / 夜晚插值） */
+  dirOverride: Vector3 | null = null;
 
   /** 让阴影相机跟着目标走，并按目标附近最近的路灯分配有限的点光源 */
-  follow(x: number, z: number, dt: number): void {
+  follow(x: number, z: number, dt: number, y = 0): void {
     const t = this.night;
     const d = [
       DUSK.sunDir[0] + (NIGHT.sunDir[0] - DUSK.sunDir[0]) * t,
       DUSK.sunDir[1] + (NIGHT.sunDir[1] - DUSK.sunDir[1]) * t,
       DUSK.sunDir[2] + (NIGHT.sunDir[2] - DUSK.sunDir[2]) * t,
     ] as const;
-    this.dir.set(d[0], d[1], d[2]).normalize();
+    if (this.dirOverride) this.dir.copy(this.dirOverride).normalize();
+    else this.dir.set(d[0], d[1], d[2]).normalize();
     // 对齐到阴影贴图的一个像素（在光源视角的平面里取整）：阴影随玩家移动时一格一格地走，边缘不会每帧抖动
     const cam = this.sun.shadow.camera;
     const texel = (cam.right - cam.left) / this.sun.shadow.mapSize.x;
     _right.set(this.dir.z, 0, -this.dir.x).normalize();
     _up.crossVectors(this.dir, _right).normalize();
-    _p.set(x, 0, z);
+    _p.set(x, y, z);
     const a = Math.round(_p.dot(_right) / texel) * texel;
     const b = Math.round(_p.dot(_up) / texel) * texel;
     const c = _p.dot(this.dir);
@@ -263,8 +283,8 @@ export class Lighting {
       const own = this.lampOwner[k] as number;
       let target = 0;
       if (own >= 0) {
-        const p = this.lampPos[own] as { x: number; z: number };
-        l.position.set(p.x + 0.4, 4.2, p.z);
+        const p = this.lampPos[own] as { x: number; z: number; y?: number };
+        l.position.set(p.x + 0.4, (p.y ?? 0) + 4.2, p.z);
         const w = Math.min(1, Math.max(0, (ref - (dist.get(own) as number)) / Math.max(1, ref - full)));
         target = w * w * (3 - 2 * w);
       }

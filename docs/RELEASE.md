@@ -35,6 +35,23 @@ npm run release:republish  # 同版本号已经发过时用：删掉旧发布和
 
 日志在 `.logs/release/`：`release.log` 是总流程，其余是每一步的完整输出。覆盖同版本时，旧发布的信息存在 `.logs/release/old-<标签>.json`。
 
+## 本机试玩包：从工作区直接打（不发布）
+
+`npm run release` 只打已提交的 HEAD。想把还没提交的改动打成桌面版自己玩，手动走这几步（2026-11-15 的 1.2.0 就是这样打的）：
+
+```
+NODE_OPTIONS=--max-old-space-size=3072 npx vue-tsc --noEmit      # 类型检查，单独跑（会吃 3 GB 内存）
+npx vite build
+rm -rf dist/vehicles dist/stims dist/melee                         # 只供本机的素材不进包，见下
+npx electron-builder --win -c.electronDist="<仓库>/node_modules/electron/dist"
+node .logs/pack/smoke.mjs                                          # 启动 win-unpacked/Dawn.exe 走一遍三个模式
+```
+
+- **只供本机的素材**（皮卡 `public/vehicles`、消耗品包 `public/stims`、挥刀动作 `public/melee`）授权不允许分发，安装包里不能有。桌面版改成从 `%APPDATA%\zombie-hold\local-assets\<目录>\` 读（`electron/main.cjs` 的 `LOCAL_DIRS`）：包里没有、那里有就用那里的。这台机器上已经拷过一份；重新导入素材以后要再拷一次。别的机器没有这个目录，游戏走自己的替代品（没有车、消耗品用现成道具染色、自己写的挥刀动作）。
+- `node .logs/pack/asarcheck.cjs` 核对包里确实没有这三个目录。
+- 这样打出来的包**不要上传**：它包含没提交的代码，和任何一个提交都对不上。
+- 桌面版的 CSP 放行了 `wasm-unsafe-eval`：生存世界解码模型要编译 WebAssembly，没有它页面会停在「加载植被……」。
+
 ## 玩家数据：更新不清档
 
 更新游戏不能清玩家数据。现在的做法：

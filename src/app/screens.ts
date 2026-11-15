@@ -1,4 +1,5 @@
 import type { Game } from '../game/sim';
+import { canBuy } from '../game/systems/tdm';
 import { hud } from '../ui/hud';
 import { ui, type Screen } from '../ui/store';
 import type { InputController } from './input';
@@ -67,9 +68,23 @@ export class Screens {
     return ui.screen === 'play' || ui.screen === 'training';
   }
 
-  /** 当前界面是否需要推进模拟：菜单 / 大厅的背景也在跑；操作角色时要等鼠标锁定，不让僵尸白打人 */
+  /**
+   * 当前界面是否需要推进模拟：菜单 / 大厅的背景也在跑；操作角色时要等鼠标锁定，不让僵尸白打人。
+   * 对战的购买菜单开着时游戏不停（冻结时间在倒数）
+   */
   get simulating(): boolean {
-    return ui.screen === 'menu' || ui.screen === 'lobby' || (this.isPlaying && this.input.locked);
+    return ui.screen === 'menu' || ui.screen === 'lobby' || ui.screen === 'buy' || (this.isPlaying && this.input.locked);
+  }
+
+  /** B：对战里打开 / 关上购买菜单（现在不能买就不开，返回 false） */
+  toggleBuy(can: boolean): boolean {
+    if (ui.screen === 'buy') {
+      this.set('play');
+      return true;
+    }
+    if (ui.screen !== 'play' || !can) return false;
+    this.set('buy');
+    return true;
   }
 
   /** 正在打一局（不在菜单） */
@@ -100,9 +115,11 @@ export class Screens {
     if (e.repeat) return;
     if (e.code === 'Escape') {
       if (ui.screen === 'play' || ui.screen === 'training') this.set('pause');
-      else if (ui.screen === 'pause' || ui.screen === 'bench') this.set(this.playScreen);
+      else if (ui.screen === 'pause' || ui.screen === 'bench' || ui.screen === 'buy') this.set(this.playScreen);
     } else if (e.code === 'KeyE' && ui.screen === 'bench' && !this.benchJustOpened) {
       this.set('play');
+    } else if (e.code === 'KeyB' && this.game.tdm.on) {
+      this.toggleBuy(canBuy(this.game));
     }
     this.benchJustOpened = false;
   }

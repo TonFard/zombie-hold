@@ -126,7 +126,7 @@ export function updateBuildMode(g: Game, dt: number): void {
     inp.toggleBuild = false;
     g.events.emit('buildMode', { on: g.buildMode });
   }
-  if (inp.use) {
+  if (inp.use && !g.tdm.on) {
     inp.use = false;
     if (g.player.alive) repairNearby(g);
   }
