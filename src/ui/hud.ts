@@ -1,16 +1,18 @@
 import { reactive } from 'vue';
 import { costOf, type StructureKind } from '../game/data/structures';
-import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, statsAt, sustainedDps, weightOf, type WeaponKind } from '../game/data/weapons';
+import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, effectiveStats, statsAt, sustainedDps, weightOf, type WeaponKind } from '../game/data/weapons';
 import { CARRY_MAX, type Game } from '../game/sim';
 import { reasonText } from '../game/systems/building';
 import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifiers';
-import { PULSE } from '../game/systems/hazards';
 import { HALF_H, HALF_W } from '../game/world/grid';
 import type { Phase } from '../game/systems/run';
 import { CARD_BY_ID, type CardRarity } from '../game/data/cards';
 import type { MetaApplied } from '../game/config';
 import { STRUCTURES } from '../game/data/structures';
-import { ZOMBIES, type ZombieKind } from '../game/data/zombies';
+import { BOSS_KINDS, ZOMBIES, type ZombieKind } from '../game/data/zombies';
+import { ZOMBIE_INTEL } from '../game/data/zombie-intel';
+import { nearAirdropGun } from '../game/systems/airdrop';
+import { ui } from './store';
 import { HEAL_TICK, POOL_PER_TICK } from '../game/data/heal';
 import { bossFor } from '../game/data/waves';
 import { LEVELS, TDM, aliveCount, canBuy, playerPrimary } from '../game/systems/tdm';
@@ -81,6 +83,24 @@ export interface WeaponRow {
   weight: number;
 }
 
+/**
+ * 射击方式（HUD 上枪名下面那一行）。这个游戏里每把枪都是按住左键连发、打空了自动换弹，区别只在射速，
+ * 所以不写「半自动 / 全自动」（写了反而和「按住连发」对不上），直接写每秒几发
+ */
+const fireModeOf = (rate: number): string => `按住连发 · ${rate.toFixed(1)} 发/秒`;
+
+/** 每秒帧数：应用层每帧报一次，半秒算一次平均（数字不会一直跳） */
+let fpsN = 0;
+let fpsT = 0;
+export function tickFps(dt: number): void {
+  fpsN++;
+  fpsT += dt;
+  if (fpsT < 0.5) return;
+  hud.fps = Math.round(fpsN / fpsT);
+  fpsN = 0;
+  fpsT = 0;
+}
+
 const specialsOf = (kind: WeaponKind, tier: number): string[] => {
   const st = statsAt(kind, tier);
   const out: string[] = [];
@@ -107,20 +127,16 @@ export const hud = reactive({
   /** 手上这把枪的星级（0–3），名字按星级上色 */
   weaponStars: 0,
   weaponKind: 'pistol' as WeaponKind,
-  /** M12：手雷、推搡、手电、脉冲、连杀、词缀和挑战 */
+  /** M12：手雷、手电、连杀、词缀和挑战 */
   extras: {
     on: false,
     frags: 0,
     fires: 0,
     useFire: false,
-    shoveCd: 0,
     throwCd: 0,
     throwing: false,
     battery: 1,
     flashOn: false,
-    pulseCd: 0,
-    pulseCharge: 0,
-    pulseNear: false,
     combo: 0,
     comboMult: 1,
     mod: '',
@@ -146,6 +162,16 @@ export const hud = reactive({
   magMax: 0,
   /** 备弹：-1 = 无限（手枪 / 沙盒） */
   reserve: -1,
+  /** 弹匣里每一发画一格的时候一行几格（弹匣大的枪画成一条而不是一格一格） */
+  magCells: 0,
+  /** 射击方式（写在枪名下面）：按住连发 · 每秒几发 */
+  fireMode: '',
+  /** 身上的另一把枪（右下角小一号的那一行）：名字、数字键、弹匣；没有就是空串 */
+  other: { name: '', key: 0, mag: 0, magMax: 0, icon: '' },
+  /** 手上这把枪的侧视图（TACZ 模型画的；还没画好是空串） */
+  gunIcon: '',
+  /** 每秒帧数（左下角角落里的小字） */
+  fps: 0,
   /** 身上的重量（千克）和它带来的移速倍率 */
   weight: 0,
   weightSpeed: 1,
@@ -218,6 +244,10 @@ export const hud = reactive({
   boxDist: 99,
   /** 卡牌「战意」当前的伤害加成（0.12 = +12%） */
   comboDmg: 0,
+  /** 第一次遇到的僵尸：左边弹出的情报卡（名字、标签、能力、对策）。id 自增让组件重播进场动画，life 1→0 */
+  intel: { id: 0, name: '', boss: false, hp: 0, tags: [] as string[], ability: '', counter: '', life: 0 },
+  /** 站在开着的空投箱旁边：箱里那把试用枪和这一类现在用的型号的对比（d：1 变好 / -1 变差 / 0 一样） */
+  dropGun: { on: false, name: '', cls: '', cur: '', icon: '', inHand: false, rows: [] as Array<{ k: string; a: string; b: string; d: number }> },
   /** 8v8 对战 */
   tdm: {
     on: false,
@@ -360,6 +390,77 @@ const STRUCT_CODE: Record<string, number> = { barricade: 0, turret: 1, spikes: 2
 
 let pendingBox = false;
 let pendingDrop = false;
+
+/** 这一局已经提示过的僵尸种类、还没轮到显示的 */
+const intelSeen = new Set<ZombieKind>();
+const intelQueue: ZombieKind[] = [];
+/**
+ * 刷出来一只僵尸：图鉴里还没有它的击杀记录（known = false）、这一局也没提示过，就排队弹一张情报卡，
+ * 告诉玩家它会干什么、怎么对付
+ */
+export function noteZombie(kind: ZombieKind, known: boolean): void {
+  if (known || intelSeen.has(kind)) return;
+  intelSeen.add(kind);
+  intelQueue.push(kind);
+}
+
+/** 情报卡：上一张放完了就换下一张（普通僵尸 9 秒，首领 12 秒） */
+function syncIntel(live: boolean, dt: number): void {
+  const it = hud.intel;
+  if (!live) {
+    intelQueue.length = 0;
+    it.life = 0;
+    return;
+  }
+  if (it.life > 0) it.life = Math.max(0, it.life - dt / (it.boss ? 12 : 9));
+  if (it.life > 0 || !intelQueue.length) return;
+  const kind = intelQueue.shift() as ZombieKind;
+  const info = ZOMBIE_INTEL[kind];
+  it.name = ZOMBIES[kind].name;
+  it.boss = BOSS_KINDS.includes(kind);
+  it.hp = ZOMBIES[kind].hp;
+  it.tags = info.tags;
+  it.ability = info.ability;
+  it.counter = info.counter;
+  it.life = 1;
+  it.id++;
+}
+
+let dropKey = '';
+/** 空投箱里的试用枪：站在箱子旁边时算一次新旧对比（型号或等级变了才重算） */
+function syncDropGun(game: Game): void {
+  const dg = hud.dropGun;
+  const def = nearAirdropGun(game) && !game.buildMode ? GUN_BY_ID[game.airdrop.offer] : undefined;
+  dg.on = !!def;
+  if (!def) {
+    dropKey = '';
+    return;
+  }
+  const cls = def.cls;
+  const slot = game.loadout[cls];
+  dg.inHand = game.player.weapon === cls;
+  // 图标是按需加载的：没好之前是空串，每次同步都再要一次
+  dg.icon = ui.gfx.gunIcon(def.id);
+  const key = `${def.id}:${slot.tier}:${game.config.guns[cls]}`;
+  if (key === dropKey) return;
+  dropKey = key;
+  const mods = game.config.weaponMods[cls];
+  const a = game.statsOf(cls, slot.tier);
+  const b = effectiveStats(cls, slot.tier, mods, def);
+  const row = (k: string, x: number, y: number, fmt: (v: number) => string, higher: boolean) => ({ k, a: fmt(x), b: fmt(y), d: fmt(x) === fmt(y) ? 0 : (y > x) === higher ? 1 : -1 });
+  const f0 = (v: number): string => v.toFixed(0);
+  dg.name = def.name;
+  dg.cls = WEAPONS[cls].name;
+  dg.cur = game.weaponName(cls);
+  dg.rows = [
+    row('DPS', sustainedDps(a), sustainedDps(b), f0, true),
+    row('伤害', a.damage * a.pellets, b.damage * b.pellets, f0, true),
+    row('射速', a.rate, b.rate, (v) => v.toFixed(1), true),
+    row('弹匣', a.mag, b.mag, f0, true),
+    row('换弹', a.reload, b.reload, (v) => `${v.toFixed(1)}s`, false),
+    row('重量', weightOf(cls, mods, game.gunOf(cls)), weightOf(cls, mods, def), (v) => `${v.toFixed(1)}kg`, false),
+  ];
+}
 /** 零件箱被捡走：下一次零件收入的"+N"标成零件箱 */
 export function markBoxTaken(): void {
   pendingBox = true;
@@ -398,6 +499,8 @@ function syncFeedback(game: Game, dt: number): void {
   g.life = Math.max(0, g.life - dt * 0.55);
   hud.healPop.life = Math.max(0, hud.healPop.life - dt * 0.8);
   hud.ammoPop.life = Math.max(0, hud.ammoPop.life - dt * 0.8);
+  syncIntel(live && !game.tdm.on, dt);
+  syncDropGun(game);
   for (const k in hud.procs) {
     const v = (hud.procs[k] as number) - dt * 1.6;
     if (v <= 0) delete hud.procs[k];
@@ -653,6 +756,17 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.sliding = p.slide > 0;
   hud.mag = slot.mag;
   hud.magMax = st.mag;
+  // 一发一格最多画 40 格，再多（轻机枪 100 发）就画成一条
+  hud.magCells = st.mag <= 40 ? st.mag : 0;
+  hud.fireMode = fireModeOf(st.rate * game.mods.fireRate);
+  hud.gunIcon = ui.gfx.gunIcon(game.config.guns[p.weapon]);
+  const others = game.carried().filter((k) => k !== p.weapon);
+  const ok = others[0];
+  hud.other.name = ok ? game.weaponName(ok) : '';
+  hud.other.key = ok ? WEAPON_ORDER.indexOf(ok) + 1 : 0;
+  hud.other.mag = ok ? game.loadout[ok].mag : 0;
+  hud.other.magMax = ok ? game.statsOf(ok).mag : 0;
+  hud.other.icon = ok ? ui.gfx.gunIcon(game.config.guns[ok]) : '';
   const res = game.reserveOf(p.weapon);
   hud.reserve = res === Infinity ? -1 : res;
   const wt = game.weightNow();
@@ -728,7 +842,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
         canBuy: state === 'ok',
         short: state === 'scrap' ? Math.ceil(def.price - game.scrap) : 0,
         swapOut: (!slot.owned || !slot.carried) && game.config.extras && game.carried().length >= CARRY_MAX ? game.weaponName(p.weapon) : '',
-        lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁（大厅 · 军械库）',
+        lockNote: !locked ? '' : game.config.daily ? '每日挑战只能用限定武器' : '未解锁 · 在大厅的军械库解锁后直接带进来',
         canUpgrade: slot.owned && !!up && game.scrap >= up.cost,
         specials: specialsOf(k, slot.owned ? slot.tier : MAX_TIER),
         range: game.statsOf(k, slot.tier).range,
@@ -749,14 +863,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
     x.frags = h.frags;
     x.fires = h.fires;
     x.useFire = h.useFire && h.fires > 0;
-    x.shoveCd = h.shoveCd;
     x.throwCd = h.throwCd;
     x.throwing = h.throwT > 0;
     x.battery = game.battery / FLASHLIGHT.battery;
     x.flashOn = game.flashOn;
-    x.pulseCd = h.pulseCd;
-    x.pulseCharge = h.pulseCharge;
-    x.pulseNear = Math.hypot(p.x - game.core.x, p.z - game.core.z) <= PULSE.reach;
     x.combo = game.comboT > 0 ? game.combo : 0;
     x.comboMult = comboMult(game.combo);
     x.mod = run.mod;

@@ -28,12 +28,6 @@ export const GAS_DPS = 9;
 /** 手雷：每个白天补到爆炸 2 颗、燃烧 1 颗；投掷速度、引信、爆炸 / 燃烧 */
 export const GRENADE = { max: 2, fireMax: 1, speed: 14, fuse: 1.6, windup: 0.45, cd: 1.6, frag: { radius: 3.6, damage: 160 }, fire: { radius: 3, damage: 40, burn: 4, dps: 22 } };
 
-/** 推搡：冷却、范围、击退、硬直 */
-export const SHOVE = { cd: 4, range: 2.0, arc: 70 * (Math.PI / 180), push: 5, stun: 1 };
-
-/** 发电机电击脉冲：触发距离、充能、半径、伤害、眩晕、冷却 */
-export const PULSE = { reach: 6, charge: 1.5, radius: 8, damage: 40, stun: 2, cd: 60 };
-
 /** 吐酸者的酸团：飞行速度、落点酸池半径 / 持续、直接命中伤害 */
 export const SPIT = { speed: 9, pool: 1.3, life: 4, hit: 12 };
 
@@ -103,17 +97,13 @@ export interface HazardState {
   fires: number;
   /** 下一颗扔燃烧弹（G 切换种类在界面上做） */
   useFire: boolean;
-  shoveCd: number;
   /** 投掷：拉环 / 抬手的剩余时间（> 0 正在扔，到 0 才出手），投掷冷却 */
   throwT: number;
   throwCd: number;
-  /** 电击脉冲：充能剩余（> 0 正在充能）、冷却剩余 */
-  pulseCharge: number;
-  pulseCd: number;
 }
 
 export function newHazards(): HazardState {
-  return { hazards: [], explosives: [], spits: [], thrown: [], marks: [], dazeT: 0, frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, shoveCd: 0, throwT: 0, throwCd: 0, pulseCharge: 0, pulseCd: 0 };
+  return { hazards: [], explosives: [], spits: [], thrown: [], marks: [], dazeT: 0, frags: GRENADE.max, fires: GRENADE.fireMax, useFire: false, throwT: 0, throwCd: 0 };
 }
 
 /** 被震慑时玩家的移动速度倍率 */
@@ -219,55 +209,6 @@ function releaseGrenade(g: Game): void {
   g.events.emit('grenadeThrown', { fire });
 }
 
-/** 推搡：前方扇形内的僵尸被推开并硬直 1 秒 */
-export function shove(g: Game): number {
-  const h = g.hz;
-  const p = g.player;
-  if (!p.alive || h.shoveCd > 0) return 0;
-  h.shoveCd = SHOVE.cd * g.mods.shoveCd;
-  const fx = Math.sin(p.yaw);
-  const fz = Math.cos(p.yaw);
-  let n = 0;
-  for (const z of g.zombies) {
-    if (!z.alive) continue;
-    const dx = z.x - p.x;
-    const dz = z.z - p.z;
-    const d = Math.hypot(dx, dz);
-    if (d - z.radius > SHOVE.range) continue;
-    const a = Math.acos(clamp((dx * fx + dz * fz) / (d || 1), -1, 1));
-    if (a > SHOVE.arc) continue;
-    const mass = (z.radius / 0.32) ** 2;
-    z.kbx += ((dx / (d || 1)) * SHOVE.push) / mass;
-    z.kbz += ((dz / (d || 1)) * SHOVE.push) / mass;
-    z.stunT = Math.max(z.stunT, z.def.boss ? SHOVE.stun * 0.3 : SHOVE.stun);
-    n++;
-  }
-  g.events.emit('shove', { hits: n });
-  return n;
-}
-
-/** Q：在发电机附近开始充能电击脉冲 */
-export function startPulse(g: Game): boolean {
-  const h = g.hz;
-  const p = g.player;
-  if (!p.alive || h.pulseCd > 0 || h.pulseCharge > 0) return false;
-  if (Math.hypot(p.x - g.core.x, p.z - g.core.z) > PULSE.reach) return false;
-  h.pulseCharge = PULSE.charge;
-  g.events.emit('pulse', { stage: 'charge', x: g.core.x, z: g.core.z, radius: PULSE.radius });
-  return true;
-}
-
-function firePulse(g: Game): void {
-  const h = g.hz;
-  h.pulseCd = PULSE.cd;
-  g.events.emit('pulse', { stage: 'fire', x: g.core.x, z: g.core.z, radius: PULSE.radius });
-  for (const z of g.zombies) {
-    if (!z.alive || Math.hypot(z.x - g.core.x, z.z - g.core.z) - z.radius > PULSE.radius) continue;
-    z.stunT = Math.max(z.stunT, PULSE.stun);
-    g.damageZombie(z, PULSE.damage, { src: 'pulse' });
-  }
-}
-
 // ---------------------------------------------------------------- 吐酸者
 
 /** 吐一团酸：瞄准目标的落点，抛物线飞 */
@@ -354,21 +295,12 @@ function igniteGas(g: Game, x: number, z: number, r: number): void {
 
 export function updateHazards(g: Game, dt: number): void {
   const h = g.hz;
-  h.shoveCd = Math.max(0, h.shoveCd - dt);
   h.throwCd = Math.max(0, h.throwCd - dt);
   if (h.throwT > 0) {
     h.throwT -= dt;
     if (h.throwT <= 0) {
       h.throwT = 0;
       releaseGrenade(g);
-    }
-  }
-  h.pulseCd = Math.max(0, h.pulseCd - dt);
-  if (h.pulseCharge > 0) {
-    h.pulseCharge -= dt;
-    if (h.pulseCharge <= 0) {
-      h.pulseCharge = 0;
-      firePulse(g);
     }
   }
 

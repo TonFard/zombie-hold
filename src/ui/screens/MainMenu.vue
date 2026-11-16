@@ -48,7 +48,7 @@ const openWorld = (mode?: 'bio'): void => {
           <b>继续生存</b><small>CONTINUE · 第 {{ cp.night }} 天 · 生命 {{ cp.hp }}/{{ cp.maxHp }}</small>
         </button>
         <button class="item" :class="{ hot: !cp }" @click="ui.actions.enterLobby()">
-          <b>{{ cp ? '指挥中心' : '开始生存' }}</b><small>{{ cp ? 'COMMAND · 出征 / 武器台 / 军械库' : 'NEW GAME · 进入据点' }}</small>
+          <b>{{ cp ? '指挥中心' : '开始生存' }}</b><small>{{ cp ? 'COMMAND · 出征 / 仓库 / 军械库' : 'NEW GAME · 进入据点' }}</small>
         </button>
         <button class="item" @click="ui.actions.training()"><b>训练场</b><small>TRAINING · 试枪、练爆头</small></button>
         <button class="item" @click="openWorld()"><b>生存世界</b><small>OPEN WORLD · 空手开局、搜刮、开车</small></button>
@@ -80,17 +80,17 @@ const openWorld = (mode?: 'bio'): void => {
             <div><b>鼠标</b><span>转动视角（点击画面锁定鼠标）</span></div>
             <div><b>左键 / 右键</b><span>射击 / 瞄准</span></div>
             <div><b>Shift</b><span>冲刺</span></div>
+            <div><b>空格</b><span>跳（能跳上箱子、沙袋）</span></div>
             <div><b>C</b><span>蹲下；冲刺中按 = 滑铲</span></div>
             <div><b>R</b><span>换弹</span></div>
             <div><b>1 – 7</b><span>切换武器</span></div>
-            <div><b>V</b><span>近战 + 推搡</span></div>
+            <div><b>V</b><span>枪托近战</span></div>
             <div><b>G / B</b><span>手雷 / 切换爆炸 · 燃烧</span></div>
           </div>
           <div class="keys">
             <div><b>T</b><span>手电筒（会引来僵尸）</span></div>
-            <div><b>Q</b><span>发电机旁：电击脉冲</span></div>
             <div><b>F</b><span>建造模式</span></div>
-            <div><b>E</b><span>工坊 / 修理 / 搜刮</span></div>
+            <div><b>E</b><span>工坊 / 修理 / 换上空投里的枪</span></div>
             <div><b>I</b><span>检视武器</span></div>
             <div><b>Tab</b><span>属性 · 武器 · 战况</span></div>
             <div><b>Enter</b><span>提前开始夜晚</span></div>

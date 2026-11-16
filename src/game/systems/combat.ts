@@ -6,7 +6,7 @@ import { WEAPONS, falloffAt, type WeaponKind } from '../data/weapons';
 import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Zombie } from '../entities/zombie';
-import type { Game } from '../sim';
+import { CARD_FX, type Game } from '../sim';
 import { damageExplosive, explosiveAt } from './hazards';
 import { SAC_MULT, hitSac } from './boss';
 import { segmentVsZombie } from './hitvolume';
@@ -134,14 +134,16 @@ export function fireWeapon(g: Game): void {
       vx: Math.sin(yaw) * c * def.muzzle,
       vy: Math.sin(pit) * def.muzzle,
       vz: Math.cos(yaw) * c * def.muzzle,
-      damage: st.damage * g.mods.damage * starDmg,
+      // 卡牌「火力压制」：一直按着扳机，越打越疼
+      damage: st.damage * g.mods.damage * starDmg * (g.mods.sustain > 0 ? 1 + g.mods.sustain * Math.min(CARD_FX.sustainCap, p.sustainT) : 1),
       // 狙击 ★3：穿透 +1
-      pierceLeft: st.pierce + (kind === 'sniper' && stars.sniper >= 3 ? STAR_FX.sniperPierce : 0),
+      pierceLeft: st.pierce + g.mods.pierce + (kind === 'sniper' && stars.sniper >= 3 ? STAR_FX.sniperPierce : 0),
       traveled: 0,
       range: st.range,
-      burn: st.burn,
+      burn: st.burn + g.mods.burn,
       // 轻机枪 ★2：减速 +15%（只在本来就有减速时）
-      slowHit: st.slowHit > 0 && kind === 'lmg' && stars.lmg >= 2 ? Math.min(0.8, st.slowHit + STAR_FX.lmgSlow) : st.slowHit,
+      // 卡牌「寒霜弹头」：和枪自己的减速取大的
+      slowHit: Math.max(g.mods.slow, st.slowHit > 0 && kind === 'lmg' && stars.lmg >= 2 ? Math.min(0.8, st.slowHit + STAR_FX.lmgSlow) : st.slowHit),
       // 手枪 ★1 / 狙击 ★2：爆头击杀返弹 +1
       refund: st.refund + (kind === 'pistol' && stars.pistol >= 1 ? STAR_FX.pistolRefund : 0) + (kind === 'sniper' && stars.sniper >= 2 ? STAR_FX.sniperRefund : 0),
       hit: [],
@@ -240,6 +242,8 @@ export function updateBullets(g: Game, dt: number): void {
       if (crit) dmg *= 2;
       // 卡牌「战意」：连杀越高伤害越高；「近身狂暴」：3 米内伤害更高
       if (g.mods.comboDamage > 0 && g.combo > 0 && g.comboT > 0) dmg *= 1 + g.mods.comboDamage * Math.min(10, g.combo);
+      // 卡牌「背水一战」：自己血少的时候打得更疼
+      if (own && g.mods.lowHpDamage > 0 && g.player.hp < g.player.maxHp * CARD_FX.lowHp) dmg *= 1 + g.mods.lowHpDamage;
       // 近身：卡牌「近身狂暴」和霰弹枪自带的贴脸加成（两者相乘）
       // 霰弹 ★1：3 米内再 +20%
       const closeK = g.mods.closeDamage * (WEAPONS[b.kind].close ?? 1) * (own && b.kind === 'shotgun' && stars.shotgun >= 1 ? STAR_FX.shotgunClose : 1);
@@ -258,7 +262,7 @@ export function updateBullets(g: Game, dt: number): void {
       const kb = knockback(dmg, c.z) * (WEAPONS[b.kind].knock ?? 1) * (own && b.kind === 'shotgun' && stars.shotgun >= 2 ? STAR_FX.shotgunKnock : 1);
       const killed = g.damageZombie(c.z, dmg, { crit, head: c.head, kx: ux * kb, kz: uz * kb, burn: b.burn, ...(b.owner === undefined || b.owner < 0 ? { weapon: b.kind } : {}) });
       if (b.slowHit > 0 && !killed) {
-        c.z.slowT = 1.2;
+        c.z.slowT = CARD_FX.slowTime;
         c.z.slowK = b.slowHit;
       }
       // 霰弹 ★3：击杀让周围 2 米的僵尸硬直 0.5 秒

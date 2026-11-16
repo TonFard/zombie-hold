@@ -158,6 +158,13 @@ function startDay(g: Game, first = false): void {
   if (!first) g.player.hp = Math.min(g.player.maxHp, g.player.hp + 30);
   let sub = '搜刮零件、布置防线、升级武器。按 Enter 可提前开始夜晚';
   if (g.config.extras) {
+    // 卡牌「军需官」：每个白天开始多给一笔零件（第一天还没有牌）
+    if (g.mods.dayScrap > 0) {
+      const extra = Math.round(g.mods.dayScrap);
+      g.scrap += extra;
+      g.scrapEarned += extra;
+      g.events.emit('scrap', { x: g.player.x, z: g.player.z, amount: extra });
+    }
     // 手雷补到 2 颗；预告今晚
     g.hz.frags = Math.max(g.hz.frags, GRENADE.max + g.mods.extraFrags);
     g.hz.fires = Math.max(g.hz.fires, GRENADE.fireMax);
@@ -189,6 +196,9 @@ function startNight(g: Game): void {
   r.chBreached = false;
   r.chWindow = [];
   r.chDone = false;
+  // 卡牌「不屈」：每夜一次
+  g.fx.revived = 0;
+  g.fx.guard = 0;
   r.total = Math.round(nightCount(r.night) * g.config.zombieCount * (r.mod ? m.count : 1) * (g.config.extras ? RANKED_DENSITY.count : 1));
   r.toSpawn = r.total;
   r.spawnTimer = 2.5;

@@ -5,7 +5,7 @@ import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
 import { resolveCircleVsGrid } from '../world/collision';
 import type { Game } from '../sim';
 import { fireWeapon, melee } from './combat';
-import { DAZE_SLOW, shove, startPulse, throwGrenade } from './hazards';
+import { DAZE_SLOW, throwGrenade } from './hazards';
 import { tdmFrozen } from './tdm';
 import { passAbove, playerPickup, playerVertical, tdmPlayerInput } from './tdm-gear';
 import { KNIFE } from '../data/shop';
@@ -89,17 +89,14 @@ export function updatePlayer(g: Game, dt: number): void {
       playerPickup(g);
     }
     tdmPlayerInput(g, dt);
-  } else inp.jump = false;
+  }
 
-  // ---- G 手雷 / Q 电击脉冲（M12） ----
+  // ---- G 手雷（M12）。Q 以前是发电机电击脉冲，去掉了（对战里的 Q 在 tdmPlayerInput 里已经读走） ----
   if (inp.grenade) {
     inp.grenade = false;
     if (g.config.extras && !g.buildMode) throwGrenade(g);
   }
-  if (inp.pulse) {
-    inp.pulse = false;
-    if (g.config.extras) startPulse(g);
-  }
+  inp.pulse = false;
 
   // ---- 切枪 ----
   if (inp.select > 0) {
@@ -185,6 +182,8 @@ export function updatePlayer(g: Game, dt: number): void {
       (1 - st.adsSlow * p.ads) *
       (1 - (1 - CROUCH_MULT) * (inp.crouch ? 1 : 0)) *
       (g.hz.dazeT > 0 ? DAZE_SLOW : 1) *
+      // 卡牌「杀戮冲刺」：刚用枪打死过僵尸
+      (g.fx.rush > 0 ? 1 + g.mods.killSpeed : 1) *
       (g.tdm.on && g.tdm.knife ? KNIFE.speed : 1);
     const k = Math.min(1, 14 * dt);
     p.vx += (mx * speed - p.vx) * k;
@@ -192,11 +191,9 @@ export function updatePlayer(g: Game, dt: number): void {
   }
   p.x += p.vx * dt;
   p.z += p.vz * dt;
-  if (g.tdm.on) {
-    // 对战里能跳：脚比矮掩体高的时候它不挡人，落下来站在它顶上
-    if (resolveCircleVsGrid(g.grid, p, p.radius, true, false, passAbove(g, p.air)) && sliding) p.slide = Math.min(p.slide, 0.08);
-    playerVertical(g, dt);
-  } else if (resolveCircleVsGrid(g.grid, p, p.radius, true) && sliding) p.slide = Math.min(p.slide, 0.08);
+  // 能跳（空格）：脚比矮掩体高的时候它不挡人，落下来站在它顶上。不跳的时候 passAbove 永远是 false，和以前一样
+  if (resolveCircleVsGrid(g.grid, p, p.radius, true, false, passAbove(g, p.air)) && sliding) p.slide = Math.min(p.slide, 0.08);
+  playerVertical(g, dt);
 
   // ---- 瞄准 ----
   const ax = inp.aimX - p.x;
@@ -207,17 +204,12 @@ export function updatePlayer(g: Game, dt: number): void {
   if (p.meleeTimer > 0 && !g.tdm.on) {
     const before = p.meleeTimer;
     p.meleeTimer -= dt;
-    if (before > MELEE_TIME - MELEE_HIT_AT && p.meleeTimer <= MELEE_TIME - MELEE_HIT_AT) {
-      melee(g);
-      // 推搡：冷却好了的话，这一下顺带把前方扇形里的僵尸推开并硬直
-      if (g.config.extras) shove(g);
-    }
+    if (before > MELEE_TIME - MELEE_HIT_AT && p.meleeTimer <= MELEE_TIME - MELEE_HIT_AT) melee(g);
   }
   if (inp.melee && !g.tdm.on) {
     inp.melee = false;
-    // M12：V 就是推搡，冷却没好时按了不出手（之前冷却中也能挥一下，枪托的击退看起来和推搡一样）
-    const cooling = g.config.extras && g.hz.shoveCd > 0;
-    if (p.meleeTimer <= 0 && !g.buildMode && !cooling) {
+    // V：枪托砸一下（推搡那个带冷却的功能去掉了）
+    if (p.meleeTimer <= 0 && !g.buildMode) {
       p.meleeTimer = MELEE_TIME;
       p.reloadTimer = 0;
       p.ads = 0;

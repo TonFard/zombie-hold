@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { CHALLENGES, nightMod } from '../../game/data/modifiers';
-import { GRENADE, PULSE, SHOVE } from '../../game/systems/hazards';
+import { GRENADE } from '../../game/systems/hazards';
 import { hud } from '../hud';
 import { ui } from '../store';
 
@@ -10,9 +10,7 @@ const mod = computed(() => (x.value.mod ? nightMod(x.value.mod) : null));
 const ch = computed(() => CHALLENGES[x.value.challenge as keyof typeof CHALLENGES] ?? null);
 const show = computed(() => x.value.on && (ui.screen === 'play' || ui.screen === 'bench') && hud.alive);
 /** 技能格的冷却遮罩比例（1 = 刚用完，0 = 就绪） */
-const shoveFill = computed(() => Math.min(1, x.value.shoveCd / SHOVE.cd));
 const throwFill = computed(() => (x.value.throwing ? 1 : Math.min(1, x.value.throwCd / GRENADE.cd)));
-const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCharge / PULSE.charge : Math.min(1, x.value.pulseCd / PULSE.cd)));
 </script>
 
 <template>
@@ -52,7 +50,7 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
       </div>
     </div>
 
-    <!-- 右下（武器上方）：手雷 / 推搡 / 手电 / 脉冲，做成一排技能格 -->
+    <!-- 右下（武器上方）：手雷 / 手电，做成一排技能格（推搡、电击脉冲去掉了） -->
     <div class="tools">
       <div class="chip" :class="{ dim: x.frags + x.fires === 0 || x.throwCd > 0, fire: x.useFire }">
         <kbd>G</kbd>
@@ -61,22 +59,10 @@ const pulseFill = computed(() => (x.value.pulseCharge > 0 ? 1 - x.value.pulseCha
         <small v-if="x.fires > 0" class="alt"><kbd class="mini">B</kbd>切换</small>
         <i class="cd" :style="{ height: throwFill * 100 + '%' }"></i>
       </div>
-      <div class="chip" :class="{ dim: x.shoveCd > 0 }">
-        <kbd>V</kbd>
-        <span class="cn">推搡</span>
-        <span class="cv" :class="{ ready: x.shoveCd <= 0 }">{{ x.shoveCd > 0 ? x.shoveCd.toFixed(1) + 's' : '就绪' }}</span>
-        <i class="cd" :style="{ height: shoveFill * 100 + '%' }"></i>
-      </div>
       <div class="chip" :class="{ lit: x.flashOn }">
         <kbd>T</kbd>
         <span class="cn">手电</span>
         <i class="bat"><i :style="{ width: x.battery * 100 + '%' }" :class="{ on: x.flashOn, low: x.battery < 0.2 }"></i></i>
-      </div>
-      <div class="chip" :class="{ dim: !x.pulseNear || x.pulseCd > 0, hot: x.pulseCharge > 0 }">
-        <kbd>Q</kbd>
-        <span class="cn">电击脉冲</span>
-        <span class="cv" :class="{ ready: x.pulseCharge <= 0 && x.pulseCd <= 0 && x.pulseNear }">{{ x.pulseCharge > 0 ? '充能中' : x.pulseCd > 0 ? Math.ceil(x.pulseCd) + 's' : x.pulseNear ? '就绪' : '靠近发电机' }}</span>
-        <i class="cd" :style="{ height: pulseFill * 100 + '%' }"></i>
       </div>
     </div>
   </template>
@@ -309,7 +295,7 @@ kbd.mini {
 .tools {
   position: fixed;
   right: 28px;
-  bottom: 160px;
+  bottom: 232px;
   z-index: 20;
   pointer-events: none;
   display: flex;

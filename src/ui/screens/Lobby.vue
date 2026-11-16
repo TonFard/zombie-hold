@@ -6,7 +6,10 @@ import { MASTERY_MAX, masteryProgress } from '../../game/data/mastery';
 import { META_BY_ID, META_ITEMS, RANKS, metaDesc, rankFor, rankOf, type MetaSection } from '../../game/data/meta-catalog';
 import { WEAPONS, WEAPON_ORDER } from '../../game/data/weapons';
 import { ACHIEVEMENTS } from '../../game/meta/achievements';
-import { canBuy, levelOf, masteryOf, nextPrice, totalMetaCost } from '../../game/meta/progress';
+import { canBuy, gunsFor, levelOf, masteryOf, nextPrice, totalMetaCost } from '../../game/meta/progress';
+import { gunIconOf } from '../gun-icons';
+import type { IconName } from '../icons';
+import TIcon from '../TIcon.vue';
 import { fmtTime, ui, type LobbyTab } from '../store';
 import Settings from './Settings.vue';
 import CodexPanel from './CodexPanel.vue';
@@ -19,7 +22,7 @@ const meta = computed(() => ui.save.meta);
 /** 顶栏导航（6 个）：带英文代号，像终端里的频道。工程部 / 补给站 / 体能训练并进军械库 */
 const tabs: Array<{ id: LobbyTab; name: string; code: string }> = [
   { id: 'deploy', name: '出征', code: 'DEPLOY' },
-  { id: 'bench', name: '武器台', code: 'ARMORY' },
+  { id: 'bench', name: '仓库', code: 'STORAGE' },
   { id: 'armory', name: '军械库', code: 'ARSENAL' },
   { id: 'records', name: '战绩', code: 'RECORDS' },
   { id: 'codex', name: '图鉴', code: 'CODEX' },
@@ -27,12 +30,32 @@ const tabs: Array<{ id: LobbyTab; name: string; code: string }> = [
 ];
 
 // ---- 军械库（四个子分类）----
-const SECTIONS: Array<{ id: MetaSection; name: string; code: string; icon: string; desc: string }> = [
-  { id: 'armory', name: '武器装备', code: 'WEAPONS', icon: '⌖', desc: '解锁新武器和随身武器。解锁要先把上一把枪练到精通' },
-  { id: 'engineering', name: '工程设施', code: 'ENGINEERING', icon: '⛭', desc: '炮塔数量上限、新型炮塔和建筑强度，夜里守线靠它们' },
-  { id: 'supply', name: '补给物资', code: 'SUPPLY', icon: '▣', desc: '开局零件、最大生命、发电机生命、零件收益和卡牌重抽' },
-  { id: 'fitness', name: '体能训练', code: 'FITNESS', icon: '✚', desc: '减伤、自动回血、移动速度和射速，对每把枪都生效' },
+const SECTIONS: Array<{ id: MetaSection; name: string; code: string; icon: IconName; desc: string }> = [
+  { id: 'armory', name: '武器装备', code: 'WEAPONS', icon: 'scope', desc: '解锁新武器和随身武器。解锁要先把上一把枪练到精通' },
+  { id: 'engineering', name: '工程设施', code: 'ENGINEERING', icon: 'turret', desc: '炮塔数量上限、新型炮塔和建筑强度，夜里守线靠它们' },
+  { id: 'supply', name: '补给物资', code: 'SUPPLY', icon: 'crate', desc: '开局零件、最大生命、发电机生命、零件收益和卡牌重抽' },
+  { id: 'fitness', name: '体能训练', code: 'FITNESS', icon: 'pulse', desc: '减伤、自动回血、移动速度和射速，对每把枪都生效' },
 ];
+/** 每个项目的图标；解锁武器的那几项画那把枪的侧视图（不在这张表里） */
+const ITEM_ICON: Record<string, IconName> = {
+  'turret-cap': 'turret',
+  'unlock-hmg': 'turret',
+  'unlock-flamer': 'flame',
+  'unlock-mortar': 'blast',
+  'turret-dmg': 'damage',
+  'struct-hp': 'wall',
+  'start-scrap': 'gear',
+  'max-hp': 'heart',
+  'core-hp': 'bolt',
+  'scrap-gain': 'trend',
+  reroll: 'reload',
+  'four-cards': 'cards',
+  armor: 'shield',
+  regen: 'medic',
+  'move-speed': 'speed',
+  'fire-rate': 'rate',
+};
+const guns = computed(() => gunsFor(meta.value));
 const sec = computed(() => SECTIONS.find((x) => x.id === ui.shopTab) ?? SECTIONS[0]!);
 
 const items = (sec: MetaSection) =>
@@ -47,7 +70,22 @@ const items = (sec: MetaSection) =>
     // 熟练度前置：「需要 手枪 熟练度 5（现在 3）」
     const ms = m.mastery;
     const needMastery = ms ? `${WEAPONS[ms.weapon].name} 熟练度 ${ms.level}（现在 ${masteryOf(meta.value, ms.weapon)}）` : '';
-    return { id: m.id, name: m.name, lv, max: m.prices.length, price, state, needRank, needPre, needMastery, now: lv > 0 ? metaDesc(m, lv) : '', next: price !== null ? metaDesc(m, lv + 1) : '' };
+    // 买不了的原因：卡片底部按钮右边那一格（一直占着位置，有没有字卡片都一样高）
+    const why =
+      state === 'requires'
+        ? `需要「${needPre}」`
+        : state === 'mastery'
+          ? `需要${needMastery}`
+          : state === 'rank'
+            ? `需要军衔 ${needRank}`
+            : state === 'medals'
+              ? `勋章还差 ${(price ?? 0) - meta.value.medals}`
+              : state === 'ok'
+                ? '可以购买'
+                : '';
+    // 解锁武器的项目：图标位置画这把枪（这一类现在用的型号）
+    const gunKind = m.id.startsWith('unlock-') ? WEAPON_ORDER.find((k) => m.id === `unlock-${k}`) : undefined;
+    return { id: m.id, name: m.name, lv, max: m.prices.length, price, state, why, icon: ITEM_ICON[m.id] ?? ('gear' as IconName), pic: gunKind ? gunIconOf(guns.value[gunKind]) : '', isGun: !!gunKind, now: lv > 0 ? metaDesc(m, lv) : '', next: price !== null ? metaDesc(m, lv + 1) : '' };
   });
 /** 已投入的勋章：全部 / 每个子分类 */
 const paid = (pred: (s: MetaSection) => boolean): number => META_ITEMS.filter((m) => pred(m.section)).reduce((a, m) => a + m.prices.slice(0, levelOf(meta.value, m.id)).reduce((x, y) => x + y, 0), 0);
@@ -59,6 +97,8 @@ const secStats = computed(
   () => Object.fromEntries(SECTIONS.map((x) => [x.id, { spent: paid((s) => s === x.id), total: priceOf(x.id), ready: items(x.id).filter((i) => i.state === 'ok').length }])) as Record<MetaSection, { spent: number; total: number; ready: number }>,
 );
 const blocked: Record<string, string> = { requires: '需要先买前置项目', medals: '勋章不够', maxed: '已满级', rank: '军衔不够：累计获得的勋章够了自动晋升', mastery: '熟练度不够：用这把枪多杀僵尸' };
+/** 当前分类的项目（卡片网格） */
+const list = computed(() => items(sec.value.id));
 
 // ---- 军衔 ----
 const rank = computed(() => {
@@ -77,7 +117,7 @@ const weaponRows = computed(() => {
   const rows = WEAPON_ORDER.map((k) => {
     const xp = meta.value.mastery[k] ?? 0;
     const owned = k === 'pistol' || levelOf(meta.value, `unlock-${k}`) > 0;
-    return { k, name: WEAPONS[k].name, xp, lv: masteryProgress(k, xp).lv, owned, icon: ui.gfx.icon(k) };
+    return { k, name: WEAPONS[k].name, xp, lv: masteryProgress(k, xp).lv, owned, icon: gunIconOf(guns.value[k]) };
   });
   const max = Math.max(1, ...rows.map((r) => r.xp));
   const top = rows.reduce((a, r) => (r.xp > a.xp ? r : a), rows[0]!);
@@ -107,8 +147,8 @@ const curTab = computed(() => tabs.find((t) => t.id === ui.lobbyTab) ?? tabs[0]!
         <span class="bar"><i :style="{ width: `${Math.round(rank.pct * 100)}%` }"></i></span>
         <small>{{ rank.next ? `距${rank.next} ${rank.need}` : '最高军衔' }}</small>
       </div>
-      <div class="medal" title="勋章：每局结束时按撑过的夜数、首领、击杀、爆头、通关和难度结算"><i>✦</i>{{ meta.medals }}<small>勋章</small></div>
-      <div class="medal sup" title="补给：每局按撑过的夜数和击杀结算，用来买子弹和武器台强化"><i>▣</i>{{ meta.supplies }}<small>补给</small></div>
+      <div class="medal" title="勋章：每局结束时按撑过的夜数、首领、击杀、爆头、通关和难度结算"><TIcon name="medal" />{{ meta.medals }}<small>勋章</small></div>
+      <div class="medal sup" title="补给：每局按撑过的夜数和击杀结算，用来在仓库里强化武器"><TIcon name="supply" />{{ meta.supplies }}<small>补给</small></div>
     </header>
 
     <!-- 出征（三栏指挥中心）、武器台（三栏武器展示）：铺满整页，不滚动 -->
@@ -116,48 +156,64 @@ const curTab = computed(() => tabs.find((t) => t.id === ui.lobbyTab) ?? tabs[0]!
 
     <ArmoryBench v-else-if="ui.lobbyTab === 'bench'" class="full" />
 
-    <!-- 军械库：四个子分类（武器装备 / 工程设施 / 补给物资 / 体能训练） -->
-    <div v-else-if="ui.lobbyTab === 'armory'" class="full shop-page">
-      <div class="subnav" role="tablist" aria-label="军械库分类">
-        <button v-for="x in SECTIONS" :key="x.id" role="tab" :aria-selected="ui.shopTab === x.id" :class="{ on: ui.shopTab === x.id }" @click="ui.shopTab = x.id">
-          <i aria-hidden="true">{{ x.icon }}</i>{{ x.name }}
+    <!-- 军械库：左边四个分类（武器装备 / 工程设施 / 补给物资 / 体能训练），右边这一类的项目 -->
+    <div v-else-if="ui.lobbyTab === 'armory'" class="full shop-page t-enter">
+      <div class="cats t-panel" role="tablist" aria-label="军械库分类">
+        <div class="t-head">分类 <small>ARSENAL</small></div>
+        <button v-for="x in SECTIONS" :key="x.id" role="tab" :aria-selected="ui.shopTab === x.id" class="cat" :class="{ on: ui.shopTab === x.id }" @click="ui.shopTab = x.id">
+          <span class="cat-ico"><TIcon :name="x.icon" /></span>
+          <span class="cat-tx">
+            <b>{{ x.name }}</b>
+            <small>{{ x.code }}</small>
+          </span>
           <em v-if="secStats[x.id].ready" :title="`${secStats[x.id].ready} 项现在就能买`">{{ secStats[x.id].ready }}</em>
+          <span class="cat-bar"><i :style="{ width: `${(secStats[x.id].spent / secStats[x.id].total) * 100}%` }"></i></span>
+          <span class="cat-num"><TIcon name="medal" />{{ secStats[x.id].spent }} <i>/ {{ secStats[x.id].total }}</i></span>
         </button>
       </div>
-      <div :key="sec.id" class="intro t-enter">
-        <i aria-hidden="true">{{ sec.icon }}</i>
-        <div>
-          <b>{{ sec.name }} <small>{{ sec.code }}</small></b>
-          <p>{{ sec.desc }}</p>
-        </div>
-        <span class="sec-sum">本类已投入 ✦ {{ secStats[sec.id].spent }} / {{ secStats[sec.id].total }}</span>
-      </div>
-      <section :key="sec.id + '-g'" class="shop t-enter">
-        <div class="grid">
-          <div
-            v-for="it in items(sec.id)"
-            :key="it.id"
-            class="item t-panel"
-            :class="{ maxed: it.state === 'maxed', locked: it.state === 'requires' || it.state === 'rank' || it.state === 'mastery', ready: it.state === 'ok' }"
-          >
-            <div class="top">
-              <b>{{ it.name }}</b>
-              <span class="pips" :aria-label="`${it.lv} / ${it.max} 级`"><i v-for="i in it.max" :key="i" :class="{ on: i <= it.lv }"></i></span>
-            </div>
-            <div v-if="it.needRank && it.state !== 'rank' && it.state !== 'maxed' && it.needRank !== RANKS[0]?.name" class="req">军衔：{{ it.needRank }}</div>
-            <div v-if="it.now" class="now">当前：{{ it.now }}</div>
-            <div v-if="it.next" class="next">{{ it.lv > 0 ? '下一级：' : '' }}{{ it.next }}</div>
-            <button v-if="it.price !== null" class="buy" :disabled="it.state !== 'ok'" :title="blocked[it.state] ?? ''" @click="ui.actions.buyMeta(it.id)">
-              <i>✦</i>{{ it.price }}<template v-if="it.state === 'requires'"> · 需要「{{ it.needPre }}」</template><template v-else-if="it.state === 'mastery'"> · 需要{{ it.needMastery }}</template><template v-else-if="it.state === 'rank'"> · 需要{{ it.needRank }}</template><template v-else-if="it.state === 'medals'"> · 还差 {{ (it.price ?? 0) - meta.medals }}</template>
-            </button>
-            <div v-else class="done">{{ it.max === 1 ? '已解锁 · 已生效' : '已满级' }}</div>
+
+      <div class="shop-main">
+        <div class="intro">
+          <span class="intro-ico"><TIcon :name="sec.icon" /></span>
+          <div>
+            <b>{{ sec.name }} <small>{{ sec.code }}</small></b>
+            <p>{{ sec.desc }}</p>
           </div>
+          <span class="sec-sum">本类已投入<b><TIcon name="medal" />{{ secStats[sec.id].spent }}</b><i>/ {{ secStats[sec.id].total }}</i></span>
         </div>
-      </section>
+        <section class="shop">
+          <div class="grid">
+            <div v-for="it in list" :key="it.id" class="item t-panel" :class="{ maxed: it.state === 'maxed', locked: it.state === 'requires' || it.state === 'rank' || it.state === 'mastery', ready: it.state === 'ok' }">
+              <div class="top">
+                <span class="tile" :class="{ gun: it.isGun }">
+                  <img v-if="it.isGun && it.pic" :src="it.pic" alt="" />
+                  <TIcon v-else-if="!it.isGun" :name="it.icon" />
+                </span>
+                <div class="ttx">
+                  <b>{{ it.name }}</b>
+                  <span class="pips" :aria-label="`${it.lv} / ${it.max} 级`"><i v-for="i in it.max" :key="i" :class="{ on: i <= it.lv }"></i><small>{{ it.lv }} / {{ it.max }}</small></span>
+                </div>
+              </div>
+              <div class="body">
+                <p v-if="it.now" class="now" :class="{ solo: !it.next }"><span>当前</span>{{ it.now }}</p>
+                <p v-if="it.next" class="next"><span>{{ it.lv > 0 ? '下一级' : '效果' }}</span>{{ it.next }}</p>
+              </div>
+              <div class="foot">
+                <button v-if="it.price !== null" class="buy" :disabled="it.state !== 'ok'" :title="blocked[it.state] ?? ''" @click="ui.actions.buyMeta(it.id)"><TIcon name="medal" />{{ it.price }}</button>
+                <div v-else class="done"><TIcon name="check" />{{ it.max === 1 ? '已解锁' : '已满级' }}</div>
+                <small :class="{ ok: it.state === 'ok', bad: it.state !== 'ok' && it.state !== 'maxed' }" :title="it.why">
+                  <TIcon v-if="it.state === 'requires' || it.state === 'rank' || it.state === 'mastery'" name="lock" />{{ it.state === 'maxed' ? '已生效' : it.why }}
+                </small>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+
       <div class="sum">
         <span>军械库总投入</span>
         <span class="sum-bar"><i :style="{ width: `${(spent / total) * 100}%` }"></i></span>
-        <b>✦ {{ spent }} <small>/ {{ total }}</small></b>
+        <b><TIcon name="medal" />{{ spent }} <small>/ {{ total }}</small></b>
       </div>
     </div>
 
@@ -352,10 +408,9 @@ nav button.on::after {
   font-size: 20px;
   color: var(--t-gold);
 }
-.medal i,
-.buy i {
-  font-style: normal;
-  margin-right: 6px;
+.medal .t-ico {
+  margin-right: 7px;
+  font-size: 16px;
 }
 .medal small {
   margin-left: 6px;
@@ -406,78 +461,160 @@ section {
   overflow-y: auto;
   overflow-x: hidden;
 }
-/* ---- 军械库：子分类 + 分类说明 + 卡片网格 + 底部投入进度 ---- */
+/* ---- 军械库：左边分类栏 + 右边（分类说明 + 卡片网格）+ 底部投入进度 ---- */
 .shop-page {
+  display: grid;
+  grid-template-columns: 252px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px 16px;
+}
+.cats {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-.subnav {
-  display: flex;
-  gap: 6px;
-}
-.subnav button {
-  position: relative;
-  display: flex;
-  align-items: center;
   gap: 8px;
-  padding: 8px 18px;
-  background: rgba(255, 255, 255, 0.03);
+  padding: 14px 12px;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.cats .t-head {
+  margin-bottom: 4px;
+}
+/* 一个分类：图标 / 名字 + 代号 / 能买几项，下面一条这一类的投入进度。大小固定，选中只换颜色 */
+.cat {
+  position: relative;
+  flex: none;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-rows: 44px 4px 14px;
+  align-items: center;
+  gap: 8px 10px;
+  padding: 10px 12px 9px 10px;
+  background: rgba(255, 255, 255, 0.022);
   border: 1px solid var(--t-line);
+  border-left: 3px solid transparent;
   color: var(--t-muted);
   font: inherit;
-  font-size: 14px;
-  letter-spacing: 3px;
+  text-align: left;
   cursor: pointer;
-  transition: 0.15s var(--t-ease);
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease), color 0.15s var(--t-ease);
 }
-.subnav button i {
-  font-style: normal;
-  font-size: 15px;
-  color: var(--t-dim);
-}
-.subnav button:hover,
-.subnav button:focus-visible {
+.cat:hover,
+.cat:focus-visible {
   outline: none;
   color: var(--t-text);
   border-color: var(--t-line-strong);
+  background: rgba(255, 255, 255, 0.05);
 }
-.subnav button.on {
+.cat.on {
+  color: var(--t-text);
+  border-color: rgba(240, 184, 58, 0.55);
+  border-left-color: var(--t-gold);
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.13), rgba(240, 184, 58, 0.02));
+}
+.cat-ico,
+.intro-ico,
+.tile {
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--t-line-strong);
+  background: rgba(255, 255, 255, 0.03);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 8px 100%, 0 calc(100% - 8px));
+}
+.cat-ico {
+  width: 44px;
+  height: 44px;
+  font-size: 23px;
+  color: var(--t-dim);
+}
+.cat.on .cat-ico {
   color: var(--t-gold);
-  border-color: rgba(240, 184, 58, 0.6);
-  background: rgba(240, 184, 58, 0.09);
+  border-color: rgba(240, 184, 58, 0.5);
+  background: rgba(240, 184, 58, 0.08);
 }
-.subnav button.on i {
-  color: var(--t-gold);
+.cat-tx {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
-/* 能买的项目数：右上角小角标 */
-.subnav em {
-  min-width: 18px;
+.cat-tx b {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 3px;
+}
+.cat-tx small {
+  font-family: var(--t-mono);
+  font-size: 10px;
+  letter-spacing: 2px;
+  color: var(--t-dim);
+}
+/* 现在就能买的项目数 */
+.cat em {
+  min-width: 20px;
   padding: 0 5px;
   font-style: normal;
   font-family: var(--t-mono);
-  font-size: 11px;
-  letter-spacing: 0;
-  line-height: 18px;
+  font-size: 12px;
+  line-height: 20px;
   text-align: center;
   color: #0b0f14;
   background: var(--t-gold);
 }
+.cat-bar {
+  grid-column: 1 / -1;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.cat-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.5), var(--t-gold));
+}
+.cat-num {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--t-mono);
+  font-size: 12px;
+  color: var(--t-gold-soft);
+}
+.cat-num .t-ico {
+  font-size: 11px;
+  color: var(--t-gold);
+}
+.cat-num i {
+  font-style: normal;
+  color: var(--t-dim);
+}
+.shop-main {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
 .intro {
+  flex: none;
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 10px 16px;
+  height: 66px;
+  padding: 0 18px 0 12px;
   border-left: 2px solid var(--t-gold);
-  background: linear-gradient(90deg, rgba(240, 184, 58, 0.08), transparent 70%);
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.09), transparent 70%);
 }
-.intro > i {
-  font-style: normal;
-  font-size: 26px;
+.intro-ico {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  font-size: 24px;
   color: var(--t-gold);
+  border-color: rgba(240, 184, 58, 0.5);
 }
 .intro b {
-  font-size: 16px;
+  font-size: 17px;
   letter-spacing: 4px;
   color: var(--t-text);
 }
@@ -489,39 +626,55 @@ section {
   color: var(--t-dim);
 }
 .intro p {
-  margin-top: 3px;
+  margin-top: 4px;
   font-size: 13px;
   color: var(--t-muted);
 }
 .sec-sum {
   margin-left: auto;
-  font-family: var(--t-mono);
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
   font-size: 12px;
   letter-spacing: 2px;
-  color: var(--t-gold-soft);
+  color: var(--t-muted);
   white-space: nowrap;
+}
+.sec-sum b {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--t-mono);
+  font-size: 20px;
+  letter-spacing: 0;
+  color: var(--t-gold);
+}
+.sec-sum b .t-ico {
+  font-size: 14px;
+}
+.sec-sum i {
+  font-style: normal;
+  font-family: var(--t-mono);
+  letter-spacing: 0;
+  color: var(--t-dim);
 }
 .shop {
   flex: 1;
   margin-top: 0;
   padding-right: 4px;
 }
-.req {
-  font-size: 12px;
-  color: var(--t-gold-soft);
-}
+/* 卡片：每张一样高（行高写死），悬停只变边框——买了升级、鼠标移上去都不会让哪一格变大 */
 .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  grid-auto-rows: 188px;
   gap: 12px;
 }
 .item {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  /* 升级后文字长短会变：卡片高度固定下来，免得整排跟着跳 */
-  min-height: 176px;
-  padding: 14px 16px;
+  display: grid;
+  grid-template-rows: 50px minmax(0, 1fr) 40px;
+  gap: 10px;
+  padding: 14px 16px 12px;
   --corner: rgba(255, 255, 255, 0.25);
   transition: border-color 0.15s var(--t-ease), box-shadow 0.15s var(--t-ease);
 }
@@ -529,75 +682,165 @@ section {
   border-color: var(--t-line-strong);
 }
 .item.ready {
-  --corner: rgba(240, 184, 58, 0.85);
+  --corner: rgba(240, 184, 58, 0.9);
+  border-color: rgba(240, 184, 58, 0.3);
+}
+.item.ready:hover {
+  border-color: rgba(240, 184, 58, 0.6);
+  box-shadow: 0 0 18px rgba(240, 184, 58, 0.1);
 }
 /* 满级：蓝绿边框 + 淡辉光 */
 .item.maxed {
   --corner: var(--t-cyan);
-  border-color: rgba(111, 208, 232, 0.45);
-  box-shadow: inset 0 0 24px rgba(111, 208, 232, 0.07), 0 0 14px rgba(111, 208, 232, 0.08);
+  border-color: rgba(111, 208, 232, 0.4);
+  box-shadow: inset 0 0 24px rgba(111, 208, 232, 0.06);
 }
 .item.locked {
+  --corner: rgba(255, 255, 255, 0.12);
+}
+.item.locked .top,
+.item.locked .body {
   opacity: 0.55;
 }
 .top {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
+  gap: 12px;
+}
+.tile {
+  width: 50px;
+  height: 50px;
+  font-size: 25px;
+  color: var(--t-gold-soft);
+}
+/* 解锁武器的项目：格子宽一些，放那把枪的侧视图（图是异步画的，位置先占好） */
+.tile.gun {
+  width: 104px;
+  padding: 0 6px;
+}
+.tile img {
+  display: block;
+  width: 100%;
+  height: 34px;
+  object-fit: contain;
+  filter: brightness(1.55) contrast(1.08);
+}
+.ready .tile {
+  color: var(--t-gold);
+  border-color: rgba(240, 184, 58, 0.5);
+  background: rgba(240, 184, 58, 0.07);
+}
+.maxed .tile {
+  color: var(--t-cyan);
+  border-color: rgba(111, 208, 232, 0.45);
+  background: rgba(111, 208, 232, 0.06);
+}
+.ttx {
+  display: flex;
+  flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
-.top b {
-  font-size: 15px;
+.ttx b {
+  font-size: 16px;
   letter-spacing: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-/* 进度：金色圆点 */
+/* 等级：一格一级的小条 */
 .pips {
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 3px;
 }
 .pips i {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  width: 18px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.14);
 }
 .pips i.on {
   background: var(--t-gold);
-  border-color: var(--t-gold);
-  box-shadow: 0 0 6px rgba(240, 184, 58, 0.6);
+  box-shadow: 0 0 6px rgba(240, 184, 58, 0.55);
 }
 .maxed .pips i.on {
   background: var(--t-cyan);
-  border-color: var(--t-cyan);
-  box-shadow: 0 0 6px rgba(111, 208, 232, 0.6);
+  box-shadow: 0 0 6px rgba(111, 208, 232, 0.55);
+}
+.pips small {
+  margin-left: 6px;
+  font-family: var(--t-mono);
+  font-size: 11px;
+  color: var(--t-dim);
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow: hidden;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.body span {
+  display: inline-block;
+  min-width: 46px;
+  margin-right: 6px;
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--t-dim);
 }
 .now {
-  font-size: 12px;
   color: var(--t-cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 已经满级（没有下一级那一行）：当前效果可以写满三行 */
+.now.solo {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  white-space: normal;
 }
 .next {
-  font-size: 13px;
   color: #aeb8c2;
-  line-height: 1.5;
-  flex: 1;
-  min-height: 3em;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.foot {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding-top: 9px;
+  border-top: 1px solid var(--t-line);
+}
+.foot .buy,
+.foot .done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  font-family: var(--t-mono);
+  font-size: 15px;
 }
 .buy {
-  align-self: flex-start;
-  margin-top: auto;
-  max-width: 100%;
-  text-align: left;
-  line-height: 1.4;
-  padding: 6px 16px;
-  background: rgba(240, 184, 58, 0.05);
+  padding: 0;
+  background: rgba(240, 184, 58, 0.06);
   border: 1px solid var(--t-gold);
   color: var(--t-gold);
-  font: inherit;
-  font-size: 14px;
   letter-spacing: 1px;
   cursor: pointer;
   clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
-  transition: 0.15s var(--t-ease);
+  transition: background 0.15s var(--t-ease), color 0.15s var(--t-ease), box-shadow 0.15s var(--t-ease);
+}
+.buy .t-ico {
+  font-size: 12px;
 }
 .buy:hover:not(:disabled),
 .buy:focus-visible {
@@ -612,14 +855,37 @@ section {
   color: var(--t-dim);
   cursor: not-allowed;
 }
-.done {
-  margin-top: auto;
-  line-height: 33px;
-  font-size: 12px;
-  letter-spacing: 4px;
+.foot .done {
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 2px;
   color: var(--t-cyan);
+  border: 1px solid rgba(111, 208, 232, 0.35);
+  background: rgba(111, 208, 232, 0.05);
+}
+/* 买不了的原因：最多两行，再长就省略（完整的在 title 里） */
+.foot small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-width: 0;
+  font-size: 12px;
+  line-height: 15px;
+  color: var(--t-dim);
+  overflow: hidden;
+}
+.foot small.ok {
+  color: var(--t-ok);
+}
+.foot small.bad {
+  color: #d9a391;
+}
+.foot small .t-ico {
+  margin-right: 4px;
+  font-size: 12px;
 }
 .sum {
+  grid-column: 1 / -1;
   display: flex;
   align-items: center;
   gap: 14px;
@@ -639,15 +905,29 @@ section {
   box-shadow: 0 0 8px rgba(240, 184, 58, 0.4);
 }
 .sum b {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--t-mono);
   font-size: 15px;
   letter-spacing: 1px;
   color: var(--t-gold);
 }
+.sum b .t-ico {
+  font-size: 12px;
+}
 .sum b small {
   color: var(--t-dim);
 }
 /* ---- 战绩 ---- */
+/* 已通关的章节行、已达成的成就：这几条以前是从军械库的同名类 .done 带过来的，原样留着 */
+:where(.crow, .badge).done {
+  margin-top: auto;
+  line-height: 33px;
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--t-cyan);
+}
 .records-page {
   display: flex;
   flex-direction: column;
@@ -928,6 +1208,12 @@ footer {
   color: var(--t-dim);
 }
 @media (max-width: 1440px) {
+  .shop-page {
+    grid-template-columns: 208px minmax(0, 1fr);
+  }
+  .grid {
+    grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
+  }
   .brand span {
     display: none;
   }

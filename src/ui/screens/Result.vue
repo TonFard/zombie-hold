@@ -2,6 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { DIFFICULTIES } from '../../game/data/difficulty';
 import { fmtTime, ui } from '../store';
+import { gunsFor } from '../../game/meta/progress';
+import { gunIconOf } from '../gun-icons';
 import { WEAPONS, WEAPON_ORDER } from '../../game/data/weapons';
 import { MASTERY_MAX, masteryProgress } from '../../game/data/mastery';
 
@@ -20,7 +22,7 @@ const mastery = computed(() =>
   WEAPON_ORDER.filter((k) => (ui.masteryGain[k] ?? 0) > 0).map((k) => {
     const xp = ui.save.meta.mastery[k] ?? 0;
     const p = masteryProgress(k, xp);
-    return { k, name: WEAPONS[k].name, kills: ui.masteryGain[k] ?? 0, lv: p.lv, left: p.to === null ? 0 : p.to - xp, prog: p.to === null ? 1 : (xp - p.from) / (p.to - p.from), icon: ui.gfx.icon(k) };
+    return { k, name: WEAPONS[k].name, kills: ui.masteryGain[k] ?? 0, lv: p.lv, left: p.to === null ? 0 : p.to - xp, prog: p.to === null ? 1 : (xp - p.from) / (p.to - p.from), icon: gunIconOf(gunsFor(ui.save.meta)[k]) };
   }),
 );
 

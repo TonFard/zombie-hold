@@ -221,7 +221,7 @@ export function canopy(b: Builder, p: Prop): void {
   }
   for (const z of [-d / 4, d / 4]) {
     b.box(w, 0.06, 0.06, { x: cx, y: h + 0.04, z: cz + z }, metal(0x59636b, { jitter: 0.08, ao: 0 }));
-    for (let x = -w / 2 + 2; x < w / 2; x += 3.5) b.box(0.5, 0.05, 0.14, { x: cx + x, y: h - 0.03, z: cz + z }, glow(0xdfeaff, 2.0));
+    for (let x = -w / 2 + 2; x < w / 2; x += 3.5) b.box(0.5, 0.05, 0.14, { x: cx + x, y: h - 0.03, z: cz + z }, glow(0xdfeaff, 1.3));
   }
 }
 

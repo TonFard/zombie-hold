@@ -1,5 +1,5 @@
 import type { StructureKind } from './structures';
-import { WEAPONS, type WeaponKind } from './weapons';
+import type { WeaponKind } from './weapons';
 import { REGEN_PER_LEVEL } from './heal';
 import { MASTERY_MAX } from './mastery';
 
@@ -31,8 +31,6 @@ export interface MetaBonuses {
   weapons: Set<WeaponKind>;
   /** 每把武器的局内等级上限（5–8）：由熟练度决定（progress.bonusesOf 里填） */
   tierCap: Record<WeaponKind, number>;
-  /** 允许带一把随身武器开局 */
-  sidearm: boolean;
   structures: Set<StructureKind>;
   turretCap: number;
   turretDamage: number;
@@ -57,7 +55,6 @@ export function baseBonuses(): MetaBonuses {
   return {
     weapons: new Set<WeaponKind>(['pistol']),
     tierCap: { pistol: 5, smg: 5, shotgun: 5, rifle: 5, sniper: 5, lmg: 5 },
-    sidearm: false,
     structures: new Set<StructureKind>(['barricade', 'turret', 'spikes']),
     turretCap: 3,
     turretDamage: 1,
@@ -132,8 +129,8 @@ const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: str
   id: `unlock-${k}`,
   section: 'armory',
   name: `解锁${WEAPON_NAMES[k]}`,
-  // 解锁只是让工坊里能买，局内还要花零件：写在描述里，免得以为解锁了就直接有枪
-  desc: `${desc}；之后每局在工坊花 ${WEAPONS[k].price} 零件购买`,
+  // 解锁了就直接能带：出征时选它当主武器，别的在工坊里免费换（以前每局还要在工坊花零件买）
+  desc: `${desc}；解锁后每局直接带着，不用再买`,
   // 武器解锁价格不打折：门槛主要是熟练度，勋章只是最后一步
   prices: [price],
   mastery: { weapon: UNLOCK_PRE[k], level: MASTERY_MAX },
@@ -151,9 +148,7 @@ export const META_ITEMS: MetaItem[] = [
   unlockWeapon('sniper', 300, '爆头 ×3，一发穿 4 只，无视钢板和头盔'),
   unlockWeapon('lmg', 300, '弹链 100 发，压制减速'),
   // 「手枪双持」已删（用户：只要单独的格洛克，能右键瞄准）。买过的存档在 parseMeta 里退回勋章
-  // 随身武器：开局就带一把已解锁的枪。要先解锁霰弹枪（不能靠它在前期跳过武器解锁链），
-  // 勋章 150：比解锁霰弹枪（120）贵一些、比解锁突击步枪（200）便宜，攒一阵子才买得起；不打折，和武器解锁同价档
-  { id: 'sidearm', section: 'armory', name: '随身武器', desc: '开局就带着一把已解锁的武器（出征时选）；要先解锁霰弹枪', prices: [150], requires: { id: 'unlock-shotgun', level: 1 }, apply: (b, lv) => { b.sidearm = lv > 0; } },
+  // 「随身武器」已删（2026-11-16 用户：解锁了的枪不用局内再买，直接能带）。买过的存档在 parseMeta 里退回勋章
   // ---- 工程部 ----
   { id: 'turret-cap', section: 'engineering', name: '炮塔数量上限', desc: '所有炮塔合计最多 {n} 座', prices: P(80, 140, 210, 300, 420), ranks: [1, 2, 4, 5, 6], apply: (b, lv) => { b.turretCap = 3 + lv; } },
   { id: 'unlock-hmg', section: 'engineering', name: '解锁重机枪塔', desc: '射程 12，伤害高，转得慢，能吃伤害', prices: P(200), ranks: [2], requires: { id: 'turret-cap', level: 1 }, apply: (b, lv) => { if (lv) b.structures.add('hmg'); } },

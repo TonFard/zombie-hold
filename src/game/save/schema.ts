@@ -96,15 +96,17 @@ function parseMix(v: unknown): SaveData['mix'] {
 
 /** 删掉的「手枪双持」当时的价格（勋章）：旧存档里买过的退回 */
 const DUAL_REFUND = 80;
+/** 删掉的「随身武器」（解锁了的枪现在直接能带）：买过的退回 */
+const SIDEARM_REFUND = 150;
 /** 删掉的榴弹发射器：解锁价（勋章）和武器台每条线 1–3 级的价格（补给，按当时的 benchPrice 算好的） */
 const LAUNCHER_UNLOCK_REFUND = 400;
 const LAUNCHER_BENCH_PRICES = [75, 130, 220];
 
-/** 旧存档里已经删掉的东西退回多少：勋章（双持、榴弹解锁）和补给（榴弹的武器台强化） */
+/** 旧存档里已经删掉的东西退回多少：勋章（双持、榴弹解锁、随身武器）和补给（榴弹的武器台强化） */
 function goneRefund(v: Record<string, unknown>): { medals: number; supplies: number } {
   const lv = isObj(v.levels) ? v.levels : {};
   const has = (id: string) => typeof lv[id] === 'number' && (lv[id] as number) > 0;
-  const medals = (has('dual') ? DUAL_REFUND : 0) + (has('unlock-launcher') ? LAUNCHER_UNLOCK_REFUND : 0);
+  const medals = (has('dual') ? DUAL_REFUND : 0) + (has('unlock-launcher') ? LAUNCHER_UNLOCK_REFUND : 0) + (has('sidearm') ? SIDEARM_REFUND : 0);
   let supplies = 0;
   if (isObj(v.bench)) {
     for (const [key, n] of Object.entries(v.bench)) {

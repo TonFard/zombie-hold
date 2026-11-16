@@ -82,16 +82,16 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
   g.scrap += b.startScrap;
   g.scrapEarned += b.startScrap;
   g.config.meta = { maxHp: b.maxHp, coreHp: b.coreHp, structHp: b.structHp, turretDamage: b.turretDamage, scrapGain: b.scrapGain, armor: b.armor, regen: b.regen, speed: b.speed, fireRate: b.fireRate, scrapEnv };
+  // 大厅里解锁了的枪开局就都有（不用再在工坊花零件买）。身上带手枪 + 一把主武器：
+  // 出征时选了就是它，没选就是解锁顺序里最后一把；其余的在工坊里免费换
   const side = dep.sidearm ?? null;
-  if (sidearmOk(b, side)) {
-    const slot = g.loadout[side];
-    slot.owned = true;
-    slot.carried = true;
-    slot.tier = 0;
-    slot.mag = g.takeAmmo(side, g.statsOf(side, 0).mag);
-    // 直接拿在手上：startRun 里第一个白天就会存检查点，要在那之前换好，读档继续时手里才是随身武器
-    g.player.weapon = side;
-    g.player.tier = 0;
+  const main = sidearmOk(b, side) ? side : null;
+  g.grantUnlocked(main);
+  const held = WEAPON_ORDER.filter((k) => k !== 'pistol' && g.loadout[k].carried).pop();
+  if (held) {
+    // 直接拿在手上：startRun 里第一个白天就会存检查点，要在那之前换好，读档继续时手里才是这把
+    g.player.weapon = held;
+    g.player.tier = g.loadout[held].tier;
   }
 }
 
@@ -105,6 +105,8 @@ export function widenMeta(g: Game, b: MetaBonuses): void {
   const c = g.config;
   if (c.training || c.daily) return;
   c.weapons = WEAPON_ORDER.filter((k) => c.weapons.includes(k) || b.weapons.has(k));
+  // 旧版本存的检查点（那时枪还要在工坊买）、存档以后大厅里新解锁的枪：直接补到工坊里
+  g.grantUnlocked();
   c.structures = STRUCTURE_ORDER.filter((k) => c.structures.includes(k) || b.structures.has(k));
   for (const k of WEAPON_ORDER) c.tierCap[k] = Math.max(c.tierCap[k], b.tierCap[k]);
   c.turretCap = Math.max(c.turretCap, b.turretCap);
@@ -159,9 +161,12 @@ export function widenMeta(g: Game, b: MetaBonuses): void {
   }
 }
 
-/** 这把武器能不能当随身武器带：买了「随身武器」、已解锁、不是手枪（手枪本来就有） */
+/**
+ * 出征时能不能选这把当主武器带在身上：已解锁、不是手枪（手枪本来就在身上）。
+ * 以前还要先在军械库买「随身武器」，现在解锁了的枪直接能带，那个项目去掉了
+ */
 export function sidearmOk(b: MetaBonuses, k: string | null): k is WeaponKind {
-  return !!k && b.sidearm && k !== 'pistol' && b.weapons.has(k as WeaponKind);
+  return !!k && k !== 'pistol' && b.weapons.has(k as WeaponKind);
 }
 
 /** 训练场：所有已解锁的武器按当前等级上限给满，炮塔不限；型号用大厅里选的 */

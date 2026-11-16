@@ -66,8 +66,18 @@ const FIELDS: Array<{ key: keyof Mods; name: string; op: 'mul' | 'add'; good: bo
   { key: 'comboDamage', name: '连杀伤害', op: 'add', good: true, fmt: 'pct', unit: '/连杀' },
   { key: 'chainBlast', name: '连锁爆炸', op: 'add', good: true, fmt: 'num' },
   { key: 'headRefund', name: '爆头返弹', op: 'add', good: true, fmt: 'num', unit: '发' },
-  { key: 'shoveCd', name: '推搡冷却', op: 'mul', good: false, fmt: 'pct' },
   { key: 'extraFrags', name: '额外手雷', op: 'add', good: true, fmt: 'num', unit: '颗/天' },
+  { key: 'mag', name: '弹匣容量', op: 'mul', good: true, fmt: 'pct' },
+  { key: 'pierce', name: '额外穿透', op: 'add', good: true, fmt: 'num', unit: '只' },
+  { key: 'burn', name: '子弹点燃', op: 'add', good: true, fmt: 'rate', unit: '/秒' },
+  { key: 'slow', name: '子弹减速', op: 'add', good: true, fmt: 'pct' },
+  { key: 'lowHpDamage', name: '残血伤害', op: 'add', good: true, fmt: 'pct' },
+  { key: 'killSpeed', name: '击杀提速', op: 'add', good: true, fmt: 'pct' },
+  { key: 'sustain', name: '连射增伤', op: 'add', good: true, fmt: 'pct', unit: '/秒' },
+  { key: 'headHeal', name: '爆头回血', op: 'add', good: true, fmt: 'num', unit: '点/杀' },
+  { key: 'dayScrap', name: '每日零件', op: 'add', good: true, fmt: 'num', unit: '/天' },
+  { key: 'revive', name: '不屈', op: 'add', good: true, fmt: 'num', unit: '次/夜' },
+  { key: 'airJumps', name: '空中跳跃', op: 'add', good: true, fmt: 'num', unit: '次' },
 ];
 
 const near = (a: number, b: number) => Math.abs(a - b) < 1e-9;

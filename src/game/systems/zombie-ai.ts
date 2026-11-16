@@ -688,8 +688,8 @@ export function stepZombies(g: Game, dt: number): void {
       p.x += (ox / d) * (min - d);
       p.z += (oz / d) * (min - d);
     }
-    // 对战里玩家能跳、能站在矮掩体上：脚比它高的格子不挡（不然刚跳上箱子就被这里推回地面）
-    resolveCircleVsGrid(grid, p, p.radius, true, false, g.tdm.on ? passAbove(g, p.air) : undefined);
+    // 玩家能跳、能站在矮掩体上：脚比它高的格子不挡（不然刚跳上箱子就被这里推回地面）
+    resolveCircleVsGrid(grid, p, p.radius, true, false, passAbove(g, p.air));
   }
 }
 

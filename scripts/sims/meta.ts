@@ -219,8 +219,8 @@ console.log('\n== 版本更新不清进度（旧档宽松读取）==');
   const r = loadSave(st);
   const m = r.save.meta;
   check(r.warning === '' && r.save.runs === 31 && r.save.totalKills === 4800 && r.save.volume === 0.3, '统计和设置原样保留，不报「存档损坏」');
-  check(m.medals === 800 && m.medalsEarned === 2400, '勋章原样保留');
-  check(m.levels['unlock-smg'] === 1 && m.levels['unlock-shotgun'] === 1 && m.levels.sidearm === 1, '已经买的解锁（含随身武器）原样保留');
+  check(m.medals === 800 + 150 && m.medalsEarned === 2400, '勋章原样保留（买过的「随身武器」已经删了，退回 150）');
+  check(m.levels['unlock-smg'] === 1 && m.levels['unlock-shotgun'] === 1 && !('sidearm' in m.levels), '已经买的解锁原样保留；删掉的「随身武器」不留');
   check(m.levels['turret-cap'] === 5, '级数超过现在的上限：按上限算，不丢档');
   check(!('item-from-the-future' in m.levels) && !('max-hp' in m.levels), '认不出的项目、坏掉的级数：只忽略这一项');
   check(m.cleared.join() === 'normal' && m.lastDifficulty === 'normal', '认不出的难度：忽略，回到默认');
@@ -267,10 +267,11 @@ console.log('\n== 开局应用加成 ==');
   check(g.core.maxHp === 550, `发电机生命 +50（${g.core.maxHp}）`);
   check(g.config.zombieHp === 1.3 && g.config.zombieCount === 1.15, '困难：僵尸生命 ×1.3、数量 ×1.15');
 
-  // 开局手里是手枪；解锁了步枪也只是能在工坊里买
-  check(g.player.weapon === 'pistol' && g.player.tier === 0, '开局手里是手枪');
+  // 解锁了步枪：开局就带着、拿在手里，不用在工坊花零件买
+  check(g.loadout.rifle.owned && g.loadout.rifle.carried && g.player.weapon === 'rifle' && g.player.tier === 0 && g.loadout.rifle.mag === g.statsOf('rifle', 0).mag, '解锁了的步枪开局就拿在手里，弹匣是满的');
+  check(g.carried().join() === 'pistol,rifle' && g.scrap === 120 + 80, '身上是手枪 + 步枪，零件一点没花');
   g.scrap = 9999;
-  check(g.buyWeapon('rifle') && g.loadout.rifle.owned, '解锁了的步枪能在工坊里买');
+  check(g.buyState('rifle') === 'owned' && !g.buyWeapon('rifle') && g.scrap === 9999, '已经带着的枪不能（也不用）再买');
   for (let i = 0; i < 9; i++) g.upgradeWeapon('rifle');
   check(g.loadout.rifle.tier === 5, `步枪能升到它自己的上限 5 级（${g.loadout.rifle.tier}）`);
 
@@ -283,14 +284,16 @@ console.log('\n== 开局应用加成 ==');
 
   // 存档之后在大厅解锁了步枪、买了冲锋枪上限：继续这一局时要生效
   const later = bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1, 'unlock-rifle': 1, 'unlock-hmg': 1 }, mastery: { smg: MASTERY_XP.smg[3] as number } });
+  check(gr.carried().join() === 'pistol,smg' && gr.player.weapon === 'smg' && !gr.loadout.rifle.owned, '存档时解锁的是冲锋枪：读档后身上是手枪 + 冲锋枪');
   widenMeta(gr, later);
   gr.scrap = 9999;
-  check(gr.buyWeapon('smg'), '读档继续后，大厅里新解锁的冲锋枪工坊里能买');
+  check(gr.loadout.rifle.owned && !gr.loadout.rifle.carried && gr.loadout.rifle.mag === gr.statsOf('rifle', 0).mag && gr.scrap === 9999, '读档继续后，大厅里新解锁的突击步枪直接放进工坊（不花零件，身上已经两把所以没带上）');
   for (let i = 0; i < 9; i++) gr.upgradeWeapon('smg');
   check(gr.loadout.smg.tier === 7, `读档继续后，新买的冲锋枪上限生效（${gr.loadout.smg.tier}）`);
-  check(gr.buyWeapon('rifle'), '读档继续后，大厅里新解锁的突击步枪工坊里能买');
-  // 身上已经有手枪 + 冲锋枪，再买步枪：手里那把（手枪）放回工坊，等级保留
-  check(gr.carried().join() === 'smg,rifle' && gr.player.weapon === 'rifle' && gr.loadout.pistol.owned && !gr.loadout.pistol.carried, `最多带两把：买步枪时手里的手枪放回工坊（${gr.carried().join()}）`);
+  // 身上已经有手枪 + 冲锋枪，从工坊拿步枪：手里那把（冲锋枪）放回工坊，等级保留
+  gr.takeWeapon('pistol');
+  gr.takeWeapon('rifle');
+  check(gr.carried().join() === 'smg,rifle' && gr.player.weapon === 'rifle' && gr.loadout.pistol.owned && !gr.loadout.pistol.carried, `最多带两把：拿步枪时手里的手枪放回工坊（${gr.carried().join()}）`);
   gr.input.cycle = 1;
   gr.update(STEP);
   check(gr.player.weapon === 'smg', '滚轮切到另一把');
@@ -313,14 +316,14 @@ console.log('\n== 开局应用加成 ==');
 
   const g0 = new Game(5);
   applyMeta(g0, baseBonuses(), { difficulty: 'normal' });
-  check(!g0.loadout.rifle.owned, '开局不白送武器');
+  check(!g0.loadout.rifle.owned && !g0.loadout.smg.owned && g0.carried().join() === 'pistol', '没解锁的枪开局没有：身上只有手枪');
   g0.scrap = 9999;
   check(!g0.buyWeapon('shotgun'), '没解锁的霰弹枪工坊里买不了');
-  check(!g0.buyWeapon('smg'), '冲锋枪要先在大厅解锁，工坊里才能买');
+  check(!g0.buyWeapon('smg'), '冲锋枪要先在大厅解锁');
   const gU = new Game(5);
   applyMeta(gU, bonusesOf({ ...newMeta(), levels: { 'unlock-smg': 1 } }), { difficulty: 'normal', ammo: { smg: 500 } });
   gU.scrap = 9999;
-  check(gU.buyWeapon('smg') && gU.loadout.smg.mag === 36 && gU.reserveOf('smg') === Infinity, '解锁后能买，弹匣装满（目前子弹无限）');
+  check(gU.loadout.smg.owned && gU.loadout.smg.carried && gU.loadout.smg.mag === 36 && gU.reserveOf('smg') === Infinity && gU.scrap === 9999, '解锁后开局就带着，弹匣装满（目前子弹无限），不扣零件');
   for (let i = 0; i < 9; i++) gU.upgradeWeapon('smg');
   check(gU.loadout.smg.tier === 5, `没买等级上限时最多升到 5 级（${gU.loadout.smg.tier}）`);
   g0.buildKind = 'hmg';
@@ -372,57 +375,55 @@ console.log('\n== 开局应用加成 ==');
   check(gt.run.phase === 'training' && gt.stats.kills === 1, '训练场不进入白天 / 夜晚流程');
 }
 
-console.log('\n== 随身武器 ==');
+console.log('\n== 解锁了的枪直接带（「随身武器」去掉了） ==');
 {
-  const item = META_BY_ID['sidearm'];
-  const price = item?.prices[0] ?? 0;
-  check(!!item && item.section === 'armory' && item.prices.length === 1, '军械库里有「随身武器」，只有一级');
-  check(item?.requires?.id === 'unlock-shotgun' && item.requires.level === 1, '前置：要先解锁霰弹枪');
-  check(price > (META_BY_ID['unlock-shotgun']?.prices[0] ?? 0) && price < (META_BY_ID['unlock-rifle']?.prices[0] ?? 0), `价格 ${price} 勋章：比解锁霰弹枪贵、比解锁突击步枪便宜，攒一阵子才买得起`);
-  check(!baseBonuses().sidearm, '默认没有随身武器');
+  check(META_BY_ID['sidearm'] === undefined, '军械库里没有「随身武器」这个项目了');
+  // 以前买过的：退回 150 勋章
+  const st = new MemoryStorage();
+  const old = JSON.parse(JSON.stringify(defaultSave())) as { meta: { medals: number; levels: Record<string, number> } };
+  old.meta.medals = 40;
+  old.meta.levels = { 'unlock-smg': 1, 'unlock-shotgun': 1, sidearm: 1 };
+  st.set(SAVE_KEY, JSON.stringify(old));
+  const back = loadSave(st);
+  check(back.warning === '' && back.save.meta.medals === 190 && back.save.meta.levels.sidearm === undefined, `旧存档里买过「随身武器」：退回 150 勋章（40 → ${back.save.meta.medals}）`);
 
-  const rich: MetaState = { ...newMeta(), medals: 5000, medalsEarned: 10000 };
-  check(canBuy(rich, 'sidearm') === 'requires', '没解锁霰弹枪：勋章再多也买不了');
-  const withSg: MetaState = { ...rich, levels: { 'unlock-smg': 1, 'unlock-shotgun': 1 } };
-  check(canBuy(withSg, 'sidearm') === 'ok', '解锁了霰弹枪：能买');
-  check(canBuy({ ...withSg, medals: price - 1 }, 'sidearm') === 'medals', '勋章不够：买不了');
-  const [bought, res] = buyMeta(withSg, 'sidearm');
-  check(res === 'ok' && bought.medals === withSg.medals - price && bonusesOf(bought).sidearm, `买下扣 ${price} 勋章，加成立刻生效`);
+  const three: MetaState = { ...newMeta(), levels: { 'unlock-smg': 1, 'unlock-shotgun': 1, 'unlock-rifle': 1 } };
+  const b = bonusesOf(three);
+  check(sidearmOk(b, 'smg') && sidearmOk(b, 'shotgun') && sidearmOk(b, 'rifle') && !sidearmOk(b, 'pistol') && !sidearmOk(b, 'sniper') && !sidearmOk(b, 'bogus') && !sidearmOk(b, null), '出征时能选的主武器：解锁过的都行；手枪、没解锁的、不认识的不行');
 
-  // 哪些枪能当随身武器带
-  const b = bonusesOf(bought);
-  check(sidearmOk(b, 'smg') && sidearmOk(b, 'shotgun') && !sidearmOk(b, 'pistol') && !sidearmOk(b, 'rifle') && !sidearmOk(b, 'bogus') && !sidearmOk(b, null), '解锁过的冲锋枪、霰弹枪能带；手枪、没解锁的、不认识的都不能带');
-  check(!sidearmOk(bonusesOf(withSg), 'smg'), '没买「随身武器」时什么枪都不能带');
-
-  // 开局
+  // 选了霰弹枪
   const g = new Game(5);
   applyMeta(g, b, { difficulty: 'normal', sidearm: 'shotgun' });
   startRun(g);
-  check(g.loadout.shotgun.owned && g.loadout.shotgun.carried && g.player.weapon === 'shotgun' && g.player.tier === 0, '开局手里拿的就是随身武器');
+  check(g.carried().join() === 'pistol,shotgun' && g.player.weapon === 'shotgun' && g.player.tier === 0, '选了霰弹枪：身上是手枪 + 霰弹枪，手里拿着霰弹枪');
   check(g.loadout.shotgun.mag === g.statsOf('shotgun', 0).mag, '弹匣是满的');
-  g.scrap = 9999;
+  check(g.loadout.smg.owned && !g.loadout.smg.carried && g.loadout.rifle.owned && !g.loadout.rifle.carried, '别的解锁了的枪放在工坊里');
   const sc = g.scrap;
-  check(!g.buyWeapon('shotgun') && g.scrap === sc, '随身带的枪不能在工坊里再买一次（不扣零件）');
+  g.takeWeapon('rifle');
+  check(g.player.weapon === 'rifle' && g.scrap === sc && g.carried().join() === 'pistol,rifle' && g.loadout.shotgun.owned && !g.loadout.shotgun.carried, '从工坊换成步枪：免费，霰弹枪放回工坊');
+  g.scrap = 9999;
   for (let i = 0; i < 9; i++) g.upgradeWeapon('shotgun');
-  check(g.loadout.shotgun.tier === 5 && g.player.tier === 5, `随身武器能升到它自己的上限 5 级（${g.loadout.shotgun.tier}）`);
+  check(g.loadout.shotgun.tier === 5, `放在工坊里的枪也能升级到它自己的上限 5 级（${g.loadout.shotgun.tier}）`);
 
-  // 第一个白天的自动存档在 startRun 里就存了：读档继续时手里还是随身武器
+  // 没选：带解锁顺序里最后一把
+  const gn = new Game(5);
+  applyMeta(gn, b, { difficulty: 'normal' });
+  check(gn.carried().join() === 'pistol,rifle' && gn.player.weapon === 'rifle', '没选主武器：带解锁顺序里最后一把（步枪）');
+
+  // 第一个白天的自动存档在 startRun 里就存了：读档继续时手里还是这把
   const gs = new Game(5);
   applyMeta(gs, b, { difficulty: 'normal', sidearm: 'smg' });
   startRun(gs);
   const gr = new Game(5);
-  check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.player.weapon === 'smg' && gr.loadout.smg.owned, '带冲锋枪出征，读第 1 天的检查点继续：手里还是冲锋枪');
+  check(loadCheckpoint(gr, JSON.stringify(serialize(gs, 0))) === null && gr.player.weapon === 'smg' && gr.carried().join() === 'pistol,smg' && gr.loadout.rifle.owned, '带冲锋枪出征，读第 1 天的检查点继续：手里还是冲锋枪，工坊里的枪也在');
 
-  // 没买 / 手枪 / 没解锁：什么都不变
-  const g0 = new Game(5);
-  applyMeta(g0, bonusesOf(withSg), { difficulty: 'normal', sidearm: 'smg' });
-  check(!g0.loadout.smg.owned && g0.player.weapon === 'pistol', '没买「随身武器」时选了也带不上');
+  // 选了手枪 / 没解锁的：按没选处理
   const gp = new Game(5);
   applyMeta(gp, b, { difficulty: 'normal', sidearm: 'pistol' });
-  check(gp.player.weapon === 'pistol' && gp.loadout.pistol.owned, '选手枪当随身武器时什么都不变');
+  check(gp.carried().join() === 'pistol,rifle', '选手枪当主武器：按没选处理');
   const gu = new Game(5);
-  applyMeta(gu, b, { difficulty: 'normal', sidearm: 'rifle' });
-  check(!gu.loadout.rifle.owned, '没解锁的突击步枪带不上');
+  applyMeta(gu, b, { difficulty: 'normal', sidearm: 'sniper' });
+  check(!gu.loadout.sniper.owned && gu.carried().join() === 'pistol,rifle', '没解锁的狙击枪带不上');
 }
 
 console.log('\n== 卡牌重抽 / 四选一 ==');

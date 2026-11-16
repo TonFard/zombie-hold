@@ -159,8 +159,14 @@ export class AudioEngine {
     this.noiseBuf = buf;
   }
 
-  /** 采样音效（TACZ 枪的 ogg）：先 load，加载好之后 sample 才会响 */
-  private readonly samples = new Map<string, AudioBuffer | null>();
+  /** 采样音效（TACZ 枪的 ogg）：先 load，加载好之后 sample 才会响。null = 正在加载，false = 加载失败 */
+  private readonly samples = new Map<string, AudioBuffer | null | false>();
+
+  /** 这个采样有结果了没有（解码好了，或者加载失败不会再有了）。还没开始加载 / 正在加载 = false */
+  settled(url: string): boolean {
+    const b = this.samples.get(url);
+    return b !== undefined && b !== null;
+  }
 
   load(url: string): void {
     const ctx = this.ctx;
@@ -169,8 +175,14 @@ export class AudioEngine {
     fetch(url)
       .then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((b) => ctx.decodeAudioData(b))
-      .then((buf) => this.samples.set(url, buf))
-      .catch((e: unknown) => console.warn('音效加载失败', url, e));
+      .then((buf) => {
+        // 加载途中上下文换了（换输出设备后重建）：这份结果不要了，新的上下文里已经重新加载
+        if (this.ctx === ctx) this.samples.set(url, buf);
+      })
+      .catch((e: unknown) => {
+        if (this.ctx === ctx) this.samples.set(url, false);
+        console.warn('音效加载失败', url, e);
+      });
   }
 
   /** 播放已加载的采样；还没加载就先加载，这一次不响 */

@@ -1,7 +1,7 @@
 import type { RunConfig } from '../config';
 import { newRisk, type RiskState } from '../systems/events';
 import { newLoot, type LootState } from '../systems/loot';
-import { CARD_BY_ID } from '../data/cards';
+import { CARD_BY_ID, GONE_CARDS } from '../data/cards';
 import { isDifficulty } from '../data/difficulty';
 import { STRUCTURES, STRUCTURE_ORDER, type StructureKind } from '../data/structures';
 import { MAX_TIER, WEAPON_ORDER, effectiveStats, type WeaponKind } from '../data/weapons';
@@ -12,7 +12,7 @@ import type { Bullet } from '../entities/bullet';
 import type { Projectile } from '../entities/projectile';
 import type { Structure } from '../entities/structure';
 import { Zombie } from '../entities/zombie';
-import type { Game, GameStats, Mods, NightLog, PlayerInput, PlayerState, WeaponSlot } from '../sim';
+import { defaultMods, magWith, type Game, type GameStats, type Mods, type NightLog, type PlayerInput, type PlayerState, type WeaponSlot } from '../sim';
 import type { HazardState } from '../systems/hazards';
 import { wireChallenges, type RunState } from '../systems/run';
 import { SaveError, isObj, num } from './schema';
@@ -64,7 +64,7 @@ export interface RunCheckpoint {
   healT: number;
   battery: number;
   flashOn: boolean;
-  airdrop: { stage: number; t: number; x: number; z: number };
+  airdrop: { stage: number; t: number; x: number; z: number; offer: string };
   ev: RiskState;
   loot: LootState;
 }
@@ -207,7 +207,8 @@ const isZombie = (v: unknown): v is ZombieKind => typeof v === 'string' && v in 
 /** 危险区状态：每个列表按元素模板校验；爆炸物数量必须和地图一致（0 = 这一局没开 M12 玩法） */
 function parseHazards(g: Game, v: unknown): HazardState {
   if (!isObj(v)) throw new SaveError('hz 缺失');
-  const base = shaped({ frags: 0, fires: 0, useFire: false, shoveCd: 0, pulseCharge: 0, pulseCd: 0 }, v, 'hz');
+  // 推搡冷却、电击脉冲的字段删了：旧档里多出来的按模板重建时丢掉
+  const base = shaped({ frags: 0, fires: 0, useFire: false }, v, 'hz');
   const throwT = isObj(v) && typeof v.throwT === 'number' && Number.isFinite(v.throwT) ? Math.max(0, Math.min(1, v.throwT)) : 0;
   const throwCd = isObj(v) && typeof v.throwCd === 'number' && Number.isFinite(v.throwCd) ? Math.max(0, Math.min(5, v.throwCd)) : 0;
   const list = <T>(key: string, t: T): T[] => {
@@ -257,7 +258,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     run: shaped(g.run, v.run, 'run'),
     player: shaped(g.player, withoutGone(v.player, v.loadout), 'player'),
     input: shaped(g.input, v.input, 'input'),
-    mods: shaped(g.mods, v.mods, 'mods'),
+    // 后来加的卡牌系数（加长弹匣、穿甲弹……）旧档里没有：按没有这张牌的默认值补上。删掉的（推搡冷却）按模板重建时自然丢掉
+    mods: shaped(g.mods, isObj(v.mods) ? { ...defaultMods(), ...v.mods } : v.mods, 'mods'),
     stats: parseStats(g, v.stats),
     core: shaped({ hp: 0, maxHp: 0 }, v.core, 'core'),
     loadout: shaped(g.loadout, v.loadout, 'loadout'),
@@ -278,7 +280,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     healT: num(v, 'healT', 0, 10),
     battery: num(v, 'battery', 0, 60),
     flashOn: v.flashOn === true,
-    airdrop: shaped({ stage: 0, t: 0, x: 0, z: 0 }, v.airdrop, 'airdrop'),
+    // offer（箱子里没拿的试用枪）是后来加的：旧存档里没有就是空的
+    airdrop: { ...shaped({ stage: 0, t: 0, x: 0, z: 0 }, v.airdrop, 'airdrop'), offer: isObj(v.airdrop) && typeof v.airdrop.offer === 'string' && v.airdrop.offer in GUN_BY_ID ? v.airdrop.offer : '' },
     ev: shaped(newRisk(), v.ev, 'ev'),
     loot: shaped(newLoot(), v.loot, 'loot'),
   };
@@ -301,6 +304,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   if (!['day', 'night', 'cards'].includes(r.phase)) throw new SaveError(`run.phase 不能存档（${r.phase}）`);
   range(r.night, 1, r.endless ? 999 : FINAL_NIGHT, 'run.night');
   if (!['', 'player', 'core'].includes(r.lostReason)) throw new SaveError('run.lostReason 不合法');
+  // 正在三选一时存的档里有已经删掉的牌：把它拿掉（少一张可选）
+  r.cardChoices = r.cardChoices.filter((id) => !GONE_CARDS.includes(id as string));
   if (!r.cardChoices.every((id) => typeof id === 'string' && id in CARD_BY_ID)) throw new SaveError('run.cardChoices 里有未知的卡牌');
   const p = out.player;
   if (!isWeapon(p.weapon)) throw new SaveError('player.weapon 不合法');
@@ -314,7 +319,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
     const s = out.loadout[k];
     range(s.tier, 0, MAX_TIER, `loadout.${k}.tier`);
     if (!Number.isInteger(s.tier)) throw new SaveError(`loadout.${k}.tier 不是整数`);
-    range(s.mag, 0, effectiveStats(k, s.tier, out.config.weaponMods?.[k], GUN_BY_ID[out.config.guns[k]]).mag, `loadout.${k}.mag`);
+    // 上限 = 这把枪的弹匣 × 卡牌「加长弹匣」（和 Game.statsOf 同一个算法）
+    range(s.mag, 0, magWith(effectiveStats(k, s.tier, out.config.weaponMods?.[k], GUN_BY_ID[out.config.guns[k]]).mag, out.mods.mag), `loadout.${k}.mag`);
   }
   if (!out.loadout[p.weapon].owned) throw new SaveError('当前武器没有拥有');
   if (out.config.extras && WEAPON_ORDER.filter((k) => out.loadout[k].owned && out.loadout[k].carried).length > CARRY_MAX) throw new SaveError('身上的枪超过上限');
@@ -322,6 +328,8 @@ export function parseCheckpoint(template: Game, v: unknown): RunCheckpoint {
   // ---- 卡牌 ----
   if (!isObj(v.cardCounts)) throw new SaveError('cardCounts 缺失');
   for (const [id, n] of Object.entries(v.cardCounts)) {
+    // 已经删掉的牌（推搡专家）：这一张不要了，别的照常
+    if (GONE_CARDS.includes(id)) continue;
     const card = CARD_BY_ID[id];
     if (!card) throw new SaveError(`未知的卡牌 ${id}`);
     if (typeof n !== 'number' || !Number.isInteger(n) || n < 1 || n > card.max) throw new SaveError(`卡牌 ${id} 层数越界`);
@@ -431,7 +439,9 @@ export function applyCheckpoint(g: Game, cp: RunCheckpoint): void {
   Object.assign(g.ev, cp.ev);
   Object.assign(g.loot, cp.loot);
   if (g.ev.id === 'survivor' && g.ev.stage === 1) g.events.emit('riskFlare', { x: g.ev.x, z: g.ev.z, on: true });
-  if (g.airdrop.stage === 2) g.events.emit('airdrop', { stage: 'land', x: g.airdrop.x, z: g.airdrop.z });
+  // 箱子开着却没有枪（坏档）：当成已经拿完
+  if (g.airdrop.stage === 3 && !g.airdrop.offer) g.airdrop.stage = 0;
+  if (g.airdrop.stage === 2 || g.airdrop.stage === 3) g.events.emit('airdrop', { stage: g.airdrop.stage === 2 ? 'land' : 'open', x: g.airdrop.x, z: g.airdrop.z });
   g.flashOn = cp.flashOn;
   if (g.config.extras) wireChallenges(g);
   g.hz.explosives.forEach((e, i) => {

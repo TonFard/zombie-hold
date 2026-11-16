@@ -145,7 +145,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     weight: 1.0,
     ammo: null,
     role: '备用枪，子弹无限，能右键举镜',
-    name: 'M9 手枪',
+    name: '手枪',
     price: 0,
     muzzle: 160,
     zero: 10,
@@ -171,7 +171,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     weight: 2.6,
     ammo: { pack: 120, price: 6 },
     role: '城区巷战、室内：射速高、走得快',
-    name: '蝰蛇冲锋枪',
+    name: '冲锋枪',
     price: 350,
     muzzle: 190,
     zero: 9,
@@ -199,26 +199,30 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     // sim:progress：霰弹枪是最难练的枪（机器人每局只有 46 经验），贴脸加成让它在门口真正好用
     // 2026-11 重调：以前 14° 的散布 3 米处只有七成半弹丸打中、5 米一半，边走边打再散三成，贴脸也要两枪。
     // 现在每丸 8 → 11、散布 9°、边走边打几乎不变散、射速 3.5 → 3.0：每一枪更重，3 米内一枪一只行尸，5 米外仍然不行
+    // 2026-11-16 用户：「威力需要再大一点，范围再广一点」→ 每丸 11 → 13、每发 9 → 11 颗，散布 9° → 11°（一枪罩住的人更多），
+    // 射程 13 → 16 米，满伤害的距离从 4.5 米拉到 6.4 米（衰减从射程的四成才开始，最远还剩六成）。
+    // 只加宽散布、不加弹丸的话，5 米外打单只反而比以前弱（弹丸变稀了：实测胖子 5 米第一枪 85 → 80，
+    // 沙盒机器人也从撑到第 10 夜掉到第 7 夜），所以弹丸跟着加，各个距离上都比以前疼
     close: 1.25,
     knock: 1.8,
     moveSpread: 0.3,
-    name: '铁砧霰弹枪',
+    name: '霰弹枪',
     price: 450,
     muzzle: 130,
     zero: 6,
     headMult: 1.75,
-    falloff: [0.35, 0.55],
+    falloff: [0.4, 0.6],
     ads: { spread: 0.7, zoom: 1.2 },
     // 全自动（AA-12 式）：按住左键连发，每秒 3 发，8 发弹匣
     recoil: { v: 2.2, h: 0.9 },
-    base: s({ damage: 11, pellets: 9, rate: 3.0, mag: 8, reload: 2.4, spread: 9, range: 13, adsTime: 0.2 }),
+    base: s({ damage: 13, pellets: 11, rate: 3.0, mag: 8, reload: 2.4, spread: 11, range: 16, adsTime: 0.2 }),
     upgrades: route(450, [
-      { name: '加粗弹丸', desc: '每丸伤害 11 → 12.5', patch: { damage: 12.5 } },
+      { name: '加粗弹丸', desc: '每丸伤害 13 → 14.5', patch: { damage: 14.5 } },
       { name: '弹鼓', desc: '弹匣 8 → 10', patch: { mag: 10 } },
-      { name: '十一弹丸', desc: '每发 9 → 11 颗弹丸', patch: { pellets: 11 } },
+      { name: '十三弹丸', desc: '每发 11 → 13 颗弹丸', patch: { pellets: 13 } },
       { name: '快速装填', desc: '换弹 2.4 → 1.8 秒', patch: { reload: 1.8 } },
-      { name: '龙息弹', desc: '每丸伤害 → 14，穿透 1，点燃 3 秒', patch: { damage: 14, pierce: 1, burn: 12 } },
-      { name: '收束扼流', desc: '散布 9° → 7°，射程 13 → 16', patch: { spread: 7, range: 16 } },
+      { name: '龙息弹', desc: '每丸伤害 → 16，穿透 1，点燃 3 秒', patch: { damage: 16, pierce: 1, burn: 12 } },
+      { name: '收束扼流', desc: '散布 11° → 9°，射程 16 → 19', patch: { spread: 9, range: 19 } },
       { name: '大容量弹鼓', desc: '弹匣 10 → 14', patch: { mag: 14 } },
       { name: '导气加速', desc: '射速 3.0 → 3.6', patch: { rate: 3.6 } },
     ]),
@@ -228,7 +232,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     weight: 3.6,
     ammo: { pack: 90, price: 7 },
     role: '荒野开阔地：中远距离点射，穿透一串',
-    name: '铁壁突击步枪',
+    name: '突击步枪',
     price: 600,
     muzzle: 240,
     zero: 20,
@@ -255,7 +259,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     weight: 5.8,
     ammo: { pack: 15, price: 8 },
     role: '一发穿一串、点杀精英：无视钢板和头盔；湖畔、长街上能打得更远',
-    name: '寒鸦狙击步枪',
+    name: '狙击步枪',
     price: 800,
     muzzle: 420,
     zero: 30,
@@ -284,7 +288,7 @@ export const WEAPONS: Record<WeaponKind, WeaponDef> = {
     weight: 8.5,
     ammo: { pack: 150, price: 9 },
     role: '守据点：压住一整个入口，但扛着走不快',
-    name: '铁幕轻机枪',
+    name: '轻机枪',
     // 1000 → 800：前三夜买不起，解锁了也用不上（sim:progress）
     price: 800,
     muzzle: 220,

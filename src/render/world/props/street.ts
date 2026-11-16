@@ -32,7 +32,7 @@ export function lamp(b: Builder, p: Prop): void {
   // 灯头：扁壳 + 玻璃罩 + 散热鳍
   b.rbox(0.56, 0.12, 0.26, 0.04, { x: 0.8, y: h + 0.1 }, metal(0x3a3d42, { jitter: 0.08, ao: 0 }));
   for (let i = 0; i < 4; i++) b.box(0.4, 0.03, 0.01, { x: 0.8, y: h + 0.22, z: -0.09 + i * 0.06 }, metal(0x3a3d42, { ao: 0 }));
-  b.box(0.42, 0.03, 0.19, { x: 0.8, y: h + 0.075 }, glow(0xffd9a0, 2.8));
+  b.box(0.42, 0.03, 0.19, { x: 0.8, y: h + 0.075 }, glow(0xffd9a0, 1.5));
   // 电线垂下来（有些灯坏了，线断了）
   if (p.variant === 3) b.rod([0.1, h - 0.2, 0.05], [0.25, h - 1.1, 0.12], 0.008, matte(0x111111, { ao: 0 }), 3);
   b.pop();

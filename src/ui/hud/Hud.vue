@@ -4,6 +4,7 @@ import { computed } from 'vue';
 import { hud } from '../hud';
 import { MAX_TIER } from '../../game/data/weapons';
 import Radar from './Radar.vue';
+import HoldPrompts from './HoldPrompts.vue';
 import { fmtTime, ui } from '../store';
 
 const bossPct = computed(() => Math.max(0, (hud.bossHp / hud.bossMax) * 100));
@@ -38,6 +39,8 @@ const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
     <!-- 受伤时的红色边缘 -->
     <div class="hurt" :style="{ opacity: hud.hurt * 0.85 }"></div>
     <div v-if="lowHp && hud.alive" class="low-hp"></div>
+    <!-- 帧数：左上角最边上的小字（绿 ≥ 55，黄 ≥ 30，红 < 30） -->
+    <div class="fps" :class="{ mid: hud.fps < 55 && hud.fps >= 30, low: hud.fps < 30 }">{{ hud.fps }} FPS</div>
 
     <!-- 左上：零件和击杀；下面是零件箱进度和本局卡牌 -->
     <div v-if="!ui.inTdm" class="tlcol">
@@ -113,6 +116,9 @@ const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
 
     <div v-if="hud.benchNear" class="prompt"><kbd>E</kbd>打开武器工坊</div>
 
+    <!-- 第一次遇到的僵尸的情报卡、空投箱里的试用枪要不要 -->
+    <HoldPrompts v-if="!ui.inTdm" />
+
     <!-- 左下：生命和体力 -->
     <div class="bl" :class="{ low: lowHp }">
       <div class="vit">
@@ -129,25 +135,44 @@ const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
       <div class="stamina" :class="{ tired: stPct < 25 }"><div class="fill" :style="{ width: stPct + '%' }"></div></div>
     </div>
 
-    <!-- 右下：武器与弹药（对战里阵亡以后不显示：人都倒了，枪也掉了） -->
-    <div v-if="!(hud.tdm.on && hud.tdm.dead)" class="br">
-      <div class="wrow">
-        <div v-if="!ui.inTdm" class="pips">
-          <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
+    <!-- 右下：武器与弹药（对战里阵亡以后不显示：人都倒了，枪也掉了）。
+         从上到下：枪的侧视图 + 名字 + 怎么开火 / 弹匣和备弹（各有标签，无限就写 ∞）/ 一发一格的弹匣 / 姿态和射程 / 身上另一把枪 -->
+    <div v-if="!(hud.tdm.on && hud.tdm.dead)" class="br" :class="{ wide: !ui.inTdm }">
+      <div class="gline">
+        <span v-if="!knifeOut && !ui.inTdm" class="gpic"><img v-if="hud.gunIcon" :src="hud.gunIcon" alt="" /></span>
+        <div class="gtx">
+          <div class="wrow">
+            <div v-if="!ui.inTdm" class="pips">
+              <span v-for="i in MAX_TIER" :key="i" class="pip" :class="{ on: i <= hud.tier, late: i > 5 }"></span>
+            </div>
+            <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ knifeOut ? '匕首' : hud.weaponName }}<small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
+          </div>
+          <div v-if="!knifeOut && !ui.inTdm" class="fmode">{{ hud.fireMode }}</div>
         </div>
-        <div class="wname" :style="hud.weaponStars ? { color: STAR_COLOR[hud.weaponStars] } : undefined">{{ knifeOut ? '匕首' : hud.weaponName }}<small v-if="hud.weaponStars" class="stars"> {{ '★'.repeat(hud.weaponStars) }}</small></div>
       </div>
       <div v-if="knifeOut" class="knifebox">
         <span><kbd>左键</kbd>横挥</span>
         <span><kbd>右键</kbd>捅</span>
         <small>从背后捅一刀毙命 · 拿着刀跑得快</small>
       </div>
-      <div v-if="!knifeOut" class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
-        <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
-        <span class="cur">{{ hud.mag }}</span><span class="max">/ {{ hud.magMax }}</span>
-        <span v-if="hud.reserve >= 0" class="res" :class="{ out: hud.reserve === 0 }">{{ hud.reserve }}</span>
+      <div v-if="!knifeOut" class="acols">
+        <div class="acol res" :class="{ out: hud.reserve === 0 }">
+          <small>备弹</small>
+          <b>{{ hud.reserve < 0 ? '∞' : hud.reserve }}</b>
+        </div>
+        <div class="acol">
+          <small>弹匣</small>
+          <div class="ammo" :class="{ empty: hud.mag === 0, lowmag: lowMag }">
+            <span v-if="hud.ammoPop.life > 0.02" :key="hud.ammoPop.bump" class="pop ammo-pop" :style="{ opacity: Math.min(1, hud.ammoPop.life * 2) }">+{{ hud.ammoPop.n }}<small>返弹</small></span>
+            <span class="cur">{{ hud.mag }}</span><span class="max">/ {{ hud.magMax }}</span>
+          </div>
+        </div>
       </div>
-      <div v-if="!knifeOut" class="abar" :class="{ reloading: hud.reload >= 0 }">
+      <!-- 弹匣：一发一格（40 发以内）；换弹时、大弹匣的枪画成一条 -->
+      <div v-if="!knifeOut && !ui.inTdm && hud.magCells > 0 && hud.reload < 0" class="cells" :class="{ lowmag: lowMag }">
+        <i v-for="n in hud.magCells" :key="n" :class="{ on: n <= hud.mag }"></i>
+      </div>
+      <div v-else-if="!knifeOut" class="abar" :class="{ reloading: hud.reload >= 0 }">
         <div class="fill" :style="{ width: (hud.reload >= 0 ? hud.reload * 100 : magPct) + '%' }"></div>
       </div>
       <div class="meta">
@@ -161,6 +186,14 @@ const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
         <template v-else-if="hud.mag === 0 && hud.reserve === 0 && hud.tdm.on">没子弹了 · 换枪，或按<kbd class="k3">3</kbd>拿刀</template>
         <template v-else-if="hud.mag === 0 && hud.reserve === 0">没子弹了 · 滚轮换枪</template>
         <template v-else-if="hud.mag === 0"><kbd>R</kbd>换弹</template>
+        <template v-else-if="lowMag && !ui.inTdm"><kbd>R</kbd>换弹 · 打空自动换</template>
+      </div>
+      <!-- 身上的另一把枪：按它的数字键或者滚轮换过去 -->
+      <div v-if="!ui.inTdm && hud.other.name" class="other">
+        <kbd>{{ hud.other.key }}</kbd>
+        <span class="opic"><img v-if="hud.other.icon" :src="hud.other.icon" alt="" /></span>
+        <span class="on">{{ hud.other.name }}</span>
+        <b>{{ hud.other.mag }}<i>/ {{ hud.other.magMax }}</i></b>
       </div>
     </div>
 
@@ -240,7 +273,7 @@ kbd {
 .tlcol {
   position: absolute;
   left: 24px;
-  top: 20px;
+  top: 24px;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
@@ -708,6 +741,9 @@ kbd {
   flex-direction: column;
   align-items: flex-end;
 }
+.br.wide {
+  width: 300px;
+}
 .wrow {
   display: flex;
   align-items: center;
@@ -832,6 +868,162 @@ kbd {
 }
 .hint .k3 {
   margin: 0 4px;
+}
+/* ---- 右下角重做的部分：枪图 + 名字 + 开火方式 / 备弹和弹匣两栏 / 一发一格 / 另一把枪 ---- */
+.fps {
+  position: absolute;
+  left: 26px;
+  top: 4px;
+  font: 600 11px/1.2 var(--hud-num);
+  letter-spacing: 1px;
+  color: var(--hud-ok);
+  opacity: 0.85;
+}
+.fps.mid {
+  color: var(--hud-accent);
+}
+.fps.low {
+  color: var(--hud-danger);
+}
+.gline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+/* 枪图是异步画出来的：位置先占好 */
+.gpic {
+  flex: none;
+  width: 118px;
+  height: 40px;
+}
+.gpic img,
+.opic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(1.7) contrast(1.05) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8));
+}
+.gtx {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 0;
+}
+.fmode {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--hud-cyan);
+  white-space: nowrap;
+}
+.acols {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 16px;
+  width: 100%;
+  margin-top: 6px;
+}
+.acol {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+.acol > small {
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: var(--hud-muted);
+}
+.acol.res {
+  padding-right: 16px;
+  border-right: 1px solid var(--hud-line);
+}
+.acol.res b {
+  font-family: var(--hud-num);
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1.15;
+  color: #d6dce2;
+}
+/* 对战里备弹是有数的、右下还有自己的武器栏：两栏收窄一点 */
+.br:not(.wide) .acols {
+  gap: 10px;
+}
+.br:not(.wide) .acol.res {
+  padding-right: 10px;
+}
+.br:not(.wide) .acol.res b {
+  font-size: 22px;
+}
+.br:not(.wide) .abar {
+  height: 3px;
+}
+.acol.res.out b {
+  color: #ff5a45;
+}
+/* 一发一格：打掉的变暗，剩得少了整排变黄 */
+.cells {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+  gap: 2px;
+  width: 100%;
+  height: 8px;
+  margin-top: 5px;
+}
+.cells i {
+  flex: 1 1 0;
+  max-width: 9px;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.16);
+}
+.cells i.on {
+  background: rgba(255, 255, 255, 0.9);
+}
+.cells.lowmag i.on {
+  background: var(--hud-accent);
+}
+.abar {
+  height: 8px;
+  margin-top: 5px;
+}
+.other {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  margin-top: 4px;
+  padding: 0 8px 0 6px;
+  background: linear-gradient(270deg, var(--hud-panel), rgba(9, 13, 18, 0));
+  border-right: 2px solid var(--hud-line-strong);
+  font-size: 12px;
+  color: var(--hud-muted);
+}
+.other kbd {
+  margin-right: 0;
+}
+.opic {
+  width: 56px;
+  height: 20px;
+  opacity: 0.8;
+}
+.other .on {
+  letter-spacing: 1px;
+  white-space: nowrap;
+}
+.other b {
+  font-family: var(--hud-num);
+  font-size: 15px;
+  color: var(--hud-text);
+}
+.other b i {
+  margin-left: 3px;
+  font-style: normal;
+  font-size: 11px;
+  color: var(--hud-dim);
 }
 /* 对战里手上是刀：弹药的位置换成刀的两个按键 */
 .knifebox {

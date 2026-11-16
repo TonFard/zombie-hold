@@ -310,8 +310,8 @@ export class GameView {
     this.fx.update(dt);
     this.extras.update(dt);
 
-    // 发电机核心脉动
-    this.map.coreMaterial.color.setScalar(0.85 + 0.3 * Math.sin(this.time * 3));
+    // 发电机核心脉动：慢一点、浅一点（以前 0.55–1.15 每 2 秒一次，一闪一闪很晃眼）
+    this.map.coreMaterial.color.setScalar(0.92 + 0.08 * Math.sin(this.time * 1.6));
     // 零件箱光柱脉动，靠近时光环放大
     // 搜刮点（M18）：能搜的时候才亮（白天、没搜过、危险区是本局开放的那一处）；污水一直在
     this.map.lootMarks.forEach((m, i) => {
@@ -351,7 +351,7 @@ export class GameView {
         sprinting: p.sprinting,
         alive: p.alive,
         eye: p.eye,
-        air: game.tdm.on ? p.air : 0,
+        air: p.air,
         ads: p.ads,
         zoom: adsAt(p.weapon, p.tier).zoom,
         kickYaw: p.kickYaw,

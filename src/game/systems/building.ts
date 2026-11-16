@@ -4,6 +4,7 @@ import type { Structure } from '../entities/structure';
 import { angleDiff } from '../core/math';
 import { HALF_H, HALF_W } from '../world/grid';
 import type { Game } from '../sim';
+import { takeAirdropGun } from './airdrop';
 
 export type BuildReason = 'ok' | 'range' | 'scrap' | 'zone' | 'occupied' | 'blocked' | 'locked' | 'cap';
 
@@ -128,7 +129,8 @@ export function updateBuildMode(g: Game, dt: number): void {
   }
   if (inp.use && !g.tdm.on) {
     inp.use = false;
-    if (g.player.alive) repairNearby(g);
+    // 站在开着的空投箱旁边：E 是换上箱里的试用枪，不是修东西
+    if (g.player.alive && !takeAirdropGun(g)) repairNearby(g);
   }
   g.placeCd = Math.max(0, g.placeCd - dt);
   if (!g.buildMode) return;

@@ -3,42 +3,87 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { BENCH_LINES, BENCH_MAX, BENCH_NAME, benchDesc, benchMods, benchPrice, type BenchLine } from '../../game/data/bench';
 import { AMMO_LIMITED, WEAPONS, WEAPON_ORDER, effectiveStats, sustainedDps, weightOf, type WeaponKind } from '../../game/data/weapons';
 import { benchLevel, bonusesOf, canBench, gunState, gunsFor, masteryOf } from '../../game/meta/progress';
-import { GUN_BY_ID, gunsOf } from '../../game/data/guns';
+import { GUNS, GUN_BY_ID } from '../../game/data/guns';
 import { MASTERY_MAX, MASTERY_PERKS, benchNeeds, masteryProgress, masteryTierCap } from '../../game/data/mastery';
 import { STAR_COLOR, STAR_MAX, STAR_TEXT, starXp, starsOf } from '../../game/data/stars';
+import { gunIconOf } from '../gun-icons';
+import type { IconName } from '../icons';
+import TIcon from '../TIcon.vue';
 import { ui } from '../store';
 
 /**
- * 武器台（UI-PLAN 3.3）：左 武器架 / 中 大尺寸 3D 枪模（自动旋转，可拖动、滚轮缩放）/ 右 Tab：属性 · 强化 · 熟练度。
- * 属性用「条 + 数值」；悬停一条强化线时，属性条上多出来的绿色那截就是买了下一级之后的提升
+ * 武器台：上 一排枪类 / 左 这一类的型号架 / 中 大尺寸 3D 枪模（TACZ 模型，慢慢左右摆，可拖动、滚轮缩放）/
+ * 右 属性条（一直在）+ 强化 · 熟练度。
+ *
+ * 所有"悬停看变化"的数字都放在预先留好的固定格子里（属性条右边那一列、DPS 旁边那一格）：
+ * 鼠标移上去只有数字和颜色变，没有哪个格子会变大、把下面的东西挤走。
  */
 const meta = computed(() => ui.save.meta);
 const bonuses = computed(() => bonusesOf(meta.value));
-const pick = ref<WeaponKind>('pistol');
 const unlocked = (k: WeaponKind) => k === 'pistol' || bonuses.value.weapons.has(k);
-type Tab = 'stats' | 'guns' | 'bench' | 'mastery';
-const tab = ref<Tab>('stats');
+type Tab = 'bench' | 'mastery';
+const tab = ref<Tab>('bench');
 const TABS: Array<{ id: Tab; name: string }> = [
-  { id: 'stats', name: '属性' },
-  { id: 'guns', name: '型号' },
   { id: 'bench', name: '强化' },
-  { id: 'mastery', name: '熟练度' },
+  { id: 'mastery', name: '熟练度 · 升星' },
 ];
+const CODE: Record<WeaponKind, string> = { pistol: 'PISTOL', smg: 'SMG', shotgun: 'SHOTGUN', rifle: 'RIFLE', sniper: 'SNIPER', lmg: 'LMG' };
+const LINE_ICON: Record<BenchLine, IconName> = { damage: 'ammo', recoil: 'recoil', rate: 'rate', lighter: 'weight', mag: 'mag' };
 
 /** 出征时每一类用的型号 */
 const picked = computed(() => gunsFor(meta.value));
+/** 正在看的那把枪（点仓库里的格子切换）；pick = 它是哪一类 */
+const view = ref<string>(picked.value.pistol);
+const pick = computed<WeaponKind>(() => GUN_BY_ID[view.value]?.cls ?? 'pistol');
+const equipped = computed(() => picked.value[pick.value]);
+/** 上面一排的分类：全部，或者某一类枪。切到某一类时，选中这一类正在用的那把 */
+type Cat = WeaponKind | 'all';
+const cat = ref<Cat>('all');
+const setCat = (c: Cat): void => {
+  cat.value = c;
+  if (c !== 'all' && pick.value !== c) view.value = picked.value[c];
+};
+/** 仓库右上角的筛选 */
+type Filter = 'all' | 'owned' | 'locked';
+const filter = ref<Filter>('all');
+const FILTERS: Array<{ id: Filter; name: string }> = [
+  { id: 'all', name: '全部' },
+  { id: 'owned', name: '已拥有' },
+  { id: 'locked', name: '未解锁' },
+];
 
-/** 一组属性的数值（当前强化等级和型号，或者假设某条线多买一级 / 换一个型号） */
-function statsFor(k: WeaponKind, bench: Record<string, number>, gunId = picked.value[k]) {
+/** 一组属性的数值（当前强化等级，或者假设某条线多买一级；型号 = 正在看的 / 正在用的） */
+function statsFor(k: WeaponKind, bench: Record<string, number>, gunId: string) {
   const mods = benchMods(bench)[k];
   const gun = GUN_BY_ID[gunId];
   const st = effectiveStats(k, 0, mods, gun);
   return { st, dps: sustainedDps(st), weight: weightOf(k, mods, gun), recoil: WEAPONS[k].recoil.v * (gun?.recoil ?? 1) * mods.recoil };
 }
 
-/** 这一类的型号（第一把是默认的） */
-const models = computed(() => gunsOf(pick.value).map((g) => ({ g, state: gunState(meta.value, g.id), on: picked.value[pick.value] === g.id })));
-const gunName = computed(() => GUN_BY_ID[picked.value[pick.value]]?.name ?? '');
+// ---- 上面一排枪类 ----
+const classes = computed(() =>
+  WEAPON_ORDER.map((k) => {
+    const xp = meta.value.mastery[k] ?? 0;
+    const p = masteryProgress(k, xp);
+    const frac = p.to === null ? 0 : (xp - p.from) / (p.to - p.from);
+    return { k, name: WEAPONS[k].name, code: CODE[k], on: unlocked(k), gun: GUN_BY_ID[picked.value[k]]?.name ?? '', lv: p.lv, pct: Math.min(1, (p.lv + frac) / MASTERY_MAX), stars: starsOf(k, xp) };
+  }),
+);
+
+// ---- 仓库：所有型号一格一把（GUNS 本来就按枪类排好了）----
+const all = computed(() => GUNS.map((g) => ({ g, state: gunState(meta.value, g.id), on: picked.value[g.cls] === g.id, icon: gunIconOf(g.id), cls: WEAPONS[g.cls].name })));
+const models = computed(() => all.value.filter((m) => (cat.value === 'all' || m.g.cls === cat.value) && (filter.value === 'all' || (filter.value === 'owned') === (m.state === 'owned'))));
+const owned = computed(() => all.value.filter((m) => m.state === 'owned').length);
+const cur = computed(() => all.value.find((m) => m.g.id === view.value) ?? all.value[0]!);
+/** 解锁不了的原因（按钮下面那一行，位置固定） */
+const why = computed(() => {
+  const m = cur.value;
+  if (m.state === 'class') return '先在军械库解锁这一类枪';
+  if (m.state === 'mastery') return `这一类的熟练度要到 ${m.g.mastery} 级（现在 ${masteryOf(meta.value, pick.value)} 级）`;
+  if (m.state === 'medals') return `勋章还差 ${m.g.medals - meta.value.medals}`;
+  if (m.state === 'ok') return '解锁以后可以装备；空投里也能捡到试用一局';
+  return m.on ? '出征时这一类用的就是它' : '点「装备」，下一局起这一类用它';
+});
 
 const w = computed(() => {
   const k = pick.value;
@@ -58,167 +103,255 @@ const w = computed(() => {
     mastery: { ...p, xp, pct: p.to === null ? 1 : (xp - p.from) / (p.to - p.from), cap: masteryTierCap(p.lv), stars, starTo: sTo, starPct: Math.max(0, Math.min(1, starPct)) },
     lines: BENCH_LINES.map((line: BenchLine) => {
       const lv = benchLevel(meta.value, k, line);
-      return { line, name: BENCH_NAME[line], lv, now: benchDesc(k, line, lv), next: lv < BENCH_MAX ? benchDesc(k, line, lv + 1) : '', price: lv < BENCH_MAX ? benchPrice(k, lv) : 0, state: canBench(meta.value, k, line), need: benchNeeds(lv) };
+      const state = canBench(meta.value, k, line);
+      const need = benchNeeds(lv);
+      const price = lv < BENCH_MAX ? benchPrice(k, lv) : 0;
+      // 买不了的时候，按钮下面那一小行写原因（那一行一直占着位置）
+      const note = state === 'locked' ? '先在军械库解锁' : state === 'mastery' ? `需要熟练度 ${need}` : state === 'supplies' ? `补给还差 ${price - meta.value.supplies}` : '';
+      return { line, name: BENCH_NAME[line], icon: LINE_ICON[line], lv, now: benchDesc(k, line, lv), next: lv < BENCH_MAX ? benchDesc(k, line, lv + 1) : '', price, state, note };
     }),
   };
 });
 
 // ---- 属性条：刻度按全部武器的范围定（伤害最高的狙击 130、射速最高的冲锋枪 13 发/秒……）----
 const hoverLine = ref<BenchLine | null>(null);
-const hoverGun = ref<string | null>(null);
-const cur = computed(() => statsFor(pick.value, meta.value.bench));
+/** 正在用的型号（对比的基准）、正在看的型号、悬停的强化线买了以后 */
+const base = computed(() => statsFor(pick.value, meta.value.bench, equipped.value));
+const shown = computed(() => statsFor(pick.value, meta.value.bench, view.value));
 const next = computed(() => {
-  if (hoverGun.value && hoverGun.value !== picked.value[pick.value]) return statsFor(pick.value, meta.value.bench, hoverGun.value);
   const line = hoverLine.value;
   if (!line) return null;
   const lv = benchLevel(meta.value, pick.value, line);
   if (lv >= BENCH_MAX) return null;
-  return statsFor(pick.value, { ...meta.value.bench, [`${pick.value}.${line}`]: lv + 1 });
+  return statsFor(pick.value, { ...meta.value.bench, [`${pick.value}.${line}`]: lv + 1 }, view.value);
+});
+// 换了枪类 / 切了 Tab：鼠标底下那一行已经不在了，不会再收到 mouseleave，手动清掉
+watch([pick, tab], () => {
+  hoverLine.value = null;
 });
 type S = ReturnType<typeof statsFor>;
 const clamp = (x: number) => Math.max(0, Math.min(1, x));
-const BARS: Array<{ k: string; f: (s: S) => number; v: (s: S) => string; low?: boolean }> = [
-  { k: '伤害', f: (s) => clamp((s.st.damage * s.st.pellets) / 130), v: (s) => `${s.st.damage.toFixed(0)}${s.st.pellets > 1 ? ` × ${s.st.pellets}` : ''}` },
-  { k: '射速', f: (s) => clamp(s.st.rate / 14), v: (s) => `${s.st.rate.toFixed(1)} 发/秒` },
-  { k: '弹匣', f: (s) => clamp(Math.sqrt(s.st.mag / 100)), v: (s) => `${s.st.mag} 发` },
-  { k: '换弹', f: (s) => clamp(1 - (s.st.reload - 0.8) / 3.6), v: (s) => `${s.st.reload.toFixed(1)} 秒` },
-  { k: '射程', f: (s) => clamp(s.st.range / 60), v: (s) => `${s.st.range} 米` },
-  { k: '稳定', f: (s) => clamp(1 - s.recoil / 4.5), v: (s) => `后坐 ${s.recoil.toFixed(1)}°` },
-  { k: '重量', f: (s) => clamp(s.weight / 10), v: (s) => `${s.weight.toFixed(1)} kg`, low: true },
+interface Bar {
+  k: string;
+  icon: IconName;
+  /** 条的长度 0–1 */
+  f: (s: S) => number;
+  /** 显示的数值（带单位）、不带单位的短写（「→ 13.5」那一格用） */
+  v: (s: S) => string;
+  short: (s: S) => string;
+  /** 原始数值（算两把枪的差）、差值保留几位小数、是不是越小越好 */
+  n: (s: S) => number;
+  digits: number;
+  low?: boolean;
+}
+const BARS: Bar[] = [
+  { k: '伤害', icon: 'damage', f: (s) => clamp((s.st.damage * s.st.pellets) / 130), v: (s) => `${s.st.damage.toFixed(0)}${s.st.pellets > 1 ? ` × ${s.st.pellets}` : ''}`, short: (s) => `${s.st.damage.toFixed(0)}${s.st.pellets > 1 ? `×${s.st.pellets}` : ''}`, n: (s) => s.st.damage * s.st.pellets, digits: 0 },
+  { k: '射速', icon: 'rate', f: (s) => clamp(s.st.rate / 14), v: (s) => `${s.st.rate.toFixed(1)} 发/秒`, short: (s) => s.st.rate.toFixed(1), n: (s) => s.st.rate, digits: 1 },
+  { k: '弹匣', icon: 'mag', f: (s) => clamp(Math.sqrt(s.st.mag / 100)), v: (s) => `${s.st.mag} 发`, short: (s) => String(s.st.mag), n: (s) => s.st.mag, digits: 0 },
+  { k: '换弹', icon: 'reload', f: (s) => clamp(1 - (s.st.reload - 0.8) / 3.6), v: (s) => `${s.st.reload.toFixed(1)} 秒`, short: (s) => s.st.reload.toFixed(1), n: (s) => s.st.reload, digits: 1, low: true },
+  { k: '射程', icon: 'range', f: (s) => clamp(s.st.range / 60), v: (s) => `${s.st.range.toFixed(0)} 米`, short: (s) => s.st.range.toFixed(0), n: (s) => s.st.range, digits: 0 },
+  { k: '后坐', icon: 'recoil', f: (s) => clamp(1 - s.recoil / 4.5), v: (s) => `${s.recoil.toFixed(1)}°`, short: (s) => s.recoil.toFixed(1), n: (s) => s.recoil, digits: 1, low: true },
+  { k: '重量', icon: 'weight', f: (s) => clamp(s.weight / 10), v: (s) => `${s.weight.toFixed(1)} kg`, short: (s) => s.weight.toFixed(1), n: (s) => s.weight, digits: 1, low: true },
 ];
+const signed = (d: number, digits: number): string => `${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(digits)}`;
+/** 和正在用的型号不是同一把：属性条上画出它的位置，右边那一格写差多少 */
+const comparing = computed(() => view.value !== equipped.value);
 const bars = computed(() =>
   BARS.map((b) => {
-    const a = b.f(cur.value);
+    const a = b.f(shown.value);
     const n = next.value ? b.f(next.value) : a;
-    return { k: b.k, pct: a * 100, gain: Math.max(0, n - a) * 100, v: b.v(cur.value), nv: next.value && b.v(next.value) !== b.v(cur.value) ? b.v(next.value) : '', heavy: b.low && cur.value.weight > 5 };
+    // 右边那一格：悬停强化线 → 买了以后的数值；在看别的型号 → 和正在用的那把差多少；否则空着
+    let side = '';
+    let tone: '' | 'up' | 'down' = '';
+    if (next.value) {
+      if (b.short(next.value) !== b.short(shown.value)) {
+        side = `→ ${b.short(next.value)}`;
+        tone = 'up';
+      }
+    } else if (comparing.value) {
+      const d = b.n(shown.value) - b.n(base.value);
+      if (Math.abs(d) >= 0.5 * 10 ** -b.digits) {
+        side = signed(d, b.digits);
+        tone = d > 0 !== !!b.low ? 'up' : 'down';
+      }
+    }
+    return { k: b.k, icon: b.icon, pct: a * 100, gain: Math.max(0, n - a) * 100, mark: comparing.value ? b.f(base.value) * 100 : -1, v: b.v(shown.value), side, tone, heavy: b.k === '重量' && shown.value.weight > 5 };
   }),
 );
-const dpsNext = computed(() => (next.value && Math.abs(next.value.dps - cur.value.dps) > 0.5 ? next.value.dps : null));
+/** DPS 旁边那一格 */
+const dpsSide = computed(() => {
+  if (next.value) return Math.abs(next.value.dps - shown.value.dps) > 0.5 ? { text: `→ ${next.value.dps.toFixed(0)}`, tone: 'up' } : null;
+  if (!comparing.value) return null;
+  const d = shown.value.dps - base.value.dps;
+  return Math.abs(d) >= 0.5 ? { text: signed(d, 0), tone: d > 0 ? 'up' : 'down' } : null;
+});
 
 // ---- 3D 展示：跟着容器大小走 ----
 const stageEl = ref<HTMLDivElement | null>(null);
 let preview: ReturnType<typeof ui.gfx.preview> = null;
 let ro: ResizeObserver | null = null;
+const loading = ref(false);
+let loadTimer = 0;
+const showGun = (): void => {
+  preview?.setGun(view.value, pick.value);
+  loading.value = true;
+};
 onMounted(() => {
   const el = stageEl.value;
   if (!el) return;
   preview = ui.gfx.preview(Math.max(2, el.clientWidth), Math.max(2, el.clientHeight));
   if (!preview) return;
   el.appendChild(preview.canvas);
-  preview.setWeapon(pick.value, 0);
+  showGun();
   ro = new ResizeObserver(() => preview?.resize(el.clientWidth, el.clientHeight));
   ro.observe(el);
+  loadTimer = window.setInterval(() => {
+    loading.value = preview?.loading ?? false;
+  }, 150);
 });
-watch(pick, (k) => preview?.setWeapon(k, 0));
+watch(view, showGun);
 onBeforeUnmount(() => {
+  window.clearInterval(loadTimer);
   ro?.disconnect();
   preview?.dispose();
 });
-const icon = (k: WeaponKind) => ui.gfx.icon(k);
-const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
 </script>
 
 <template>
   <section class="armory t-enter">
-    <!-- 左：武器架 -->
-    <nav class="rack t-panel" aria-label="武器">
-      <div class="t-head">武器 <small>LOADOUT</small></div>
-      <button v-for="k in WEAPON_ORDER" :key="k" :class="{ on: pick === k, locked: !unlocked(k) }" :aria-pressed="pick === k" @click="pick = k">
-        <img class="ic" :src="icon(k)" alt="" />
-        <span class="tx">
-          <b>{{ WEAPONS[k].name }}</b>
-          <small v-if="!unlocked(k)">🔒 未解锁</small>
-          <small v-else class="mlv" :class="{ max: masteryOf(meta, k) >= MASTERY_MAX }">
-            熟练 {{ masteryOf(meta, k) }}/{{ MASTERY_MAX }}<i v-if="stars(k)" :style="{ color: STAR_COLOR[stars(k)] }"> {{ '★'.repeat(stars(k)) }}</i>
-          </small>
+    <!-- 上：分类（全部 + 六类枪，每一类带熟练度的环） -->
+    <nav class="classes" aria-label="分类">
+      <button class="cls all" :class="{ on: cat === 'all' }" :aria-pressed="cat === 'all'" @click="setCat('all')">
+        <span class="ctx">
+          <b>全部</b>
+          <small>ALL · {{ owned }} / {{ all.length }}</small>
         </span>
+        <span class="clock"><TIcon name="crate" /></span>
+      </button>
+      <button v-for="c in classes" :key="c.k" class="cls" :class="{ on: cat === c.k, locked: !c.on }" :aria-pressed="cat === c.k" @click="setCat(c.k)">
+        <span class="ctx">
+          <b>{{ c.name }}</b>
+          <small>{{ c.code }}<template v-if="c.on"> · {{ c.gun }}</template><template v-else> · 未解锁</template></small>
+        </span>
+        <span v-if="!c.on" class="clock"><TIcon name="lock" /></span>
+        <svg v-else class="ring" :class="{ max: c.lv >= MASTERY_MAX }" viewBox="0 0 36 36" :aria-label="`熟练度 ${c.lv} / ${MASTERY_MAX}`">
+          <circle class="tr" cx="18" cy="18" r="15" />
+          <circle class="pr" cx="18" cy="18" r="15" :stroke-dasharray="`${(c.pct * 94.25).toFixed(1)} 94.25`" transform="rotate(-90 18 18)" />
+          <text x="18" y="22.6" text-anchor="middle">{{ c.lv }}</text>
+        </svg>
       </button>
     </nav>
 
-    <!-- 中：枪模展示 -->
-    <div class="stage">
-      <div class="halo" aria-hidden="true"></div>
-      <div ref="stageEl" class="canvas" title="拖动旋转 · 滚轮缩放" aria-label="武器 3D 展示"></div>
-      <div class="cap">
-        <div class="name">
-          <h3>{{ gunName || w.def.name }}</h3>
-          <span v-if="!w.on" class="lock">🔒 未解锁 · 在军械库解锁</span>
-        </div>
-        <p class="role">{{ w.def.role }}</p>
-        <div class="badges">
-          <span class="star" :style="{ color: STAR_COLOR[w.mastery.stars] }">{{ w.mastery.stars ? '★'.repeat(w.mastery.stars) : '☆' }}<small>{{ w.mastery.stars }}/{{ STAR_MAX }}</small></span>
-          <span class="ml">熟练度 <b>{{ w.mastery.lv }}</b>/{{ MASTERY_MAX }}</span>
-          <span class="mbar"><i :style="{ width: `${Math.round(w.mastery.pct * 100)}%` }"></i></span>
+    <!-- 左：仓库，一格一把枪 -->
+    <aside class="store t-panel" aria-label="仓库">
+      <div class="store-head">
+        <div class="t-head">仓库 <small>STORAGE · {{ models.length }} 把</small></div>
+        <div class="t-seg fseg" role="group" aria-label="筛选">
+          <button v-for="f in FILTERS" :key="f.id" :class="{ on: filter === f.id }" :aria-pressed="filter === f.id" @click="filter = f.id">{{ f.name }}</button>
         </div>
       </div>
-      <p class="hint">拖动旋转 · 滚轮缩放</p>
+      <div class="cells">
+        <button v-for="m in models" :key="m.g.id" class="cell" :class="{ on: view === m.g.id, eq: m.on, off: m.state !== 'owned', can: m.state === 'ok' }" :aria-pressed="view === m.g.id" @click="view = m.g.id">
+          <span v-if="m.on" class="badge">使用中</span>
+          <span v-else-if="m.state !== 'owned'" class="badge lock"><TIcon name="lock" /></span>
+          <span class="gpic"><img v-if="m.icon" :src="m.icon" alt="" /></span>
+          <b>{{ m.g.name }}</b>
+          <small v-if="m.state === 'owned'">{{ m.cls }}</small>
+          <small v-else class="need">熟练 {{ m.g.mastery }} · <TIcon name="medal" />{{ m.g.medals }}</small>
+        </button>
+        <p v-if="!models.length" class="empty">这个分类里没有符合筛选的枪</p>
+      </div>
+      <p class="rack-note">同一类的型号共用熟练度、升星和强化，只是手感和数值的取舍不同。解锁了的枪出征时直接带，不用在局内买。</p>
+    </aside>
+
+    <!-- 中：展示台 + 属性 -->
+    <div class="mid">
+    <!-- 中：展示台 -->
+    <div class="stage">
+      <div class="halo" aria-hidden="true"></div>
+      <svg class="reticle" viewBox="0 0 200 200" aria-hidden="true">
+        <circle cx="100" cy="100" r="78" />
+        <circle class="dash" cx="100" cy="100" r="88" />
+        <path d="M100 6v12M100 182v12M6 100h12M182 100h12" />
+        <path class="thin" d="M100 40v8M100 152v8M40 100h8M152 100h8" />
+      </svg>
+      <i class="cn tl" aria-hidden="true"></i><i class="cn tr" aria-hidden="true"></i><i class="cn bl" aria-hidden="true"></i><i class="cn br" aria-hidden="true"></i>
+      <div ref="stageEl" class="canvas" title="拖动旋转 · 滚轮缩放" aria-label="武器 3D 展示"></div>
+      <div class="tag">
+        <b>{{ CODE[w.k] }}</b>
+        <span>{{ w.def.name }} · {{ w.def.role }}</span>
+      </div>
+      <p class="hint"><TIcon name="rotate" />拖动旋转 · 滚轮缩放</p>
+      <div class="mline"><span class="star" :style="{ color: STAR_COLOR[w.mastery.stars] }"><TIcon v-for="i in STAR_MAX" :key="i" name="star" :class="{ dim: i > w.mastery.stars }" /></span><span class="ml">{{ w.def.name }}熟练度 <b>{{ w.mastery.lv }}</b>/{{ MASTERY_MAX }}</span></div>
+      <p v-if="loading" class="loading">模型加载中…</p>
+      <div class="cap">
+        <div class="cap-l">
+          <h3>{{ cur.g.name }}</h3>
+          <p class="desc">{{ cur.g.desc }}</p>
+        </div>
+        <div class="cap-r">
+          <div v-if="cur.on" class="inuse"><TIcon name="check" />使用中</div>
+          <button v-else-if="cur.state === 'owned'" class="t-btn act" @click="ui.actions.pickGun(w.k, cur.g.id)">装 备</button>
+          <button v-else class="t-btn gold act" :disabled="cur.state !== 'ok'" @click="ui.actions.unlockGun(cur.g.id)"><TIcon name="medal" />{{ cur.g.medals }} 解锁</button>
+          <small :class="{ bad: cur.state === 'class' || cur.state === 'mastery' || cur.state === 'medals' }">{{ why }}</small>
+        </div>
+      </div>
     </div>
 
-    <!-- 右：信息 Tab -->
+      <div class="stats t-panel">
+        <div class="dps">
+          <TIcon name="dps" />
+          <span>持续 DPS<small>1 级 · 含换弹</small></span>
+          <b>{{ shown.dps.toFixed(0) }}</b>
+          <em :class="dpsSide?.tone">{{ dpsSide?.text ?? '' }}</em>
+        </div>
+        <div class="bars">
+          <div v-for="b in bars" :key="b.k" class="row">
+            <TIcon :name="b.icon" />
+            <span>{{ b.k }}</span>
+            <i class="track">
+              <b :class="{ heavy: b.heavy }" :style="{ width: b.pct + '%' }"></b>
+              <s v-if="b.gain > 0" :style="{ left: b.pct + '%', width: b.gain + '%' }"></s>
+              <u v-if="b.mark >= 0" :style="{ left: b.mark + '%' }"></u>
+            </i>
+            <em>{{ b.v }}</em>
+            <strong :class="b.tone">{{ b.side }}</strong>
+          </div>
+        </div>
+        <p class="note">{{ comparing ? `竖线 = 正在用的「${GUN_BY_ID[equipped]?.name ?? ''}」，右边是差多少。` : '悬停一条强化线，这里显示买了以后的数值。' }}超过 3 kg 每千克移速 −3%。</p>
+        <div v-if="AMMO_LIMITED && w.k !== 'pistol'" class="ammo">
+          <span>弹药库存 <b>{{ w.stock }}</b> 发</span>
+          <button class="t-btn gold" :disabled="!w.on || meta.supplies < (w.def.ammo?.price ?? 0)" @click="ui.actions.buyAmmo(w.k, 1)">+{{ w.def.ammo?.pack }} · <TIcon name="supply" />{{ w.def.ammo?.price }}</button>
+          <button class="t-btn gold" :disabled="!w.on || meta.supplies < (w.def.ammo?.price ?? 0) * 5" @click="ui.actions.buyAmmo(w.k, 5)">+{{ (w.def.ammo?.pack ?? 0) * 5 }} · <TIcon name="supply" />{{ (w.def.ammo?.price ?? 0) * 5 }}</button>
+        </div>
+
+        </div>
+    </div>
+
+    <!-- 右：强化 / 熟练度 -->
     <aside class="info t-panel">
       <div class="tabs t-seg" role="tablist">
         <button v-for="t in TABS" :key="t.id" role="tab" :aria-selected="tab === t.id" :class="{ on: tab === t.id }" @click="tab = t.id">{{ t.name }}</button>
       </div>
 
-      <!-- 属性 -->
-      <div v-if="tab === 'stats'" class="pane" role="tabpanel">
-        <div class="dps">
-          <span>持续 DPS<small>（1 级）</small></span>
-          <b>{{ cur.dps.toFixed(0) }}</b>
-          <em v-if="dpsNext !== null">→ {{ dpsNext.toFixed(0) }}</em>
-        </div>
-        <div class="bars">
-          <div v-for="b in bars" :key="b.k" class="t-stat">
-            <span>{{ b.k }}</span>
-            <i><b :style="{ width: b.pct + '%', ...(b.heavy ? { background: '#e8a03f' } : {}) }"></b><s v-if="b.gain > 0" :style="{ left: b.pct + '%', width: b.gain + '%' }"></s></i>
-            <em>{{ b.v }}<template v-if="b.nv"><br /><span class="to">→ {{ b.nv }}</span></template></em>
+      <!-- 强化：每条线一行，高度固定 -->
+      <div v-if="tab === 'bench'" class="pane" role="tabpanel">
+        <div v-for="l in w.lines" :key="l.line" class="line" :class="{ maxed: l.state === 'maxed', hot: hoverLine === l.line }" @mouseenter="hoverLine = l.line" @mouseleave="hoverLine = null" @focusin="hoverLine = l.line" @focusout="hoverLine = null">
+          <span class="lico"><TIcon :name="l.icon" /></span>
+          <div class="ltx">
+            <div class="lh">
+              <b>{{ l.name }}</b>
+              <span class="pips" :aria-label="`${l.lv} / ${BENCH_MAX} 级`"><i v-for="i in BENCH_MAX" :key="i" :class="{ on: i <= l.lv }"></i></span>
+            </div>
+            <div class="ld"><span class="now">{{ l.lv > 0 ? l.now : '未强化' }}</span><template v-if="l.next"><TIcon name="chevron" /><b>{{ l.next }}</b></template></div>
+          </div>
+          <div class="lbuy">
+            <button v-if="l.state !== 'maxed'" class="t-btn gold" :disabled="l.state !== 'ok'" @click="ui.actions.buyBench(w.k, l.line)"><TIcon name="supply" />{{ l.price }}</button>
+            <div v-else class="done"><TIcon name="check" />已满级</div>
+            <small>{{ l.note }}</small>
           </div>
         </div>
-        <p class="note">超过 3 kg 每千克移速 −3%、冲刺更耗体力；越重换弹、举镜、切枪越慢。背着的另一把算一半重量。</p>
-        <div class="ammo">
-          <span>弹药库存</span>
-          <b v-if="w.k === 'pistol' || !AMMO_LIMITED">∞</b>
-          <b v-else>{{ w.stock }}<small> 发</small></b>
-        </div>
-        <div v-if="AMMO_LIMITED && w.k !== 'pistol'" class="buy">
-          <button class="t-btn gold" :disabled="!w.on || meta.supplies < (w.def.ammo?.price ?? 0)" @click="ui.actions.buyAmmo(w.k, 1)">+{{ w.def.ammo?.pack }} 发 · ▣ {{ w.def.ammo?.price }}</button>
-          <button class="t-btn gold" :disabled="!w.on || meta.supplies < (w.def.ammo?.price ?? 0) * 5" @click="ui.actions.buyAmmo(w.k, 5)">+{{ (w.def.ammo?.pack ?? 0) * 5 }} 发 · ▣ {{ (w.def.ammo?.price ?? 0) * 5 }}</button>
-        </div>
-        <p v-else-if="w.k !== 'pistol'" class="note">目前所有武器子弹无限。</p>
-      </div>
-
-      <!-- 型号 -->
-      <div v-else-if="tab === 'guns'" class="pane" role="tabpanel">
-        <p class="note top">同一类枪的不同型号：熟练度、升星、强化、局内升级都按这一类算，型号只改手感和数值的取舍。悬停一个型号，「属性」里的数值会显示变化；空投里也能捡到没解锁的型号试用一局。</p>
-        <div v-for="m in models" :key="m.g.id" class="line" :class="{ maxed: m.on }" @mouseenter="hoverGun = m.g.id" @mouseleave="hoverGun = null" @focusin="hoverGun = m.g.id" @focusout="hoverGun = null">
-          <div class="lh">
-            <b>{{ m.g.name }}</b>
-            <span v-if="m.on" class="eq">使用中</span>
-          </div>
-          <div class="ld">{{ m.g.desc }}</div>
-          <div v-if="hoverGun === m.g.id && next" class="ld gain">DPS {{ cur.dps.toFixed(0) }} → <b>{{ next.dps.toFixed(0) }}</b> · {{ next.weight.toFixed(1) }} kg</div>
-          <button v-if="m.state === 'owned' && !m.on" class="t-btn" @click="ui.actions.pickGun(w.k, m.g.id)">装备</button>
-          <button v-else-if="m.state !== 'owned'" class="t-btn gold" :disabled="m.state !== 'ok'" @click="ui.actions.unlockGun(m.g.id)">
-            ✦ {{ m.g.medals }}<template v-if="m.state === 'class'"> · 先在军械库解锁这一类</template><template v-else-if="m.state === 'mastery'"> · 需要熟练度 {{ m.g.mastery }}</template><template v-else-if="m.state === 'medals'"> · 还差 {{ m.g.medals - meta.medals }}</template>
-          </button>
-        </div>
-      </div>
-
-      <!-- 强化 -->
-      <div v-else-if="tab === 'bench'" class="pane" role="tabpanel">
-        <p class="note top">永久生效，每局都带着；每一级要先练到对应熟练度。悬停一条线会显示买了之后 DPS 的变化。</p>
-        <div v-for="l in w.lines" :key="l.line" class="line" :class="{ maxed: l.state === 'maxed' }" @mouseenter="hoverLine = l.line" @mouseleave="hoverLine = null" @focusin="hoverLine = l.line" @focusout="hoverLine = null">
-          <div class="lh">
-            <b>{{ l.name }}</b>
-            <span class="pips"><i v-for="i in BENCH_MAX" :key="i" :class="{ on: i <= l.lv }"></i></span>
-          </div>
-          <div class="ld">{{ l.lv > 0 ? l.now : '未强化' }}<template v-if="l.next"> → <b>{{ l.next }}</b></template></div>
-          <div v-if="hoverLine === l.line && dpsNext !== null" class="ld gain">DPS {{ cur.dps.toFixed(0) }} → <b>{{ dpsNext.toFixed(0) }}</b></div>
-          <button v-if="l.state !== 'maxed'" class="t-btn gold" :disabled="l.state !== 'ok'" @click="ui.actions.buyBench(w.k, l.line)">
-            ▣ {{ l.price }}<template v-if="l.state === 'locked'"> · 先在军械库解锁</template><template v-else-if="l.state === 'mastery'"> · 需要熟练度 {{ l.need }}</template>
-          </button>
-          <div v-else class="done">已满级</div>
-        </div>
+        <p class="note">永久生效，每局都带着；同一类的所有型号共用。每一级要先把这一类练到对应的熟练度。</p>
       </div>
 
       <!-- 熟练度与升星 -->
@@ -229,14 +362,19 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
         <ol class="perks">
           <li v-for="(t, i) in MASTERY_PERKS" :key="i" :class="{ on: w.mastery.lv > i }"><b>{{ i + 1 }}</b>{{ t }}</li>
         </ol>
-        <div class="mh star-h"><span>升星</span><b :style="{ color: STAR_COLOR[w.mastery.stars] }">{{ w.mastery.stars ? '★'.repeat(w.mastery.stars) : '—' }}</b></div>
+        <div class="mh star-h">
+          <span>升星</span>
+          <b :style="{ color: STAR_COLOR[w.mastery.stars] }">{{ w.mastery.stars }} / {{ STAR_MAX }}</b>
+        </div>
         <template v-if="w.mastery.lv >= MASTERY_MAX">
           <div class="mbar big"><i :style="{ width: `${Math.round(w.mastery.starPct * 100)}%`, background: STAR_COLOR[Math.min(STAR_MAX, w.mastery.stars + 1)] }"></i></div>
           <p class="note">{{ w.mastery.starTo === null ? '已满星' : `${w.mastery.xp} / ${w.mastery.starTo} 经验到下一颗星` }}</p>
         </template>
         <p v-else class="note">精通（熟练度 {{ MASTERY_MAX }}）之后继续用它杀怪，每颗星一个特性（出征时生效）</p>
         <ol class="perks">
-          <li v-for="(t, i) in STAR_TEXT[w.k]" :key="i" :class="{ on: w.mastery.stars > i }" :style="w.mastery.stars > i ? { borderColor: STAR_COLOR[i + 1], color: STAR_COLOR[i + 1] } : undefined"><b>{{ '★'.repeat(i + 1) }}</b>{{ t }}</li>
+          <li v-for="(t, i) in STAR_TEXT[w.k]" :key="i" :class="{ on: w.mastery.stars > i }" :style="w.mastery.stars > i ? { borderColor: STAR_COLOR[i + 1], color: STAR_COLOR[i + 1] } : undefined">
+            <b class="sb"><TIcon v-for="n in i + 1" :key="n" name="star" /></b>{{ t }}
+          </li>
         </ol>
       </div>
     </aside>
@@ -246,165 +384,497 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
 <style scoped>
 .armory {
   display: grid;
-  grid-template-columns: 230px minmax(0, 1fr) 360px;
-  gap: 18px;
+  grid-template-columns: minmax(0, 1fr) 440px 396px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px 16px;
   height: 100%;
   min-height: 0;
 }
-.rack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 16px 12px;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+.t-ico {
+  width: 1em;
+  height: 1em;
+  flex: none;
 }
-.rack button {
-  display: flex;
+
+/* ---------- 上：枪类 ---------- */
+.classes {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+}
+.cls {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
-  background: rgba(255, 255, 255, 0.025);
+  height: 58px;
+  padding: 0 12px 0 14px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.012));
   border: 1px solid var(--t-line);
-  border-left: 3px solid transparent;
   color: var(--t-text);
   font: inherit;
   text-align: left;
   cursor: pointer;
-  transition: 0.15s var(--t-ease);
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease);
 }
-.rack button:hover,
-.rack button:focus-visible {
+.cls::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--t-gold);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.2s var(--t-ease);
+}
+.cls:hover,
+.cls:focus-visible {
   outline: none;
   border-color: var(--t-line-strong);
-  background: rgba(255, 255, 255, 0.05);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0.02));
 }
-.rack button.on {
-  border-color: rgba(240, 184, 58, 0.5);
-  border-left-color: var(--t-gold);
-  background: linear-gradient(90deg, rgba(240, 184, 58, 0.12), rgba(240, 184, 58, 0.02));
+.cls.on {
+  border-color: rgba(240, 184, 58, 0.55);
+  background: linear-gradient(180deg, rgba(240, 184, 58, 0.14), rgba(240, 184, 58, 0.03));
 }
-.rack button.locked {
-  opacity: 0.5;
+.cls.on::after {
+  transform: scaleX(1);
 }
-.ic {
-  width: 64px;
-  height: 26px;
-  flex: none;
+.cls.locked {
+  color: var(--t-muted);
+}
+/* 图标是异步画出来的：格子大小写死，图来了不挤别的东西 */
+.cpic {
+  width: 84px;
+  height: 30px;
+  background: radial-gradient(ellipse at center, rgba(200, 215, 230, 0.16), transparent 70%);
+}
+.cpic img,
+.gpic img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  /* 枪模是深色金属：底下垫一点亮，放在深色列表上才看得清 */
-  background: radial-gradient(ellipse at center, rgba(200, 210, 220, 0.2), transparent 70%);
-  filter: brightness(1.6) contrast(1.1);
+  filter: brightness(1.55) contrast(1.08);
 }
-.locked .ic {
-  filter: grayscale(1) brightness(1.2);
+.locked .cpic img {
+  filter: grayscale(1) brightness(0.9);
+  opacity: 0.6;
 }
-.tx {
+.ctx {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
   min-width: 0;
 }
-.tx b {
+.ctx b {
   font-size: 14px;
   font-weight: 600;
+  letter-spacing: 2px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.tx small {
+.ctx small {
+  font-family: var(--t-mono);
   font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--t-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cls.on .ctx small {
+  color: var(--t-gold-soft);
+}
+.clock {
+  justify-self: center;
+  font-size: 17px;
+  color: var(--t-dim);
+}
+.ring {
+  width: 34px;
+  height: 34px;
+}
+.ring circle {
+  fill: none;
+  stroke-width: 2.4;
+}
+.ring .tr {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.ring .pr {
+  stroke: var(--t-cyan);
+  stroke-linecap: butt;
+}
+.ring.max .pr {
+  stroke: var(--t-gold);
+}
+.ring text {
+  fill: var(--t-text);
+  font: 600 13px var(--t-mono);
+  stroke: none;
+}
+.ring.max text {
+  fill: var(--t-gold);
+}
+
+/* ---------- 左：仓库（一格一把枪） ---------- */
+.store {
+  display: flex;
+  flex-direction: column;
+  padding: 14px 12px 12px;
+  min-height: 0;
+}
+.store-head {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.store-head .t-head {
+  flex: 1;
+}
+.fseg {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.fseg button {
+  flex: none;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+/* 格子大小写死（行高固定、列宽平分），悬停 / 选中只换边框和底色 */
+.cells {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  grid-auto-rows: 132px;
+  align-content: start;
+  gap: 8px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 3px;
+}
+.cell {
+  position: relative;
+  display: grid;
+  grid-template-rows: 70px 22px 18px;
+  justify-items: center;
+  align-content: center;
+  gap: 3px;
+  padding: 6px 8px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0.012));
+  border: 1px solid var(--t-line);
+  color: var(--t-text);
+  font: inherit;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease);
+}
+.cell:hover,
+.cell:focus-visible {
+  outline: none;
+  border-color: var(--t-line-strong);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+}
+.cell.eq {
+  border-color: rgba(240, 184, 58, 0.45);
+}
+.cell.on {
+  border-color: var(--t-cyan);
+  background: linear-gradient(180deg, rgba(111, 208, 232, 0.16), rgba(111, 208, 232, 0.03));
+}
+/* 图是异步画出来的：位置先占好 */
+.gpic {
+  width: 100%;
+  height: 70px;
+  background: radial-gradient(ellipse at center, rgba(200, 215, 230, 0.14), transparent 68%);
+}
+.gpic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(1.55) contrast(1.08);
+}
+.cell.off .gpic img {
+  filter: grayscale(0.9) brightness(1.05);
+  opacity: 0.6;
+}
+.cell b {
+  max-width: 100%;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  line-height: 22px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cell.off b {
   color: var(--t-muted);
 }
-.tx small i {
-  font-style: normal;
+.cell small {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--t-dim);
+  white-space: nowrap;
 }
-.mlv.max {
+.cell .need .t-ico {
+  font-size: 11px;
   color: var(--t-gold);
 }
-/* ---- 中间展示台 ---- */
+.cell.can .need {
+  color: var(--t-gold-soft);
+}
+.badge {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 1px 7px;
+  font-size: 10px;
+  letter-spacing: 1px;
+  line-height: 16px;
+  color: #0b0f14;
+  background: var(--t-gold);
+}
+.badge.lock {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  font-size: 12px;
+  color: var(--t-dim);
+  background: rgba(8, 12, 18, 0.7);
+}
+.empty {
+  grid-column: 1 / -1;
+  align-self: center;
+  text-align: center;
+  font-size: 13px;
+  color: var(--t-dim);
+}
+.rack-note {
+  flex: none;
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid var(--t-line);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--t-dim);
+}
+
+/* ---------- 中：展示台 + 属性 ---------- */
+.mid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+}
+.mid .stage {
+  flex: 1 1 0;
+}
+.stats {
+  flex: none;
+  padding: 12px 16px 10px;
+}
+.stats > .note {
+  height: 36px;
+  overflow: hidden;
+}
+
+/* ---------- 中：展示台 ---------- */
 .stage {
   position: relative;
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--t-line);
-  background: linear-gradient(180deg, rgba(8, 12, 18, 0.35), rgba(8, 12, 18, 0.7));
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.3), rgba(8, 12, 18, 0.72));
   overflow: hidden;
 }
-/* 展示台：中心一圈蓝绿的光 + 地面的椭圆光斑 + 细网格 */
+/* 中心一圈蓝绿的光 + 地面的椭圆光斑 + 细网格 */
 .halo {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 55% 40% at 50% 48%, rgba(111, 208, 232, 0.13), transparent 70%),
-    radial-gradient(ellipse 38% 7% at 50% 74%, rgba(240, 184, 58, 0.16), transparent 70%),
-    linear-gradient(rgba(111, 208, 232, 0.05) 1px, transparent 1px) 0 0 / 40px 40px,
-    linear-gradient(90deg, rgba(111, 208, 232, 0.05) 1px, transparent 1px) 0 0 / 40px 40px;
+    radial-gradient(ellipse 55% 40% at 50% 44%, rgba(111, 208, 232, 0.12), transparent 70%),
+    radial-gradient(ellipse 36% 6% at 50% 71%, rgba(240, 184, 58, 0.18), transparent 70%),
+    linear-gradient(rgba(111, 208, 232, 0.045) 1px, transparent 1px) 0 0 / 40px 40px,
+    linear-gradient(90deg, rgba(111, 208, 232, 0.045) 1px, transparent 1px) 0 0 / 40px 40px;
   pointer-events: none;
+}
+/* 枪后面的瞄准环：只是装饰，不动 */
+.reticle {
+  position: absolute;
+  left: 50%;
+  top: calc((100% - 118px) / 2);
+  width: min(74%, 620px);
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
+  fill: none;
+  stroke: rgba(111, 208, 232, 0.2);
+  stroke-width: 0.5;
+  pointer-events: none;
+}
+.reticle .dash {
+  stroke-dasharray: 1.5 5;
+  stroke: rgba(111, 208, 232, 0.3);
+}
+.reticle .thin {
+  stroke: rgba(240, 184, 58, 0.45);
+}
+.cn {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 0 solid rgba(111, 208, 232, 0.7);
+  pointer-events: none;
+}
+.cn.tl {
+  left: 8px;
+  top: 8px;
+  border-width: 2px 0 0 2px;
+}
+.cn.tr {
+  right: 8px;
+  top: 8px;
+  border-width: 2px 2px 0 0;
+}
+.cn.bl {
+  left: 8px;
+  bottom: 8px;
+  border-width: 0 0 2px 2px;
+}
+.cn.br {
+  right: 8px;
+  bottom: 8px;
+  border-width: 0 2px 2px 0;
 }
 .canvas {
   position: absolute;
-  inset: 0 0 110px;
+  inset: 0 0 118px;
 }
 .canvas :deep(canvas) {
   display: block;
   width: 100%;
   height: 100%;
 }
-.cap {
+.mline {
   position: absolute;
-  left: 24px;
-  right: 24px;
-  bottom: 18px;
-  pointer-events: none;
-}
-.name {
-  display: flex;
-  align-items: baseline;
-  gap: 14px;
-}
-.name h3 {
-  font-size: 30px;
-  letter-spacing: 6px;
-  color: #eef1f3;
-}
-.name h3 em {
-  margin-left: 10px;
-  padding: 1px 8px;
-  vertical-align: middle;
-  font-style: normal;
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: #0b0f14;
-  background: var(--t-gold);
-}
-.lock {
-  font-size: 13px;
-  color: var(--t-muted);
-}
-.role {
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--t-cyan);
-}
-.badges {
+  left: 22px;
+  bottom: 126px;
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 10px;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--t-muted);
+  pointer-events: none;
+}
+.tag {
+  position: absolute;
+  left: 22px;
+  top: 20px;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  pointer-events: none;
+}
+.tag b {
+  padding: 1px 8px;
+  font-family: var(--t-mono);
+  font-size: 11px;
+  letter-spacing: 3px;
+  color: #06202a;
+  background: var(--t-cyan);
+}
+.tag span {
   font-size: 12px;
   color: var(--t-muted);
 }
-.star {
-  font-size: 18px;
-  letter-spacing: 2px;
-}
-.star small {
-  margin-left: 6px;
-  font-family: var(--t-mono);
+.hint {
+  position: absolute;
+  bottom: 126px;
+  right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
+  letter-spacing: 2px;
   color: var(--t-dim);
+  pointer-events: none;
+}
+.hint .t-ico {
+  font-size: 13px;
+}
+.loading {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc((100% - 118px) / 2 - 8px);
+  text-align: center;
+  font-family: var(--t-mono);
+  font-size: 12px;
+  letter-spacing: 4px;
+  color: var(--t-dim);
+  pointer-events: none;
+}
+/* 底部说明条：高度固定。上面名字和说明，下面一行是「装备 / 解锁」按钮和原因；换型号时都不动 */
+.cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 118px;
+  display: grid;
+  grid-template-rows: 58px 40px;
+  align-content: center;
+  gap: 6px;
+  padding: 0 22px;
+  border-top: 1px solid var(--t-line);
+  background: linear-gradient(180deg, rgba(8, 12, 18, 0.2), rgba(8, 12, 18, 0.75));
+}
+.cap-l {
+  min-width: 0;
+}
+.cap h3 {
+  font-size: 25px;
+  line-height: 32px;
+  letter-spacing: 3px;
+  color: #eef1f3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.desc {
+  margin-top: 2px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--t-cyan);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.star {
+  display: flex;
+  gap: 2px;
+  font-size: 14px;
+}
+.star .dim {
+  color: rgba(255, 255, 255, 0.14);
 }
 .ml b {
   font-family: var(--t-mono);
@@ -413,7 +883,7 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
 }
 .mbar {
   flex: 1;
-  max-width: 260px;
+  max-width: 220px;
   height: 4px;
   background: rgba(255, 255, 255, 0.08);
 }
@@ -427,25 +897,198 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   max-width: none;
   height: 6px;
 }
-.hint {
-  position: absolute;
-  top: 12px;
-  right: 16px;
-  font-size: 11px;
-  letter-spacing: 2px;
-  color: var(--t-dim);
-  pointer-events: none;
+.cap-r {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
 }
-/* ---- 右侧信息 ---- */
+.act,
+.inuse {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 40px;
+  padding: 0;
+  font-size: 15px;
+  letter-spacing: 3px;
+}
+.inuse {
+  border: 1px solid rgba(240, 184, 58, 0.45);
+  color: var(--t-gold);
+  background: rgba(240, 184, 58, 0.07);
+}
+/* 原因：按钮右边那一格，最多两行（格子大小固定，字多字少按钮都不动） */
+.cap-r small {
+  max-height: 34px;
+  font-size: 11.5px;
+  line-height: 17px;
+  color: var(--t-dim);
+  overflow: hidden;
+}
+.cap-r small.bad {
+  color: #e0a08f;
+}
+
+/* ---------- 右：属性 + 强化 ---------- */
 .info {
   display: flex;
   flex-direction: column;
-  padding: 14px 16px;
+  padding: 14px 16px 12px;
   min-height: 0;
+}
+.dps {
+  flex: none;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto 58px;
+  align-items: center;
+  gap: 8px;
+  height: 52px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--t-line);
+}
+.dps > .t-ico {
+  font-size: 24px;
+  color: var(--t-gold);
+}
+.dps span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  letter-spacing: 3px;
+  color: var(--t-gold-soft);
+}
+.dps small {
+  font-size: 10px;
+  letter-spacing: 1px;
+  color: var(--t-dim);
+}
+.dps em {
+  align-self: end;
+  padding-bottom: 5px;
+  font-style: normal;
+  font-family: var(--t-mono);
+  font-size: 15px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.dps b {
+  min-width: 74px;
+  text-align: right;
+  font-family: var(--t-mono);
+  font-size: 36px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--t-gold);
+  font-variant-numeric: tabular-nums;
+}
+.up {
+  color: var(--t-ok);
+}
+.down {
+  color: var(--t-red);
+}
+.bars {
+  flex: none;
+  display: grid;
+  gap: 0;
+  margin-top: 8px;
+}
+.row {
+  display: grid;
+  grid-template-columns: 16px 30px minmax(0, 1fr) 84px 58px;
+  align-items: center;
+  gap: 8px;
+  height: 25px;
+  font-size: 12.5px;
+  color: var(--t-muted);
+}
+.row > .t-ico {
+  font-size: 15px;
+  color: var(--t-dim);
+}
+.track {
+  position: relative;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.07);
+}
+.track b,
+.track s {
+  position: absolute;
+  inset: 0 auto 0 0;
+  transition: width 0.25s var(--t-ease), left 0.25s var(--t-ease);
+}
+.track b {
+  background: linear-gradient(90deg, rgba(240, 184, 58, 0.5), var(--t-gold));
+}
+.track b.heavy {
+  background: linear-gradient(90deg, rgba(232, 160, 63, 0.5), #e8a03f);
+}
+.track s {
+  background: var(--t-ok);
+  opacity: 0.8;
+}
+/* 正在用的那把在这条上的位置 */
+.track u {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  margin-left: -1px;
+  background: #fff;
+  box-shadow: 0 0 4px rgba(255, 255, 255, 0.7);
+  transition: left 0.25s var(--t-ease);
+}
+.row em {
+  font-style: normal;
+  text-align: right;
+  font-family: var(--t-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--t-text);
+  white-space: nowrap;
+}
+.row strong {
+  font-weight: 400;
+  font-family: var(--t-mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.note {
+  flex: none;
+  margin-top: 8px;
+  font-size: 11px;
+  line-height: 18px;
+  color: var(--t-dim);
+}
+.ammo {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--t-muted);
+}
+.ammo span {
+  margin-right: auto;
+}
+.ammo b {
+  font-family: var(--t-mono);
+  font-size: 16px;
+  color: var(--t-text);
+}
+.ammo .t-btn {
+  padding: 5px 10px;
+  font-size: 12px;
+  letter-spacing: 1px;
 }
 .tabs {
   flex: none;
-  margin-bottom: 14px;
+  margin: 0 0 10px;
 }
 .pane {
   flex: 1;
@@ -454,120 +1097,58 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   overflow-x: hidden;
   padding-right: 2px;
 }
-.dps {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--t-line);
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: var(--t-muted);
-}
-.dps small {
-  letter-spacing: 0;
-  color: var(--t-dim);
-}
-.dps b {
-  margin-left: auto;
-  font-family: var(--t-mono);
-  font-size: 34px;
-  font-weight: 600;
-  color: var(--t-gold);
-}
-.dps em {
-  font-style: normal;
-  font-family: var(--t-mono);
-  font-size: 18px;
-  color: var(--t-ok);
-}
-.bars {
-  display: grid;
-  gap: 11px;
-}
-.bars .t-stat {
-  grid-template-columns: 40px 1fr 96px;
-}
-.to {
-  color: var(--t-ok);
-  font-size: 12px;
-}
-.note {
-  margin-top: 12px;
-  font-size: 12px;
-  line-height: 1.6;
-  color: var(--t-dim);
-}
-.note.top {
-  margin: 0 0 10px;
-}
-.ammo {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--t-line);
-  font-size: 12px;
-  letter-spacing: 2px;
-  color: var(--t-muted);
-}
-.ammo b {
-  font-family: var(--t-mono);
-  font-size: 24px;
-  color: var(--t-text);
-}
-.ammo small {
-  font-size: 12px;
-  color: var(--t-muted);
-}
-.buy {
-  display: flex;
-  gap: 8px;
-  margin-top: 10px;
-}
-.buy .t-btn {
-  padding: 7px 12px;
-  font-size: 12px;
-  letter-spacing: 1px;
-}
+/* 一条强化线：图标 / 名字 + 效果 / 价格。高度固定，悬停只变边框和底色 */
 .line {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  margin-bottom: 8px;
-  background: rgba(255, 255, 255, 0.025);
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 104px;
+  align-items: center;
+  gap: 10px;
+  height: 60px;
+  margin-bottom: 6px;
+  padding: 0 10px 0 8px;
+  background: rgba(255, 255, 255, 0.022);
   border: 1px solid var(--t-line);
-  border-left: 2px solid rgba(240, 184, 58, 0.3);
-  transition: border-color 0.15s var(--t-ease);
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease);
 }
-.line:hover,
-.line:focus-within {
-  border-color: rgba(240, 184, 58, 0.45);
+.line.hot {
+  border-color: rgba(240, 184, 58, 0.5);
+  background: rgba(240, 184, 58, 0.05);
 }
 .line.maxed {
-  border-left-color: var(--t-cyan);
+  border-color: rgba(111, 208, 232, 0.3);
+}
+.lico {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-size: 20px;
+  color: var(--t-gold);
+  border: 1px solid rgba(240, 184, 58, 0.3);
+  background: rgba(240, 184, 58, 0.06);
+  clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px));
+}
+.maxed .lico {
+  color: var(--t-cyan);
+  border-color: rgba(111, 208, 232, 0.35);
+  background: rgba(111, 208, 232, 0.06);
+}
+.ltx {
+  min-width: 0;
 }
 .lh {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 10px;
   font-size: 14px;
   letter-spacing: 2px;
-}
-.eq {
-  font-size: 11px;
-  letter-spacing: 1px;
-  color: var(--t-gold);
 }
 .pips {
   display: flex;
   gap: 3px;
 }
 .pips i {
-  width: 14px;
+  width: 13px;
   height: 5px;
   background: rgba(255, 255, 255, 0.15);
 }
@@ -575,28 +1156,60 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   background: var(--t-gold);
   box-shadow: 0 0 5px rgba(240, 184, 58, 0.5);
 }
+.maxed .pips i.on {
+  background: var(--t-cyan);
+  box-shadow: 0 0 5px rgba(111, 208, 232, 0.5);
+}
 .ld {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 5px;
   font-size: 12px;
-  line-height: 1.5;
   color: #aeb8c2;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.ld .t-ico {
+  font-size: 11px;
+  color: var(--t-dim);
 }
 .ld b {
-  color: #eef1f3;
+  color: var(--t-ok);
   font-weight: 600;
 }
-.ld.gain b {
-  color: var(--t-ok);
+.lbuy {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
 }
-.line .t-btn {
-  align-self: flex-start;
-  padding: 6px 14px;
-  font-size: 13px;
+.lbuy .t-btn,
+.done {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  padding: 0;
+  font-family: var(--t-mono);
+  font-size: 14px;
   letter-spacing: 1px;
 }
 .done {
+  font-family: inherit;
   font-size: 12px;
-  letter-spacing: 3px;
+  letter-spacing: 2px;
   color: var(--t-cyan);
+}
+.lbuy small {
+  height: 13px;
+  font-size: 10px;
+  line-height: 13px;
+  text-align: center;
+  color: #e0a08f;
+  white-space: nowrap;
+  overflow: hidden;
 }
 .mh {
   display: flex;
@@ -613,7 +1226,7 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   color: var(--t-gold);
 }
 .star-h {
-  margin-top: 20px;
+  margin-top: 18px;
 }
 .perks {
   display: grid;
@@ -625,26 +1238,109 @@ const stars = (k: WeaponKind) => starsOf(k, meta.value.mastery[k] ?? 0);
   color: var(--t-muted);
 }
 .perks li {
+  display: flex;
+  align-items: center;
   padding: 6px 9px;
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 .perks li b {
-  display: inline-block;
+  flex: none;
   min-width: 28px;
   margin-right: 6px;
   font-family: var(--t-mono);
+}
+.perks li .sb {
+  display: flex;
+  gap: 1px;
+  min-width: 44px;
+  font-size: 12px;
 }
 .perks li.on {
   color: #f0e2b8;
   border-color: rgba(240, 184, 58, 0.4);
   background: rgba(240, 184, 58, 0.05);
 }
-@media (max-width: 1360px) {
+@media (max-width: 1500px) {
   .armory {
-    grid-template-columns: 200px minmax(0, 1fr) 320px;
+    grid-template-columns: minmax(0, 1fr) 336px 330px;
   }
-  .ic {
+  .cls {
+    padding: 0 8px 0 10px;
+  }
+  .ctx b {
+    letter-spacing: 0;
+  }
+  .cells {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-auto-rows: 118px;
+  }
+  .cell {
+    grid-template-rows: 58px 22px 18px;
+  }
+  .gpic {
+    height: 58px;
+  }
+  .row {
+    grid-template-columns: 16px 30px minmax(0, 1fr) 78px 52px;
+  }
+  .cap {
+    padding: 0 14px;
+  }
+  .cap h3 {
+    font-size: 21px;
+    letter-spacing: 2px;
+  }
+  .cap-r {
+    grid-template-columns: 124px minmax(0, 1fr);
+    gap: 8px;
+  }
+  .hint {
     display: none;
+  }
+  .line {
+    grid-template-columns: 34px minmax(0, 1fr) 92px;
+    gap: 8px;
+  }
+  .lico {
+    width: 34px;
+    height: 34px;
+    font-size: 18px;
+  }
+  .ld {
+    font-size: 11.5px;
+  }
+  .ld .now,
+  .ld .t-ico {
+    display: none;
+  }
+}
+/* 屏幕矮：属性条收紧、不放说明，把高度让给展示台 */
+@media (max-height: 880px) {
+  .stats > .note,
+  .rack-note,
+  .tag span {
+    display: none;
+  }
+  .row {
+    height: 21px;
+  }
+  .dps {
+    height: 44px;
+  }
+  .cap {
+    height: 96px;
+    grid-template-rows: 30px 40px;
+    gap: 8px;
+  }
+  .canvas {
+    inset: 0 0 96px;
+  }
+  .desc {
+    display: none;
+  }
+  .hint,
+  .mline {
+    bottom: 102px;
   }
 }
 </style>

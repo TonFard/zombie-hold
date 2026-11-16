@@ -1,5 +1,5 @@
 // M12 玩法验证：npm run sim:extras
-// 爆炸物、手雷、推搡、电击脉冲、手电筒、夜晚词缀、新僵尸、连杀、夜间挑战、无尽模式
+// 爆炸物、手雷、枪托近战、手电筒、夜晚词缀、新僵尸、连杀、夜间挑战、无尽模式、卡牌技能
 import { CHALLENGES, COMBO_WINDOW, ELITE_HP, FLASHLIGHT, NIGHT_MODS, comboMult } from '../../src/game/data/modifiers';
 import { ZOMBIES } from '../../src/game/data/zombies';
 import { CARD_BY_ID, drawCards } from '../../src/game/data/cards';
@@ -11,7 +11,7 @@ import { medalsFor } from '../../src/game/meta/progress';
 import { loadCheckpoint, serialize } from '../../src/game/save/checkpoint';
 import { Game, STEP } from '../../src/game/sim';
 import { fireWeapon } from '../../src/game/systems/combat';
-import { EXPLOSIVE, EXPLOSIVE_PLAYER_MULT, GRENADE, PULSE, SHOVE, blast, registerExplosives, throwGrenade } from '../../src/game/systems/hazards';
+import { EXPLOSIVE, EXPLOSIVE_PLAYER_MULT, GRENADE, blast, registerExplosives, throwGrenade } from '../../src/game/systems/hazards';
 import { segmentVsZombie } from '../../src/game/systems/hitvolume';
 import { RANKED_DENSITY, checkChallenge, continueEndless, skipDay, startRun } from '../../src/game/systems/run';
 
@@ -146,39 +146,34 @@ console.log('\n== 手雷 ==');
   check(burnees.every((z) => !z.alive), '站在火里的僵尸被烧死');
 }
 
-console.log('\n== 推搡（V） ==');
+console.log('\n== 枪托近战（V）：推搡去掉了 ==');
 {
   const g = ranked(5);
   startRun(g);
   g.player.x = 0.5;
   g.player.z = 4;
   g.player.yaw = 0;
-  const z = g.spawnZombie('walker', 0.5, 5.2)!;
-  const z0 = z.z;
+  const z = g.spawnZombie('bloater', 0.5, 5.2)!;
+  const hp0 = z.hp;
   g.input.melee = true;
   run(g, 0.2);
-  check(z.stunT > 0.5 && z.z > z0 + 0.3, `前方的僵尸被推开 ${(z.z - z0).toFixed(2)} 米并硬直`);
-  check(g.hz.shoveCd > SHOVE.cd - 0.3, `推搡冷却 ${SHOVE.cd} 秒`);
-  const attacks = g.stats.attacksOnPlayer;
-  z.x = 0.5;
-  z.z = 4.6;
-  run(g, 0.8);
-  check(g.stats.attacksOnPlayer === attacks, '硬直期间不会攻击');
-  // 冷却中再按 V：不出手，也不再推开 / 硬直
-  z.stunT = 0;
-  const swings = g.player.meleeTimer;
-  g.input.melee = true;
-  run(g, 0.05);
-  check(g.hz.shoveCd > 0 && g.player.meleeTimer <= swings && z.stunT === 0, '推搡冷却中按 V 没有反应');
-  run(g, SHOVE.cd);
-  // 冷却好了：换一只血厚的胖子放在正前方（行尸吃第二下枪托会被打死）
-  z.hp = 0;
-  z.alive = false;
-  const z2 = g.spawnZombie('bloater', 0.5, 5.3)!;
-  g.player.yaw = 0;
+  check(z.hp < hp0 && z.stunT === 0, `按 V 用枪托砸一下：掉 ${Math.round(hp0 - z.hp)} 血，不再有推搡的硬直`);
+  check(!('shoveCd' in g.hz) && !('pulseCd' in g.hz), '推搡 / 电击脉冲的冷却字段没了');
+  run(g, 0.6);
+  const hp1 = z.hp;
   g.input.melee = true;
   run(g, 0.2);
-  check(z2.alive && z2.stunT > 0.5, '冷却好了以后又能推');
+  check(z.hp < hp1, '没有 4 秒冷却：挥完一下就能再挥');
+  // Q 以前是发电机电击脉冲：现在按了什么都不发生
+  const q = ranked(6);
+  startRun(q);
+  q.player.x = q.core.x + 3;
+  q.player.z = q.core.z;
+  const near = q.spawnZombie('walker', q.core.x - 4, q.core.z + 3)!;
+  near.dummy = true;
+  q.input.pulse = true;
+  run(q, 2);
+  check(near.hp === near.maxHp && near.stunT === 0 && !(q.input.pulse as boolean), '站在发电机旁边按 Q：没有电击脉冲了');
 }
 
 console.log('\n== 流派牌 ==');
@@ -199,42 +194,186 @@ console.log('\n== 流派牌 ==');
   g.damageZombie(b, 1e6, { chain: true });
   run(g, 0.05);
   check(c.hp === c.maxHp, '连锁爆炸炸死的不会再连锁');
-  CARD_BY_ID.shover?.apply(g);
-  g.input.melee = true;
-  run(g, 0.2);
-  check(Math.abs(g.hz.shoveCd - SHOVE.cd * 0.6) < 0.25, `推搡专家：冷却 ${g.hz.shoveCd.toFixed(1)} 秒`);
+  check(CARD_BY_ID.shover === undefined, '「推搡专家」这张牌没了');
   // 沙盒（旧 sim 的规则）里抽不到流派牌
   const sb = new Game(8);
   startRun(sb);
   const seen = new Set<string>();
   for (let i = 0; i < 300; i++) for (const card of drawCards(sb, 3)) seen.add(card.id);
-  check(!['chain', 'momentum', 'scavmag', 'brawler', 'shover', 'demo'].some((id) => seen.has(id)), '沙盒里不会抽到流派牌');
+  check(!['chain', 'momentum', 'scavmag', 'brawler', 'demo', 'deepmag', 'doublejump', 'unyielding', 'piercer', 'incendiary'].some((id) => seen.has(id)), '沙盒里不会抽到流派牌 / 技能牌');
 }
 
-console.log('\n== 发电机电击脉冲（Q） ==');
+console.log('\n== 技能牌（2026-11-16 加的一批） ==');
 {
-  const g = ranked(6);
-  startRun(g);
-  g.player.x = g.core.x + 3;
-  g.player.z = g.core.z;
-  const inR = g.spawnZombie('walker', g.core.x - 4, g.core.z + 3)!;
-  const outR = g.spawnZombie('walker', g.core.x + 12, g.core.z)!;
-  inR.dummy = outR.dummy = true;
-  g.input.pulse = true;
-  run(g, 0.1);
-  check(g.hz.pulseCharge > 0 && inR.hp === inR.maxHp, '按 Q 先充能，不会立刻放电');
-  run(g, PULSE.charge);
-  check(inR.hp <= inR.maxHp - PULSE.damage + 0.01 && inR.stunT > 1, `${PULSE.charge} 秒后放电：范围内伤害 ${PULSE.damage} + 眩晕`);
-  check(outR.hp === outR.maxHp, '范围外不受影响');
-  g.input.pulse = true;
-  run(g, 0.1);
-  check(g.hz.pulseCharge === 0 && g.hz.pulseCd > PULSE.cd - 2, `冷却 ${PULSE.cd} 秒内不能再放`);
-  const far = ranked(6);
-  startRun(far);
-  far.player.x = far.core.x + 10;
-  far.input.pulse = true;
-  run(far, 0.1);
-  check(far.hz.pulseCharge === 0, `离发电机超过 ${PULSE.reach} 米按不出来`);
+  const { CARD_FX } = await import('../../src/game/sim');
+  const give = (g: Game, id: string): void => {
+    CARD_BY_ID[id]!.apply(g);
+    g.cardCounts[id] = (g.cardCounts[id] ?? 0) + 1;
+  };
+  const fresh = (seed: number): Game => {
+    const g = ranked(seed);
+    g.invulnerableCore = true;
+    startRun(g);
+    g.player.x = 0.5;
+    g.player.z = 4;
+    g.player.yaw = 0;
+    g.input.aimX = 0.5;
+    g.input.aimZ = 44;
+    // 枪口压低一点打身体：平射的子弹正好擦着胖子的头顶，散布一抖就有的打头、有的打空，前后两枪没法比
+    g.input.aimPitch = -0.25;
+    return g;
+  };
+  /** 朝正前方开一枪，返回这只僵尸掉了多少血 */
+  const shoot = (g: Game, z: { hp: number }): number => {
+    const hp = z.hp;
+    g.player.fireTimer = 0;
+    g.loadout[g.player.weapon].mag = Math.max(1, g.loadout[g.player.weapon].mag);
+    fireWeapon(g);
+    run(g, 0.3);
+    return hp - z.hp;
+  };
+
+  // 加长弹匣
+  const a = fresh(11);
+  const mag0 = a.statsOf('pistol').mag;
+  give(a, 'deepmag');
+  check(a.statsOf('pistol').mag === Math.round(mag0 * 1.15), `加长弹匣：手枪弹匣 ${mag0} → ${a.statsOf('pistol').mag}`);
+  a.loadout.pistol.mag = 0;
+  a.input.reload = true;
+  run(a, 3);
+  check(a.loadout.pistol.mag === a.statsOf('pistol').mag, '换弹装满的是加长以后的容量');
+  const a2 = new Game(11);
+  check(loadCheckpoint(a2, JSON.stringify(serialize(a, 0))) === null && a2.loadout.pistol.mag === a.loadout.pistol.mag && a2.mods.mag === a.mods.mag, '带着加长弹匣存档 / 读档：弹匣里多出来的子弹不算越界');
+
+  // 穿甲弹：一发打穿两只
+  const b = fresh(12);
+  const z1 = b.spawnZombie('bloater', 0.5, 7)!;
+  const z2 = b.spawnZombie('bloater', 0.5, 9)!;
+  z1.stunT = z2.stunT = 9;
+  z1.hp = z2.hp = 5000;
+  shoot(b, z1);
+  check(z1.hp < 5000 && z2.hp === 5000, '没有穿甲弹：手枪子弹停在第一只身上');
+  give(b, 'piercer');
+  z1.hp = z2.hp = 5000;
+  shoot(b, z1);
+  check(z1.hp < 5000 && z2.hp < 5000, '穿甲弹：同一发子弹打到了后面那只');
+
+  // 燃烧弹头 / 寒霜弹头
+  const c = fresh(13);
+  const zc = c.spawnZombie('bloater', 0.5, 7)!;
+  zc.hp = 5000;
+  give(c, 'incendiary');
+  give(c, 'frost');
+  c.player.fireTimer = 0;
+  fireWeapon(c);
+  run(c, 0.1);
+  check(zc.burnT > 2 && zc.burnDps === 8, `燃烧弹头：打中就点燃（每秒 ${zc.burnDps}）`);
+  check(zc.slowT > 0 && Math.abs(zc.slowK - 0.2) < 1e-9, `寒霜弹头：减速 ${Math.round(zc.slowK * 100)}%，持续 ${CARD_FX.slowTime} 秒`);
+
+  // 背水一战
+  const d = fresh(14);
+  const zd = d.spawnZombie('bloater', 0.5, 7)!;
+  zd.stunT = 99;
+  zd.hp = 5000;
+  give(d, 'laststand');
+  const full = shoot(d, zd);
+  d.player.hp = d.player.maxHp * 0.3;
+  const low = shoot(d, zd);
+  check(full > 0 && Math.abs(low / full - 1.3) < 0.01, `背水一战：满血一枪 ${full.toFixed(1)}，三成血时 ${low.toFixed(1)}（×${(low / full).toFixed(2)}）`);
+
+  // 火力压制：按住扳机越打越疼
+  const e = fresh(15);
+  const ze = e.spawnZombie('bloater', 0.5, 7)!;
+  ze.stunT = 99;
+  ze.hp = 50000;
+  give(e, 'suppress');
+  const first = shoot(e, ze);
+  e.player.sustainT = 3;
+  const later = shoot(e, ze);
+  check(Math.abs(later / first - 1.18) < 0.01, `火力压制：连续开火 3 秒后每发 ×${(later / first).toFixed(2)}`);
+  e.player.sustainT = 99;
+  const capped = shoot(e, ze);
+  check(Math.abs(capped / first - 1.3) < 0.01, `火力压制：最多 ×${(capped / first).toFixed(2)}`);
+
+  // 杀戮冲刺 / 猎头
+  const f = fresh(16);
+  give(f, 'killrush');
+  give(f, 'headhunter');
+  const zf = f.spawnZombie('walker', 3, 9)!;
+  f.damageZombie(zf, 1e6, { weapon: 'pistol', head: true });
+  check(f.fx.rush === CARD_FX.killRush && f.healPool === 3, `用枪爆头击杀：提速 ${CARD_FX.killRush} 秒，回血池 +${f.healPool}`);
+  const speedOf = (g: Game): number => {
+    const x0 = g.player.x;
+    g.player.vx = g.player.vz = 0;
+    for (let i = 0; i < 60; i++) {
+      g.input.moveX = 1;
+      g.input.moveZ = 0;
+      g.update(STEP);
+    }
+    g.input.moveX = 0;
+    return g.player.x - x0;
+  };
+  const fast = speedOf(f);
+  run(f, CARD_FX.killRush);
+  const slow = speedOf(f);
+  check(fast > slow * 1.08, `杀戮冲刺：1 秒走 ${fast.toFixed(2)} 米，效果过了以后 ${slow.toFixed(2)} 米`);
+  const zt = f.spawnZombie('walker', 3, 9)!;
+  f.fx.rush = 0;
+  f.damageZombie(zt, 1e6, { src: 'turret' });
+  check(f.fx.rush === 0, '炮塔打死的不算');
+
+  // 不屈：每夜一次
+  const h = fresh(17);
+  give(h, 'unyielding');
+  skipDay(h);
+  h.damagePlayer(9999);
+  check(h.player.alive && h.player.hp === 1 && h.fx.guard > 2, '不屈：致命伤害留 1 点生命');
+  h.damagePlayer(9999);
+  check(h.player.alive && h.player.hp === 1, `无敌的 ${CARD_FX.guard} 秒里不掉血`);
+  run(h, CARD_FX.guard + 0.2);
+  h.damagePlayer(9999);
+  check(!h.player.alive, '同一夜第二次致命伤害：挡不住');
+  const h2 = fresh(17);
+  h2.damagePlayer(9999);
+  check(!h2.player.alive, '没有这张牌：照常倒下');
+
+  // 军需官
+  const q = fresh(18);
+  give(q, 'quartermaster');
+  q.invulnerablePlayer = true;
+  skipDay(q);
+  q.run.toSpawn = 0;
+  for (const z of q.zombies) z.alive = false;
+  const before = q.scrap;
+  for (let i = 0; i < 20 / STEP && q.run.phase !== 'cards'; i++) q.update(STEP);
+  const id = q.run.cardChoices[0]!;
+  const { chooseCard } = await import('../../src/game/systems/run');
+  const s0 = q.scrap;
+  chooseCard(q, id);
+  check(q.run.phase === 'day' && q.scrap - s0 >= 40, `军需官：新的一天开始多了 ${q.scrap - s0} 零件（夜里结算前 ${before}）`);
+
+  // 二段跳
+  const j = fresh(19);
+  const jump = (): number => {
+    j.input.jump = true;
+    let top = 0;
+    for (let i = 0; i < 20; i++) {
+      j.update(STEP);
+      top = Math.max(top, j.player.air);
+    }
+    j.input.jump = true;
+    for (let i = 0; i < 200 && (j.player.air > 0 || i < 5); i++) {
+      j.update(STEP);
+      top = Math.max(top, j.player.air);
+    }
+    return top;
+  };
+  const one = jump();
+  give(j, 'doublejump');
+  const two = jump();
+  check(one < 1.2 && two > one + 0.6, `二段跳：一段最高 ${one.toFixed(2)} 米，空中再跳一次到 ${two.toFixed(2)} 米`);
+  run(j, 0.5);
+  check(j.player.air === 0 && j.fx.airJumps === 0, '落地以后次数恢复');
 }
 
 console.log('\n== 手电筒（T） ==');
@@ -566,7 +705,8 @@ console.log('\n== 武器属性：重量、弹药、章节 ==');
     startRun(g);
     g.zombies.length = 0;
     g.scrap = 9999;
-    if (k !== 'pistol') g.buyWeapon(k);
+    // 解锁了的枪开局就都有：从工坊里拿出来
+    if (k !== 'pistol') g.takeWeapon(k);
     switchWeapon(g, k);
     const x0 = g.player.x;
     g.input.moveX = 1;
@@ -583,12 +723,13 @@ console.log('\n== 武器属性：重量、弹药、章节 ==');
   // 弹药有限目前关着（AMMO_LIMITED），这里打开测逻辑本身
   g.config.ammo = true;
   g.ammo.smg = 40;
+  // 枪是开局直接给的（那时开关还关着，弹匣是白给的）：清空，让开局的装弹从备弹里扣
+  g.loadout.smg.mag = 0;
   startRun(g);
   g.zombies.length = 0;
-  g.scrap = 9999;
-  g.buyWeapon('smg');
+  g.takeWeapon('smg');
   switchWeapon(g, 'smg');
-  check(g.loadout.smg.mag === 36 && g.reserveOf('smg') === 4, `买冲锋枪：弹匣装 36，备弹剩 ${g.reserveOf('smg')}`);
+  check(g.loadout.smg.mag === 36 && g.reserveOf('smg') === 4, `冲锋枪开局就带着：弹匣装 36，备弹剩 ${g.reserveOf('smg')}`);
   g.loadout.smg.mag = 0;
   for (let i = 0; i < 200; i++) g.update(STEP);
   check(g.loadout.smg.mag === 4 && g.reserveOf('smg') === 0, `打空换弹只能补上剩下的 4 发（弹匣 ${g.loadout.smg.mag}）`);
@@ -602,9 +743,8 @@ console.log('\n== 武器属性：重量、弹药、章节 ==');
   applyMeta(gd, bonusesOf({ ...newMeta(), levels: { ...all, dual: 1 } }), { difficulty: 'normal' });
   check(!('dual' in gd.config) && gd.statsOf('pistol').mag === 12 && Math.abs(weightOf('pistol', NO_MOD) - WEAPONS.pistol.weight) < 1e-9, `手枪单持：弹匣 ${gd.statsOf('pistol').mag}、${weightOf('pistol', NO_MOD).toFixed(1)} kg`);
   {
-    // 「随身武器」：军械库里有，要先解锁霰弹枪，默认没有
-    check(META_ITEMS.some((it) => it.id === 'sidearm' && it.requires?.id === 'unlock-shotgun'), '军械库里有「随身武器」，前置是解锁霰弹枪');
-    check(baseBonuses().sidearm === false, '局外加成里默认没有随身武器');
+    // 「随身武器」去掉了：解锁了的枪直接能带
+    check(!META_ITEMS.some((it) => it.id === 'sidearm'), '军械库里没有「随身武器」了');
   }
 
   // 工作台强化：伤害、扩容带进局内
@@ -661,6 +801,123 @@ console.log('\n== M13：空投 ==');
   planAirdrop(h);
   run(h, AIRDROP.delay + AIRDROP.time + 0.5);
   check(h.airdrop.stage === 0, '限时内没拿就消失');
+
+  // 空投里的试用枪：不直接换，留在箱子里等玩家按 E
+  const { GUNS } = await import('../../src/game/data/guns');
+  const trialOf = GUNS.filter((d) => d.cls === 'pistol' && d.medals > 0).map((d) => d.id);
+  const drop = (seed: number): Game => {
+    const t = ranked(seed);
+    t.invulnerablePlayer = true;
+    t.invulnerableCore = true;
+    t.config.trialGuns = [...trialOf];
+    startRun(t);
+    t.run.night = 2;
+    planAirdrop(t);
+    run(t, AIRDROP.delay + 0.1);
+    for (const z of t.zombies) z.dummy = true;
+    t.player.x = t.airdrop.x;
+    t.player.z = t.airdrop.z;
+    run(t, 0.1);
+    return t;
+  };
+  const a = drop(22);
+  const gun0 = a.config.guns.pistol;
+  check(trialOf.length > 0 && a.airdrop.stage === 3 && trialOf.includes(a.airdrop.offer) && a.config.guns.pistol === gun0, `拿了补给以后箱里留着一把试用枪（${a.airdrop.offer}），手里的枪没变`);
+  run(a, 5);
+  check(a.airdrop.stage === 3 && a.config.guns.pistol === gun0, '不按 E 就一直不换，箱子留着');
+  const offer = a.airdrop.offer;
+  a.input.use = true;
+  run(a, 0.05);
+  check(a.airdrop.stage === 0 && a.config.guns.pistol === offer && !a.config.trialGuns.includes(offer) && a.loadout.pistol.mag === a.statsOf('pistol').mag, '按 E 换上：这一类换成试用型号，弹匣装满');
+  const b = drop(22);
+  b.player.x += 12;
+  b.input.use = true;
+  run(b, 0.05);
+  check(b.airdrop.stage === 3 && b.config.guns.pistol === gun0, '走开以后按 E 不会换（E 还是修东西）');
+  skipDay(b);
+  run(b, 0.2);
+  check(b.airdrop.stage === 0 && b.airdrop.offer === '' && b.config.guns.pistol === gun0, '入夜：没要的试用枪和箱子一起收走');
+}
+
+console.log('\n== 跳跃（守城模式）==');
+{
+  const { standTops } = await import('../../src/game/systems/tdm-gear');
+  const g = ranked(5);
+  g.invulnerablePlayer = true;
+  g.invulnerableCore = true;
+  startRun(g);
+  const p = g.player;
+  const x0 = p.x;
+  const z0 = p.z;
+  run(g, 0.5);
+  check(p.air === 0 && p.vy === 0, '不按空格：一直在地上');
+  g.input.jump = true;
+  let top = 0;
+  let t = 0;
+  for (; t < 3; t += STEP) {
+    g.update(STEP);
+    top = Math.max(top, p.air);
+    if (t > 0.1 && p.air === 0) break;
+  }
+  check(top > 0.9 && top < 1.2 && t > 0.6 && t < 0.9 && Math.hypot(p.x - x0, p.z - z0) < 0.05, `原地跳：最高 ${top.toFixed(2)} 米，${t.toFixed(2)} 秒落地`);
+  // 找一个四周有空地的矮箱子：从旁边助跑跳上去
+  const tops = standTops(g);
+  const grid = g.grid;
+  let cell = -1;
+  for (let i = 0; i < grid.count && cell < 0; i++) {
+    if (!(tops[i]! > 0.3) || tops[i]! > 1.2) continue;
+    const cx = i % grid.w;
+    const cy = (i / grid.w) | 0;
+    let free = true;
+    for (let k = 1; k <= 3; k++) if (grid.isBlocked(cx - k, cy)) free = false;
+    if (free) cell = i;
+  }
+  check(cell >= 0, '地图里有能踩的矮掩体');
+  if (cell >= 0) {
+    const cx = cell % grid.w;
+    const cy = (cell / grid.w) | 0;
+    const bx = cx - grid.w / 2 + 0.5;
+    const bz = cy - grid.h / 2 + 0.5;
+    const h = tops[cell]!;
+    const walkAt = (jump: boolean): void => {
+      p.x = bx - 2.2;
+      p.z = bz;
+      p.air = 0;
+      p.vy = 0;
+      p.vx = p.vz = 0;
+      for (let i = 0; i < 90; i++) {
+        g.input.moveX = 1;
+        g.input.moveZ = 0;
+        if (jump && i === 14) g.input.jump = true;
+        g.update(STEP);
+      }
+      g.input.moveX = 0;
+    };
+    walkAt(false);
+    check(p.x < bx - 0.5 && p.air === 0, `不跳：被 ${h.toFixed(2)} 米高的掩体挡住`);
+    walkAt(true);
+    run(g, 0.4);
+    check(Math.abs(p.x - bx) < 0.6 && Math.abs(p.air - h) < 0.01 && p.vy === 0, `助跑起跳：站到掩体顶上（脚高 ${p.air.toFixed(2)} 米）`);
+    // 站在上面时僵尸照样够得着
+    const hp0 = p.hp;
+    g.invulnerablePlayer = false;
+    const z = g.spawnZombie('walker', p.x - 1.4, p.z)!;
+    z.goal = 'player';
+    for (let i = 0; i < 6 / STEP && p.hp === hp0; i++) {
+      g.input.moveX = 0;
+      g.update(STEP);
+    }
+    check(p.hp < hp0, '站在掩体上不是无敌的：僵尸走过来照样打得到');
+    g.invulnerablePlayer = true;
+    // 走下来回到地面
+    for (let i = 0; i < 60; i++) {
+      g.input.moveX = -1;
+      g.update(STEP);
+    }
+    g.input.moveX = 0;
+    run(g, 0.5);
+    check(p.air === 0 && p.vy === 0, '走下来落回地面');
+  }
 }
 
 console.log('\n== M13：每日挑战 / 成就 / 图鉴存档 ==');

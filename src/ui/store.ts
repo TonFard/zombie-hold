@@ -102,7 +102,7 @@ export const ui = reactive({
     icon: (_kind: string, _tier?: number): string => '',
     /** 某个型号的侧视图标（对战的购买菜单）：模型还在加载时是空串 */
     gunIcon: (_id: string): string => '',
-    preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number): void; resize(w: number, h: number): void; dispose(): void } | null => null,
+    preview: (_w: number, _h: number): { canvas: HTMLCanvasElement; setWeapon(kind: string, tier: number): void; setGun(id: string, kind: string): void; readonly loading: boolean; resize(w: number, h: number): void; dispose(): void } | null => null,
   },
   /** 这一局每把枪涨的熟练度击杀（结算页显示） */
   masteryGain: {} as Partial<Record<string, number>>,

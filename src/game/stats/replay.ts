@@ -25,7 +25,7 @@ export interface Replay {
   coreDamage: number;
 }
 
-export const SRC_NAME: Record<DamageSrc, string> = { turret: '炮塔', spikes: '地刺', explosive: '爆炸物', grenade: '手雷', pulse: '电击脉冲', chain: '连锁爆炸', fire: '火焰', other: '其他' };
+export const SRC_NAME: Record<DamageSrc, string> = { turret: '炮塔', spikes: '地刺', explosive: '爆炸物', grenade: '手雷', chain: '连锁爆炸', fire: '火焰', other: '其他' };
 
 export function buildReplay(s: GameStats, lostReason: string): Replay {
   const shares: ReplayShare[] = [];

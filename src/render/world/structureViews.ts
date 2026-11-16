@@ -44,6 +44,8 @@ interface Entry {
 
 /** 血条离地高度、宽度 */
 const BAR_Y: Record<string, number> = { barricade: 1.55, turret: 1.5, spikes: 0.7, hmg: 1.6, flamer: 1.5, mortar: 1.7 };
+/** 血条颜色的亮度倍数：0.62 时绿 / 黄 / 红最亮的通道都低于 Bloom 阈值（0.95），不会冒光 */
+const BAR_DIM = 0.62;
 const BAR_W = 0.9;
 const BAR_H = 0.09;
 /** 多远以内显示满血建筑的血条（受损的建筑更远也显示） */
@@ -139,7 +141,9 @@ export class StructureViews {
     root.position.set(s.cx - HALF_W + 0.5, 0, s.cy - HALF_H + 0.5);
     const seed = (s.cx * 131 + s.cy * 17) | 0;
     root.rotation.y = s.kind === 'barricade' ? this.rng.range(-0.06, 0.06) : 0;
-    const bg = new Sprite(new SpriteMaterial({ color: 0x05080b, transparent: true, opacity: 0.75, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
+    // 血条是界面元素，不该发光：颜色压在 Bloom 的阈值以下（BAR_DIM），所以不会在夜里糊成一团光晕、把后面的东西照得发绿。
+    // 仍然不做色调映射：颜色和白天 / 夜晚无关，一直是这个亮度
+    const bg = new Sprite(new SpriteMaterial({ color: 0x05080b, transparent: true, opacity: 0.82, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
     const fill = new Sprite(new SpriteMaterial({ color: 0x7ad04a, transparent: true, depthTest: false, depthWrite: false, toneMapped: false, fog: false }));
     bg.scale.set(BAR_W + 0.04, BAR_H + 0.04, 1);
     fill.scale.set(BAR_W, BAR_H, 1);
@@ -251,9 +255,11 @@ export class StructureViews {
     if (f > 0.6) c.setHex(0x7ad04a);
     else if (f > 0.3) c.setHex(0xf0b83a);
     else c.setHex(0xe8553f);
-    // 刚挨打：亮一下
+    // 刚挨打：亮一下（以前往纯白上靠六成，夜里就是一道白光；现在只提一点）
     const flash = Math.max(0, 1 - en.hitT / 0.25);
-    if (flash > 0) c.lerp(_white, flash * 0.6);
+    if (flash > 0) c.lerp(_white, flash * 0.3);
+    // 整体压暗：最亮的那个通道也在 Bloom 阈值以下，血条是平的色块，没有光晕
+    c.multiplyScalar(BAR_DIM);
     const a = hurt || build ? 1 : Math.max(0, 1 - (d - BAR_NEAR + 3) / 3);
     en.barFill.material.opacity = a;
     en.barBg.material.opacity = 0.75 * a;

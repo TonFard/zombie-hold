@@ -1,7 +1,7 @@
 import type { AudioSystem } from '../audio';
 import type { Game } from '../game/sim';
 import { PLAYER } from '../game/systems/tdm';
-import { bumpPop, hud, markBoxTaken, markDropTaken, procCard } from '../ui/hud';
+import { bumpPop, hud, markBoxTaken, markDropTaken, noteZombie, procCard } from '../ui/hud';
 import { ui } from '../ui/store';
 
 /**
@@ -14,6 +14,8 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
   /** 对战：自己刚从背后砍中一刀（tdmStab 后面紧跟着的那个 soldierHit 把命中标记画成橙色）；记下时间，隔了一步就不算 */
   let backstab = false;
   let backstabAt = -1;
+  /** 空投箱已经打开过（零件已经给了）：之后换上枪发的 taken 不再标一次零件收入 */
+  let dropOpened = false;
   off.push(
     game.events.on('zombieHit', (e) => {
       // 准星上的命中标记只认自己打的：炮塔、地刺、队友打中的不闪
@@ -54,7 +56,9 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
       if (taken) markBoxTaken();
     }),
     game.events.on('airdrop', ({ stage }) => {
-      if (stage === 'taken') markDropTaken();
+      // open = 零件到手了、箱里还留着枪；没有试用枪时直接是 taken。换上枪时的那一次 taken 不是零件收入
+      if (stage === 'open' || (stage === 'taken' && !dropOpened)) markDropTaken();
+      dropOpened = stage === 'open';
     }),
     game.events.on('zombieAttack', ({ zombie, target }) => {
       if (target !== 'player') return;
@@ -89,6 +93,12 @@ export function wireEvents(game: Game, audio: AudioSystem): () => void {
     }),
     game.events.on('coreDamaged', () => {
       hud.coreHurt = 1;
+    }),
+    // 第一次遇到的僵尸（图鉴里还没有击杀记录）：弹一张情报卡说它有什么能力、怎么对付。训练场的靶子、对战不算
+    game.events.on('zombieSpawned', (z) => {
+      if (z.dummy || game.tdm.on || game.config.training) return;
+      if (game.run.phase !== 'day' && game.run.phase !== 'night') return;
+      noteZombie(z.kind, (ui.save.codex.kills[z.kind] ?? 0) > 0);
     }),
     game.events.on('banner', (b) => {
       ui.banner = { text: b.text, sub: b.sub, id: ui.banner.id + 1 };

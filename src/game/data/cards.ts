@@ -9,7 +9,7 @@ export interface CardDef {
   rarity: CardRarity;
   /** 最多叠几张 */
   max: number;
-  /** 只在正式局（config.extras）里出现：依赖连杀 / 推搡 / 手雷这些 M12 玩法 */
+  /** 只在正式局（config.extras）里出现：依赖连杀 / 手雷 / 跳这些正式局才有的玩法 */
   extra?: boolean;
   apply(g: Game): void;
 }
@@ -53,14 +53,28 @@ export const CARDS: CardDef[] = [
   { id: 'momentum', name: '战意', desc: '连杀每 +1，武器伤害 +3%（最多 +30%，断连清零）', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.comboDamage += 0.03; } },
   { id: 'scavmag', name: '弹匣回收', desc: '任意武器爆头击杀返还 2 发子弹', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.headRefund += 2; } },
   { id: 'brawler', name: '近身狂暴', desc: '3 米内的僵尸受到的武器伤害 +35%', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.closeDamage *= 1.35; } },
-  { id: 'shover', name: '推搡专家', desc: '推搡冷却 −40%', rarity: 'common', max: 2, extra: true, apply: (g) => { g.mods.shoveCd *= 0.6; } },
   { id: 'demo', name: '爆破专家', desc: '每天多补 1 颗手雷，并立刻得到 1 颗', rarity: 'common', max: 2, extra: true, apply: (g) => { g.mods.extraFrags += 1; g.hz.frags += 1; } },
+  // ---- 2026-11-16 加的一批技能牌（用户：「增加一些卡片技能，参考生化模式那种一局里越选越强的感觉」）。都是正式局才有 ----
+  { id: 'deepmag', name: '加长弹匣', desc: '所有武器弹匣 +15%', rarity: 'common', max: 3, extra: true, apply: (g) => { g.mods.mag *= 1.15; } },
+  { id: 'killrush', name: '杀戮冲刺', desc: '用枪击杀后 3 秒内移动速度 +12%', rarity: 'common', max: 2, extra: true, apply: (g) => { g.mods.killSpeed += 0.12; } },
+  { id: 'quartermaster', name: '军需官', desc: '每个白天开始时多得 40 零件', rarity: 'common', max: 3, extra: true, apply: (g) => { g.mods.dayScrap += 40; } },
+  { id: 'doublejump', name: '二段跳', desc: '在空中可以再跳一次（空格）', rarity: 'rare', max: 1, extra: true, apply: (g) => { g.mods.airJumps += 1; } },
+  { id: 'incendiary', name: '燃烧弹头', desc: '子弹点燃僵尸：每秒 8 点伤害，持续 3 秒', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.burn += 8; } },
+  { id: 'frost', name: '寒霜弹头', desc: '被子弹打中的僵尸减速 20%，持续 1.2 秒', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.slow += 0.2; } },
+  { id: 'piercer', name: '穿甲弹', desc: '所有武器多穿透 1 只僵尸', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.pierce += 1; } },
+  { id: 'laststand', name: '背水一战', desc: '生命低于 40% 时武器伤害 +30%', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.lowHpDamage += 0.3; } },
+  { id: 'suppress', name: '火力压制', desc: '按住扳机连续射击，每秒伤害 +6%（最多 +30%，停火或换弹清零）', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.sustain += 0.06; } },
+  { id: 'headhunter', name: '猎头', desc: '爆头击杀积攒 3 点生命（每秒最多回 4 点）', rarity: 'rare', max: 2, extra: true, apply: (g) => { g.mods.headHeal += 3; } },
+  { id: 'unyielding', name: '不屈', desc: '每夜一次：受到致命伤害时保留 1 点生命，并无敌 2.5 秒', rarity: 'epic', max: 1, extra: true, apply: (g) => { g.mods.revive += 1; } },
   // ---- 诅咒：风险换收益，只在 M13 规则下混进三选一（每个黎明最多一张） ----
   { id: 'c-glass', name: '玻璃大炮', desc: '所有武器伤害 +30%，受到的伤害 +25%', rarity: 'curse', max: 2, apply: (g) => { g.mods.damage *= 1.3; g.mods.armor *= 1.25; } },
   { id: 'c-overdrive', name: '过载炮塔', desc: '炮塔伤害 +40%，路障和炮塔生命 −30%', rarity: 'curse', max: 2, apply: (g) => { g.mods.turret *= 1.4; g.mods.structHp *= 0.7; scaleStructures(g, 0.7); } },
   { id: 'c-greed', name: '贪婪', desc: '零件收益 +35%，最大生命 −25', rarity: 'curse', max: 2, apply: (g) => { g.mods.scrap *= 1.35; g.player.maxHp = Math.max(30, g.player.maxHp - 25); g.player.hp = Math.min(g.player.hp, g.player.maxHp); } },
   { id: 'c-adrenal', name: '透支', desc: '移动速度 +15%，换弹速度 +15%，发电机最大生命 −100', rarity: 'curse', max: 1, apply: (g) => { g.mods.speed *= 1.15; g.mods.reload *= 1.15; g.core.maxHp = Math.max(150, g.core.maxHp - 100); g.core.hp = Math.min(g.core.hp, g.core.maxHp); } },
 ];
+
+/** 已经删掉的牌（「推搡专家」：推搡这个功能没了）。旧检查点里拿过的直接丢掉 */
+export const GONE_CARDS: readonly string[] = ['shover'];
 
 /** 诅咒牌出现的概率（每个黎明替换掉三选一里的一张） */
 export const CURSE_CHANCE = 0.35;

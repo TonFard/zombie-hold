@@ -74,7 +74,8 @@ export class PostFX {
       });
     };
     this.composer.addPass(this.ao);
-    this.bloom = new UnrealBloomPass(new Vector2(w, h), 0.55, 0.7, 0.92);
+    // 强度 0.55 → 0.38、半径 0.7 → 0.55、阈值 0.92 → 0.95：灯和枪口火光还有光晕，但不再把周围一大片都罩上
+    this.bloom = new UnrealBloomPass(new Vector2(w, h), 0.38, 0.55, 0.95);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     // 调色放在色调映射之后（LUT 是按显示空间的颜色做的）

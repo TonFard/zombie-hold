@@ -35,6 +35,9 @@ import { MAP_BUILDERS, type MapId } from './world/maps';
 import type { MapData, WorldRect } from './world/types';
 
 export const MAX_ZOMBIES = 256;
+
+/** 卡牌「加长弹匣」之后的弹匣容量（读档校验用的是同一个算法） */
+export const magWith = (mag: number, k: number): number => Math.max(1, Math.round(mag * k));
 /** 固定模拟步长 */
 export const STEP = 1 / 60;
 
@@ -74,7 +77,7 @@ export interface PlayerState {
   crouchHeld: boolean;
   /** 眼睛离地高度（米），子弹从这里出膛 */
   eye: number;
-  /** 脚离地多高（米）：跳起来、站在箱子上（只有对战里能跳）；竖直速度 */
+  /** 脚离地多高（米）：跳起来、站在箱子上；竖直速度 */
   air: number;
   vy: number;
   /** 滑铲剩余时间、冷却、方向 */
@@ -111,7 +114,7 @@ export interface PlayerInput {
   crouch: boolean;
   /** 边沿触发：V 近战 */
   melee: boolean;
-  /** 边沿触发：空格 跳（只有对战里有） */
+  /** 边沿触发：空格 跳 */
   jump: boolean;
   fire: boolean;
   sprint: boolean;
@@ -131,7 +134,7 @@ export interface PlayerInput {
   sell: boolean;
   /** 边沿触发：Enter，白天提前开始夜晚 */
   confirm: boolean;
-  /** 边沿触发：G 扔手雷、Q 发电机电击脉冲 */
+  /** 边沿触发：G 扔手雷；Q（pulse）只有 8v8 对战里用：换回上一把武器 */
   grenade: boolean;
   pulse: boolean;
   /** T 键开关的手电筒（状态，不是边沿） */
@@ -183,14 +186,38 @@ export interface Mods {
   headRefund: number;
   /** 卡牌「近身狂暴」：3 米内的僵尸受到的武器伤害倍率 */
   closeDamage: number;
-  /** 卡牌「推搡专家」：推搡冷却倍率 */
-  shoveCd: number;
   /** 卡牌「爆破专家」：手雷每天多补几颗 */
   extraFrags: number;
+  // ---- 2026-11-16 新加的卡牌（都只在正式局里出现）----
+  /** 「加长弹匣」：所有武器弹匣倍率 */
+  mag: number;
+  /** 「穿甲弹」：所有武器多穿透几只 */
+  pierce: number;
+  /** 「燃烧弹头」：子弹点燃的每秒伤害（加在枪自己的点燃上） */
+  burn: number;
+  /** 「寒霜弹头」：子弹命中的减速比例（和枪自己的减速取大） */
+  slow: number;
+  /** 「背水一战」：生命低于四成时武器伤害额外 +这么多 */
+  lowHpDamage: number;
+  /** 「杀戮冲刺」：用枪击杀后几秒内的移速加成 */
+  killSpeed: number;
+  /** 「不屈」：每夜能挡几次致命伤害 */
+  revive: number;
+  /** 「军需官」：每个白天开始多给多少零件 */
+  dayScrap: number;
+  /** 「火力压制」：连续开火每秒伤害 +这么多（最多 5 秒的量） */
+  sustain: number;
+  /** 「猎头」：爆头击杀往回血池里存几点 */
+  headHeal: number;
+  /** 「二段跳」：在空中还能再跳几次 */
+  airJumps: number;
 }
 
+/** 卡牌的固定参数：背水一战的生命线、杀戮冲刺 / 不屈的持续时间、火力压制最多算几秒 */
+export const CARD_FX = { lowHp: 0.4, killRush: 3, guard: 2.5, sustainCap: 5, slowTime: 1.2 };
+
 /** 没有任何加成时的倍率（数值面板按它算"基础值"，卡牌探针也从它开始） */
-export const defaultMods = (): Mods => ({ damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1, fireRate: 1, regen: 0, chainBlast: 0, comboDamage: 0, headRefund: 0, closeDamage: 1, shoveCd: 1, extraFrags: 0 });
+export const defaultMods = (): Mods => ({ damage: 1, crit: 0, speed: 1, reload: 1, staminaUse: 1, scrap: 1, structHp: 1, turret: 1, turretRate: 1, armor: 1, lifesteal: 0, coreRegen: 0, head: 1, adsSpread: 1, fireRate: 1, regen: 0, chainBlast: 0, comboDamage: 0, headRefund: 0, closeDamage: 1, extraFrags: 0, mag: 1, pierce: 0, burn: 0, slow: 0, lowHpDamage: 0, killSpeed: 0, revive: 0, dayScrap: 0, sustain: 0, headHeal: 0, airJumps: 0 });
 
 export interface CoreState {
   x: number;
@@ -219,8 +246,8 @@ export interface DamageOpts {
 }
 
 /** 战斗复盘的伤害来源：枪按武器种类，其余按下面这些 */
-export type DamageSrc = 'turret' | 'spikes' | 'explosive' | 'grenade' | 'pulse' | 'chain' | 'fire' | 'other';
-export const DAMAGE_SRC: DamageSrc[] = ['turret', 'spikes', 'explosive', 'grenade', 'pulse', 'chain', 'fire', 'other'];
+export type DamageSrc = 'turret' | 'spikes' | 'explosive' | 'grenade' | 'chain' | 'fire' | 'other';
+export const DAMAGE_SRC: DamageSrc[] = ['turret', 'spikes', 'explosive', 'grenade', 'chain', 'fire', 'other'];
 
 /** 每夜的复盘记录 */
 export interface NightLog {
@@ -267,7 +294,7 @@ export interface GameEvents {
   split: { x: number; z: number; n: number };
   /** 跳跃者：蹲下蓄力 / 起跳 / 落地（hit = 落地时扑中了玩家） */
   leap: { zombie: Zombie; stage: 'windup' | 'jump' | 'land'; hit: boolean };
-  /** 空投里拿到一把试用枪：这一局 kind 这一类换成型号 id */
+  /** 玩家把空投箱里的试用枪换上了：这一局 kind 这一类换成型号 id */
   trialGun: { kind: WeaponKind; id: string };
   scrap: { x: number; z: number; amount: number };
   reload: { kind: WeaponKind; start: boolean };
@@ -310,14 +337,13 @@ export interface GameEvents {
   tdmPickup: { gun: string };
   /** 有人起跳 / 落地（id = 士兵 id，-1 = 玩家） */
   tdmJump: { id: number; land: boolean; x: number; z: number };
-  shove: { hits: number };
-  pulse: { stage: 'charge' | 'fire'; x: number; z: number; radius: number };
   spit: { x: number; z: number };
   scream: { x: number; z: number; radius: number };
   chainBlast: { x: number; z: number };
   combo: { count: number; mult: number };
   challenge: { id: string; done: boolean };
-  airdrop: { stage: 'land' | 'taken' | 'gone'; x: number; z: number };
+  /** land = 落地；open = 零件和手雷拿走了，箱子里还留着一把试用枪；taken = 箱子空了（拿完 / 换上了枪）；gone = 入夜收走 */
+  airdrop: { stage: 'land' | 'open' | 'taken' | 'gone'; x: number; z: number };
   bossCharge: { id: number; stage: 'windup' | 'go' | 'stun'; x: number; z: number; dx: number; dz: number; len: number };
   bossSlam: { x: number; z: number; r: number };
   /**
@@ -487,8 +513,8 @@ export class Game {
     bonusXp: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
     weaponDamage: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
     fireTime: { pistol: 0, smg: 0, shotgun: 0, rifle: 0, sniper: 0, lmg: 0 },
-    srcDamage: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
-    srcKills: { turret: 0, spikes: 0, explosive: 0, grenade: 0, pulse: 0, chain: 0, fire: 0, other: 0 },
+    srcDamage: { turret: 0, spikes: 0, explosive: 0, grenade: 0, chain: 0, fire: 0, other: 0 },
+    srcKills: { turret: 0, spikes: 0, explosive: 0, grenade: 0, chain: 0, fire: 0, other: 0 },
     structDamage: 0,
     coreDamage: 0,
     bossKills: 0,
@@ -498,12 +524,18 @@ export class Game {
     damageTaken: 0,
     healed: 0,
   };
-  /** 爆炸物、危险区、手雷、推搡、电击脉冲（M12） */
+  /** 爆炸物、危险区、手雷（M12） */
   readonly hz: HazardState = newHazards();
   /** 8v8 回合制对战（mapId = 'arena'，地图「北港仓库」） */
   readonly tdm: TdmState = newTdm();
   /** 白天的空投补给（M13） */
   readonly airdrop: AirdropState = newAirdrop();
+  /**
+   * 卡牌的临时状态（不进检查点：检查点只在白天开始时存，这些那时都是初值）：
+   * rush = 「杀戮冲刺」还剩几秒；guard = 「不屈」触发后的无敌还剩几秒；revived = 这一夜已经挡过几次致命伤害；
+   * airJumps = 这次离地以后已经在空中跳了几次
+   */
+  readonly fx = { rush: 0, guard: 0, revived: 0, airJumps: 0 };
   /** 风险事件（M17） */
   readonly ev: RiskState = newRisk();
   /** 搜刮点（M18） */
@@ -594,6 +626,8 @@ export class Game {
     this.time += dt;
     this.tick++;
     if (this.comboT > 0) this.comboT = Math.max(0, this.comboT - dt);
+    if (this.fx.rush > 0) this.fx.rush = Math.max(0, this.fx.rush - dt);
+    if (this.fx.guard > 0) this.fx.guard = Math.max(0, this.fx.guard - dt);
     // 上一帧登记的连锁爆炸：半径 2.2 米，只伤僵尸
     if (this.chainBlasts.length) {
       const list = this.chainBlasts.splice(0);
@@ -707,7 +741,7 @@ export class Game {
       z.burnBy = o.weapon ?? '';
     }
     const head = !!o.head;
-    const mine = o.weapon !== undefined || !!o.chain || o.src === 'grenade' || o.src === 'pulse';
+    const mine = o.weapon !== undefined || !!o.chain || o.src === 'grenade';
     if (head) this.stats.headshots++;
     if (!o.silent) this.events.emit('zombieHit', { zombie: z, amount, crit: !!o.crit, head, mine });
     if (z.hp > 0) return false;
@@ -747,6 +781,11 @@ export class Game {
     this.scrapEarned += reward;
     // 嗜血：不是一下回满，记进回血池，由 updateRun 每 0.25 秒回一点
     if (this.mods.lifesteal > 0 && this.player.alive) this.healPool = Math.min(HEAL_POOL_MAX, this.healPool + this.mods.lifesteal);
+    // 卡牌「猎头」：爆头击杀也往回血池里存；「杀戮冲刺」：用枪击杀后提速几秒
+    if (o.weapon && this.player.alive) {
+      if (head && this.mods.headHeal > 0) this.healPool = Math.min(HEAL_POOL_MAX, this.healPool + this.mods.headHeal);
+      if (this.mods.killSpeed > 0) this.fx.rush = CARD_FX.killRush;
+    }
     this.events.emit('zombieDied', { zombie: z, head, mine });
     this.events.emit('scrap', { x: z.x, z: z.z, amount: reward });
     if (z.kind === 'bloater') this.acidBurst(z.x, z.z);
@@ -830,7 +869,16 @@ export class Game {
       this.stats.damageTaken += Math.min(this.player.hp, dealt);
       const nl = this.stats.nights[this.stats.nights.length - 1];
       if (nl && nl.night === this.run.night) nl.hurt += Math.min(this.player.hp, dealt);
+      // 卡牌「不屈」触发后的无敌时间：这一下不掉血
+      if (this.fx.guard > 0) return;
       this.player.hp = Math.max(0, this.player.hp - dealt);
+      if (this.player.hp <= 0 && this.fx.revived < this.mods.revive) {
+        // 卡牌「不屈」：这一夜第一次致命伤害留 1 点生命，接着无敌几秒
+        this.fx.revived++;
+        this.fx.guard = CARD_FX.guard;
+        this.player.hp = 1;
+        this.events.emit('banner', { text: '不屈', sub: `挡下了致命一击 · ${CARD_FX.guard} 秒内无敌，赶紧拉开距离` });
+      }
       if (this.player.hp <= 0) {
         this.player.alive = false;
         this.events.emit('playerDied', { x: this.player.x, z: this.player.z });
@@ -846,7 +894,10 @@ export class Game {
     const c = this.config;
     // 对战：用商店里的那一套数值（射程按对战地图放大过），和人机手里的同一把枪一模一样
     if (this.tdm.on && this.gunOf(kind)) return arenaStats(c.guns[kind]);
-    return effectiveStats(kind, tier, c.weaponMods[kind], this.gunOf(kind));
+    const st = effectiveStats(kind, tier, c.weaponMods[kind], this.gunOf(kind));
+    // 卡牌「加长弹匣」
+    if (this.mods.mag !== 1) st.mag = magWith(st.mag, this.mods.mag);
+    return st;
   }
 
   /** 这一类枪现在用的型号 */
@@ -897,12 +948,36 @@ export class Game {
     return WEAPON_ORDER.filter((k) => this.loadout[k].owned && (this.loadout[k].carried || !this.config.extras));
   }
 
-  /** 工坊里这把枪能不能买：逻辑和界面都用这一个判断，免得两边对不上 */
+  /**
+   * 工坊里这把枪的状态：逻辑和界面都用这一个判断，免得两边对不上。
+   * 正式局里大厅解锁了的枪开局就都有了（grantUnlocked），不会走到 scrap / ok；
+   * 只有沙盒（旧 sim 的规则）还要花零件买
+   */
   buyState(kind: WeaponKind): 'owned' | 'locked' | 'scrap' | 'ok' {
     if (this.loadout[kind].owned) return 'owned';
     if (!this.config.weapons.includes(kind)) return 'locked';
     if (this.scrap < WEAPONS[kind].price) return 'scrap';
     return 'ok';
+  }
+
+  /**
+   * 大厅里解锁了的枪全部直接给（1 级、弹匣装满）：不用在局内再花零件买。
+   * 身上还是最多带 CARRY_MAX 把：手枪 + prefer（出征时选的那把；没选就是解锁顺序里最后一把），
+   * 其余的放在工坊里，随时免费换。开局、读档继续（大厅里新解锁了枪）都调这个，已经有的枪不动
+   */
+  grantUnlocked(prefer: WeaponKind | null = null): void {
+    const fresh: WeaponKind[] = [];
+    for (const k of this.config.weapons) {
+      const slot = this.loadout[k];
+      if (slot.owned) continue;
+      slot.owned = true;
+      slot.carried = false;
+      slot.tier = 0;
+      slot.mag = this.takeAmmo(k, this.statsOf(k, 0).mag);
+      fresh.push(k);
+    }
+    const want = prefer && fresh.includes(prefer) ? prefer : (fresh[fresh.length - 1] ?? null);
+    if (want && this.carried().length < CARRY_MAX) this.loadout[want].carried = true;
   }
 
   /**

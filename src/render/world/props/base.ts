@@ -26,7 +26,7 @@ export function generator(b: Builder, p: Prop): void {
   b.cyl(0.08, 0.08, 0.04, 8, { x: 0.65, y: 2.33, z: -0.4 }, glow(0xff6a20, 0.9));
   // 控制面板
   b.rbox(0.7, 0.45, 0.14, 0.03, { x: 0.35, y: 0.58, z: 0.7 }, metal(0x2b2f33, { jitter: 0.05, ao: 0 }));
-  for (let i = 0; i < 4; i++) b.box(0.06, 0.06, 0.02, { x: 0.15 + i * 0.13, y: 0.85, z: 0.78 }, glow([0x66ff88, 0x66ff88, 0xffcc44, 0xff4444][i] as number, 1.6));
+  for (let i = 0; i < 4; i++) b.box(0.06, 0.06, 0.02, { x: 0.15 + i * 0.13, y: 0.85, z: 0.78 }, glow([0x66ff88, 0x66ff88, 0xffcc44, 0xff4444][i] as number, 1.1));
   b.box(0.5, 0.14, 0.02, { x: 0.35, y: 0.62, z: 0.78 }, glow(0x66ffaa, 0.8));
   // 吊环、护栏
   for (const sx of [-1, 1]) b.torus(0.12, 0.02, 6, 10, { x: sx * 0.6, y: 1.36, rx: Math.PI / 2 }, metal(0x8a9094, { ao: 0 }));
@@ -38,10 +38,12 @@ export function generator(b: Builder, p: Prop): void {
 export function buildGeneratorCore(cx: number, cz: number): Builder {
   const b = new Builder();
   b.push({ x: cx, z: cz, y: 1.3 });
-  // 发光的电芯（三根竖管）+ 上下两道光环
-  for (const [x, z] of [[-0.14, 0], [0.1, 0.12], [0.1, -0.12]] as const) b.cyl(0.075, 0.075, 0.46, 10, { x, z, y: 0.07 }, glow(0x66e0ff, 2.6));
-  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.08 }, glow(0x2a90b0, 1.4));
-  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.52 }, glow(0x2a90b0, 1.4));
+  // 发光的电芯（三根竖管）+ 上下两道光环。
+  // 亮度 2.6 → 1.15：以前三根管子连同笼子一起糊成一团白光（白天也是），现在是三根看得出形状和颜色的青色灯管，
+  // 只有一圈淡淡的光晕；上下的环 1.4 → 0.8，不再发光，只是亮色的金属环
+  for (const [x, z] of [[-0.14, 0], [0.1, 0.12], [0.1, -0.12]] as const) b.cyl(0.075, 0.075, 0.46, 10, { x, z, y: 0.07 }, glow(0x4fc8ea, 1.15));
+  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.08 }, glow(0x2a90b0, 0.8));
+  b.cyl(0.27, 0.27, 0.03, 16, { y: 0.52 }, glow(0x2a90b0, 0.8));
   b.pop();
   return b;
 }
@@ -176,7 +178,7 @@ export function workbench(b: Builder, p: Prop): void {
   b.pop();
   // 顶部灯箱招牌
   b.rbox(L * 0.55, 0.16, 0.06, 0.02, { y: top + 1.18, z: bz + 0.02 }, dark);
-  b.box(L * 0.52, 0.11, 0.01, { y: top + 1.205, z: bz + 0.055 }, glow(0xffb040, 1.8));
+  b.box(L * 0.52, 0.11, 0.01, { y: top + 1.205, z: bz + 0.055 }, glow(0xffb040, 1.2));
   for (let i = 0; i < 3; i++) b.box(0.06, 0.06, 0.012, { x: -0.25 + i * 0.25, y: top + 1.23, z: bz + 0.06 }, matte(0x1a1206, { jitter: 0, ao: 0 }));
 
   // ---- 可调台灯：底座、两节灯臂、灯罩、灯泡 ----
@@ -186,6 +188,6 @@ export function workbench(b: Builder, p: Prop): void {
   b.sphere(0.02, 6, 4, { x: lx, y: top + 0.6, z: -0.12 }, steel);
   b.rod([lx, top + 0.6, -0.12], [lx - 0.25, top + 0.55, 0.1], 0.012, dark, 6);
   b.lathe([[0.0, 0.0], [0.05, 0.0], [0.1, 0.1], [0.11, 0.12], [0.0, 0.12]], 14, { x: lx - 0.27, y: top + 0.6, z: 0.12, rx: Math.PI / 2 }, metal(Pal.hazard, { jitter: 0.06, ao: 0 }));
-  b.sphere(0.035, 8, 6, { x: lx - 0.27, y: top + 0.5, z: 0.12 }, glow(0xffe0a0, 2.8));
+  b.sphere(0.035, 8, 6, { x: lx - 0.27, y: top + 0.5, z: 0.12 }, glow(0xffe0a0, 1.5));
   b.pop();
 }

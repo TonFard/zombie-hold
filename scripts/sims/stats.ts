@@ -143,8 +143,8 @@ console.log('\n== 重量和截断 ==');
   applyMeta(g, bonusesOf(meta), { difficulty: 'normal' });
   startRun(g);
   g.scrap = 1e6;
-  g.buyWeapon('lmg');
-  g.player.weapon = 'lmg';
+  // 解锁了的枪开局就都有：从工坊里拿出来
+  g.takeWeapon('lmg');
   const sp = liveBreakdown(g).find((l) => l.id === 'speed');
   const w = g.weightNow();
   check(!!sp && sp.parts.some((p) => p.kind === 'weight') && Math.abs(sp.final - g.mods.speed * w.speed) < 1e-9, `扛轻机枪：移速面板 ${((sp?.final ?? 0) * 100).toFixed(1)}% = 局外 × 重量 ${(w.speed * 100).toFixed(1)}%`);

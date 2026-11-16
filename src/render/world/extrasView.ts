@@ -29,11 +29,12 @@ export class ExtrasView {
   private readonly spitGeo = new SphereGeometry(0.12, 8, 6);
   private readonly spitMat = new MeshBasicMaterial({ color: 0x9aff3a, toneMapped: false });
   private readonly rings: Array<{ mesh: Mesh; age: number; life: number; r0: number; r1: number }> = [];
-  private readonly chargeRing: Mesh;
   private time = 0;
   private emberT = 0;
   /** 空投：箱子 + 信号烟柱 + 发光的信号灯（不用真实光源：每多一盏灯所有材质都要多算一遍） */
   private readonly drop = new Group();
+  /** 空投箱还在冒信号烟（补给还没拿）；拿走以后箱子留着等玩家决定要不要里面的枪，烟停掉 */
+  private dropSmoke = false;
   private readonly smoke: Array<{ sp: Sprite; mat: SpriteMaterial; age: number; life: number; vx: number; vz: number; s0: number }> = [];
   private smokeIdx = 0;
   private smokeT = 0;
@@ -67,12 +68,6 @@ export class ExtrasView {
     this.flash.target = this.flashTarget;
     scene.add(this.flash, this.flashTarget);
 
-    this.chargeRing = new Mesh(new RingGeometry(0.97, 1, 64), new MeshBasicMaterial({ color: 0x66e0ff, transparent: true, opacity: 0, depthWrite: false, toneMapped: false, blending: AdditiveBlending, side: 2 }));
-    this.chargeRing.rotation.x = -Math.PI / 2;
-    this.chargeRing.position.y = 0.06;
-    this.chargeRing.visible = false;
-    scene.add(this.chargeRing);
-
     this.drop.add(toGroup(airdropModel().build()));
     this.drop.visible = false;
     scene.add(this.drop);
@@ -101,8 +96,11 @@ export class ExtrasView {
         if (f.on) this.ring(f.x, f.z, 0.4, 3, 1, 0xff4a3a);
       }),
       e.on('airdrop', (a) => {
-        this.drop.visible = a.stage === 'land';
+        // open = 补给拿走了，箱里还有一把试用枪：箱子留着，信号烟停掉
+        this.drop.visible = a.stage === 'land' || a.stage === 'open';
+        this.dropSmoke = a.stage === 'land';
         this.drop.position.set(a.x, 0, a.z);
+        if (a.stage === 'open') this.ring(a.x, a.z, 0.3, 2.2, 0.6, 0x6fd0e8);
         if (a.stage === 'land') this.ring(a.x, a.z, 0.5, 4, 1, 0xff6a3a);
       }),
       e.on('bossCharge', (c) => {
@@ -129,13 +127,6 @@ export class ExtrasView {
         this.rig.addShake(0.45);
       }),
       e.on('propExploded', ({ x, z, silent }) => this.wreck(x, z, !silent)),
-      e.on('pulse', (p) => {
-        if (p.stage === 'fire') {
-          this.ring(p.x, p.z, 0.5, p.radius, 0.5, 0x88eaff);
-          this.fx.chips(p.x, p.z, [1.2, 3.4, 4], 30, 1.4);
-          this.rig.addShake(0.35);
-        }
-      }),
       e.on('scream', (s) => this.ring(s.x, s.z, 0.3, s.radius, 0.7, 0xff5af0)),
       e.on('bossSkill', (s) => this.onSkill(s)),
       e.on('bossPhase', ({ zombie }) => {
@@ -161,9 +152,6 @@ export class ExtrasView {
         this.ring(s.x, s.z, 0.2, 1.6, 0.4, 0xb8e040);
       }),
       e.on('chainBlast', (c) => this.ring(c.x, c.z, 0.3, 2.2, 0.35, 0xffa040)),
-      e.on('shove', ({ hits }) => {
-        if (hits > 0) this.rig.addShake(0.12);
-      }),
     );
   }
 
@@ -311,16 +299,6 @@ export class ExtrasView {
       }
     }
 
-    // 电击脉冲充能圈
-    if (h.pulseCharge > 0) {
-      this.chargeRing.visible = true;
-      this.chargeRing.position.x = g.core.x;
-      this.chargeRing.position.z = g.core.z;
-      const k = 1 - h.pulseCharge / 1.5;
-      this.chargeRing.scale.setScalar(1 + k * 7);
-      (this.chargeRing.material as MeshBasicMaterial).opacity = 0.3 + 0.5 * Math.abs(Math.sin(this.time * 18));
-    } else this.chargeRing.visible = false;
-
     for (let i = this.rings.length - 1; i >= 0; i--) {
       const r = this.rings[i]!;
       r.age += dt;
@@ -339,7 +317,7 @@ export class ExtrasView {
     // 空投：信号烟从箱子旁的烟罐冒出，一团接一团往上飘
     this.smokeT -= dt;
     // 烟的来源：空投箱旁的烟罐；没有空投时，换成幸存者的信号弹
-    const src = this.drop.visible ? { x: this.drop.position.x + 0.78, z: this.drop.position.z + 0.5 } : this.flare;
+    const src = this.drop.visible && this.dropSmoke ? { x: this.drop.position.x + 0.78, z: this.drop.position.z + 0.5 } : this.flare;
     if (src && this.smokeT <= 0) {
       this.smokeT = 0.09;
       const p = this.smoke[this.smokeIdx++ % SMOKE_N]!;
@@ -467,7 +445,7 @@ export class ExtrasView {
 
   dispose(): void {
     for (const f of this.off) f();
-    this.scene.remove(this.wrecks, this.flash, this.flashTarget, this.chargeRing, this.drop);
+    this.scene.remove(this.wrecks, this.flash, this.flashTarget, this.drop);
     for (const p of this.smoke) {
       this.scene.remove(p.sp);
       p.mat.dispose();

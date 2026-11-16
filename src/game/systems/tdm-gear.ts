@@ -98,10 +98,10 @@ export const grounded = (g: Game, x: number, z: number, y: number, vy: number): 
   return y <= (t > 0 && t <= y + JUMP.step ? t : 0) + 1e-3;
 };
 
-/** 玩家是不是在半空（开枪散得很开） */
+/** 玩家是不是在半空（对战里开枪散得很开；打僵尸时跳着打不罚） */
 export const playerAirborne = (g: Game): boolean => g.tdm.on && !grounded(g, g.player.x, g.player.z, g.player.air, g.player.vy);
 
-/** 玩家的跳：水平移动之后调 */
+/** 玩家的跳：水平移动之后调。守城 / 训练场里也用这一套（那边没有冻结时间，只有选卡的时候不能跳） */
 export function playerVertical(g: Game, dt: number): void {
   const p = g.player;
   const inp = g.input;
@@ -109,7 +109,12 @@ export function playerVertical(g: Game, dt: number): void {
   t.jumpCd = Math.max(0, t.jumpCd - dt);
   if (inp.jump) {
     inp.jump = false;
-    if (t.phase !== 'freeze' && t.jumpCd <= 0 && grounded(g, p.x, p.z, p.air, p.vy)) {
+    const frozen = t.on ? t.phase === 'freeze' : g.run.phase === 'menu' || g.run.phase === 'cards';
+    const onGround = grounded(g, p.x, p.z, p.air, p.vy);
+    // 卡牌「二段跳」：人在空中还能再跳（对战不吃卡牌，mods.airJumps 一直是 0）
+    const airJump = !onGround && g.fx.airJumps < g.mods.airJumps;
+    if (!frozen && ((onGround && t.jumpCd <= 0) || airJump)) {
+      if (airJump) g.fx.airJumps++;
       p.vy = JUMP.v;
       t.jumpCd = JUMP.cd;
       g.events.emit('tdmJump', { id: PLAYER, land: false, x: p.x, z: p.z });
@@ -118,6 +123,7 @@ export function playerVertical(g: Game, dt: number): void {
   const r = stepVertical(g, p.x, p.z, p.air, p.vy, dt);
   p.air = r.y;
   p.vy = r.vy;
+  if (p.vy === 0 && g.fx.airJumps > 0 && grounded(g, p.x, p.z, p.air, p.vy)) g.fx.airJumps = 0;
   if (r.landed) g.events.emit('tdmJump', { id: PLAYER, land: true, x: p.x, z: p.z });
 }
 

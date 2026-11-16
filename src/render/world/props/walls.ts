@@ -148,9 +148,9 @@ export function doorframe(b: Builder, p: Prop, trim = false): void {
     }
     // 门楣上的笼灯
     b.box(0.3, 0.12, 0.2, { y: h - 0.46, z: 0.5 }, metal(Pal.steel, { jitter: 0, ao: 0 }));
-    b.box(0.22, 0.06, 0.12, { y: h - 0.5, z: 0.5 }, glow(0xffe2b0, 2.2));
+    b.box(0.22, 0.06, 0.12, { y: h - 0.5, z: 0.5 }, glow(0xffe2b0, 1.4));
     b.box(0.3, 0.12, 0.2, { y: h - 0.46, z: -0.5 }, metal(Pal.steel, { jitter: 0, ao: 0 }));
-    b.box(0.22, 0.06, 0.12, { y: h - 0.5, z: -0.5 }, glow(0xffe2b0, 2.2));
+    b.box(0.22, 0.06, 0.12, { y: h - 0.5, z: -0.5 }, glow(0xffe2b0, 1.4));
   }
   b.pop();
 }

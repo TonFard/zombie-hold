@@ -25,7 +25,7 @@ import { chooseCard, continueEndless, nightsSurvived, rerollCards, startRun } fr
 import { Training } from '../game/systems/training';
 import { GameView } from '../render/core/view';
 import { buildWeapon } from '../render/weapons';
-import { hud, syncHud } from '../ui/hud';
+import { hud, syncHud, tickFps } from '../ui/hud';
 import { asTdmLevel, setTdmLevel, toast, ui } from '../ui/store';
 import { wireEvents } from './events-wiring';
 import { InputController } from './input';
@@ -128,7 +128,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   const unwire = wireEvents(game, audio);
   // TACZ 枪：动画音效走采样，加载好的武器停掉合成枪声
   view.viewmodel.onSound = (url, gain) => audio.sample(url, gain);
-  view.viewmodel.onTaczReady = (_id, urls) => audio.useSamples(urls);
+  view.viewmodel.onTaczReady = (id, urls) => audio.useSamples(id, urls);
   audio.sampledBy = (kind) => view.viewmodel.hasTacz(game.config.guns[kind]);
   input.onInspect = () => view.viewmodel.inspect();
 
@@ -244,6 +244,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
       // 对战：过了能买东西的时间（或者人走出了出生区），购买菜单自己关掉
       if (ui.screen === 'buy' && !canBuy(game)) screens.set('play');
       view.render(dt);
+      tickFps(dt);
       // 瞄准放大时鼠标灵敏度跟着降低
       input.zoom = view.rig.mode === 'fps' ? view.rig.zoomNow : 1;
       hudTimer += dt;
@@ -524,7 +525,16 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   ui.gfx.gunIcon = (id) => gunIcon(id);
   ui.gfx.preview = (w, h) => {
     const p = createPreview(w, h);
-    return { canvas: p.canvas, setWeapon: (k, tier) => p.setWeapon(k as WeaponKind, tier), resize: (w2, h2) => p.resize(w2, h2), dispose: () => p.dispose() };
+    return {
+      canvas: p.canvas,
+      setWeapon: (k, tier) => p.setWeapon(k as WeaponKind, tier),
+      setGun: (id, k) => p.setGun(id, k as WeaponKind),
+      get loading() {
+        return p.loading;
+      },
+      resize: (w2, h2) => p.resize(w2, h2),
+      dispose: () => p.dispose(),
+    };
   };
   ui.actions.testSound = () => {
     // 点按钮本身就是手势：先解锁，再放声音

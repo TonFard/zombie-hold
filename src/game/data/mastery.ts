@@ -52,7 +52,7 @@ export const masteryTierCap = (lv: number): number => 5 + (lv >= 2 ? 1 : 0) + (l
 export const masteryBenchCap = (lv: number): number => (lv >= 5 ? 3 : lv >= 3 ? 2 : lv >= 1 ? 1 : 0);
 
 /** 每一级的奖励（界面用） */
-export const MASTERY_PERKS: string[] = ['武器台强化 1 级', '局内等级上限 6', '武器台强化 2 级', '局内等级上限 7', '精通：等级上限 8、强化 3 级、可解锁下一把枪'];
+export const MASTERY_PERKS: string[] = ['仓库强化 1 级', '局内等级上限 6', '仓库强化 2 级', '局内等级上限 7', '精通：等级上限 8、强化 3 级、可解锁下一把枪'];
 
 /** 熟练度等级要求出现在哪一级奖励里：给「武器台第 lv 级要熟练度几级」用 */
 export const benchNeeds = (benchLv: number): number => (benchLv <= 0 ? 1 : benchLv === 1 ? 3 : 5);

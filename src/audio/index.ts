@@ -11,9 +11,9 @@ import { Sfx } from './sfx';
 export interface AudioSystem {
   engine: AudioEngine;
   sfx: Sfx;
-  /** 预加载 TACZ 模型的采样音效（ogg） */
-  useSamples(urls: string[]): void;
-  /** 这一类枪现在是不是用着加载好的 TACZ 模型：是就停掉合成的枪声 / 换弹声（由渲染层接上） */
+  /** 预加载一个型号的 TACZ 采样音效（ogg）。id = 型号，urls = 它的动画和开火用到的全部音效 */
+  useSamples(id: string, urls: string[]): void;
+  /** 这一类枪现在是不是用着加载好的 TACZ 模型：是、而且它的采样都解码好了，就停掉合成的枪声 / 换弹声（由渲染层接上） */
   sampledBy: ((kind: WeaponKind) => boolean) | null;
   /** 播放一个采样（玩家自己的声音，不做空间化） */
   sample(url: string, gain: number): void;
@@ -46,8 +46,16 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
   const sz = (cy: number) => cy - HALF_H + 0.5;
 
   // 用 TACZ 模型的武器：枪声和换弹声由模型的动画音效负责，合成的就不放了。
-  // 哪一类枪是不是用着 TACZ 模型由渲染层告诉我们（型号在局内会换，换上的模型还没加载好时照样放合成声）
-  const sampled = (kind: WeaponKind): boolean => sys.sampledBy?.(kind) ?? false;
+  // 哪一类枪是不是用着 TACZ 模型由渲染层告诉我们（型号在局内会换，换上的模型还没加载好时照样放合成声）。
+  // 模型加载好了、采样还在下载 / 解码的那一小段时间也放合成声：以前这段时间两边都不响，
+  // 刚开局的头几枪、第一次换弹就是哑的
+  const groups = new Map<string, string[]>();
+  const groupOf = new Map<string, string>();
+  const samplesReady = (id: string): boolean => {
+    const urls = groups.get(id);
+    return !!urls && urls.length > 0 && urls.every((u) => engine.settled(u));
+  };
+  const sampled = (kind: WeaponKind): boolean => (sys.sampledBy?.(kind) ?? false) && samplesReady(game.config.guns[kind]);
   on('shot', (e) => {
     if (!sampled(e.kind)) sfx.shot(e.kind);
   });
@@ -185,19 +193,29 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
     engine,
     sfx,
     sampledBy: null,
-    useSamples(urls) {
+    useSamples(id, urls) {
+      groups.set(id, urls);
       for (const u of urls) {
+        groupOf.set(u, id);
         if (engine.ready) engine.load(u);
         else pending.push(u);
       }
     },
     sample(url, gain) {
+      // 这把枪的采样还没到齐：这一下由合成声顶着（见上面的 sampled），采样不放，免得一半合成一半采样叠在一起
+      const id = groupOf.get(url);
+      if (id !== undefined && !samplesReady(id)) {
+        engine.load(url);
+        return;
+      }
       engine.channel = 'weapons';
       engine.sample(url, gain, engine.flat(0.9) ?? undefined);
     },
     unlock() {
-      for (const u of pending.splice(0)) engine.load(u);
+      // 先建上下文再加载：以前顺序反了，第一次点击之前排着队的采样（一进页面就加载好的手枪）在这里被直接丢掉，
+      // 之后每个音效第一次用到时才现加载，那一次不响
       engine.unlock();
+      if (engine.ready) for (const u of pending.splice(0)) engine.load(u);
       ambience.start();
     },
     revive() {

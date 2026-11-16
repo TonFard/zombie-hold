@@ -5,7 +5,9 @@ import { DIFFICULTIES, DIFFICULTY_ORDER, type Difficulty } from '../../game/data
 import { WEAPONS, WEAPON_ORDER, type WeaponKind } from '../../game/data/weapons';
 import { dailyFor, todayKey } from '../../game/meta/achievements';
 import { sidearmOk } from '../../game/meta/loadout';
-import { bonusesOf, difficultyUnlocked } from '../../game/meta/progress';
+import { bonusesOf, difficultyUnlocked, gunsFor } from '../../game/meta/progress';
+import { GUN_BY_ID } from '../../game/data/guns';
+import { gunIconOf } from '../gun-icons';
 import { nightMod } from '../../game/data/modifiers';
 import type { MapId } from '../../game/world/maps';
 import { LEVELS, TDM } from '../../game/systems/tdm';
@@ -37,6 +39,8 @@ watch(
   { immediate: true },
 );
 const sidearms = computed<WeaponKind[]>(() => WEAPON_ORDER.filter((k) => sidearmOk(bonuses.value, k)));
+/** 每一类出征时用的型号（随身武器的小图画的是它） */
+const picked = computed(() => gunsFor(meta.value));
 
 /** 章节状态：已通关 / 已开放 / 锁定 */
 const stateOf = (c: Chapter): 'done' | 'open' | 'locked' => (meta.value.chapters.includes(c.id) ? 'done' : chapterOn(c.id) ? 'open' : 'locked');
@@ -167,11 +171,18 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
       </div>
       <p class="note">{{ diffNote(difficulty) }}</p>
 
-      <div class="sub">随身武器</div>
-      <p v-if="!bonuses.sidearm" class="note">军械库解锁「随身武器」后，可以开局多带一把（要先解锁霰弹枪）</p>
-      <div v-else class="t-seg">
-        <button :class="{ on: sidearm === null }" @click="sidearm = null">不带</button>
-        <button v-for="k in sidearms" :key="k" :class="{ on: sidearm === k }" @click="sidearm = k">{{ WEAPONS[k].name }}</button>
+      <div class="sub">主武器</div>
+      <p v-if="!sidearms.length" class="note">还没解锁别的枪：这一局带手枪。在军械库解锁以后，这里直接选（不用在局内再买）</p>
+      <!-- 一行两个、每格一样大：名字再长也不会挤到旁边的格子上（以前是一排平分，四五把枪时字叠在一起） -->
+      <div v-else class="side-grid" role="group" aria-label="主武器">
+        <button :class="{ on: sidearm === null }" :aria-pressed="sidearm === null" @click="sidearm = null">
+          <span class="spic none" aria-hidden="true"></span>
+          <b>最新解锁的</b>
+        </button>
+        <button v-for="k in sidearms" :key="k" :class="{ on: sidearm === k }" :aria-pressed="sidearm === k" :title="`${WEAPONS[k].name} · ${GUN_BY_ID[picked[k]]?.name ?? ''}`" @click="sidearm = k">
+          <span class="spic"><img v-if="gunIconOf(picked[k])" :src="gunIconOf(picked[k])" alt="" /></span>
+          <b>{{ WEAPONS[k].name }}</b>
+        </button>
       </div>
     </aside>
 
@@ -201,7 +212,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
             <div class="t-head">8v8 对战 <small>北港仓库</small></div>
             <p>先赢 {{ TDM.winRounds }} 局，每局一条命。开局的冻结时间里按 B 用金币买枪、护甲、手雷；打空了能捡地上的枪，刀人人都有。</p>
             <p><b>人机 · {{ LEVELS[ui.tdmLevel].name }}</b>{{ TDM_LEVEL_NOTES[ui.tdmLevel] }}。队友和敌人是同一档。</p>
-            <p class="nob">不吃任何局外加成：大厅里买的生命 / 移速 / 射速、武器台的改装、枪的星级和解锁的型号都不带进去——所有人 {{ TDM.hp }} 血、同一套枪。</p>
+            <p class="nob">不吃任何局外加成：大厅里买的生命 / 移速 / 射速、仓库里的强化、枪的星级和解锁的型号都不带进去——所有人 {{ TDM.hp }} 血、同一套枪。</p>
             <div class="tdm-keys">
               <div v-for="k in TDM_KEYS" :key="k[0]"><kbd>{{ k[0] }}</kbd><span>{{ k[1] }}</span></div>
             </div>
@@ -444,6 +455,69 @@ em.open {
   line-height: 1.5;
   color: var(--t-dim);
 }
+/* 随身武器：两列的格子，每格 = 枪的侧视图 + 名字 */
+.side-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+.side-grid button {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 6px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--t-line);
+  color: var(--t-muted);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s var(--t-ease), background 0.15s var(--t-ease), color 0.15s var(--t-ease);
+}
+.side-grid button:hover,
+.side-grid button:focus-visible {
+  outline: none;
+  color: var(--t-text);
+  border-color: var(--t-line-strong);
+}
+.side-grid button.on {
+  color: var(--t-gold);
+  border-color: rgba(240, 184, 58, 0.6);
+  background: rgba(240, 184, 58, 0.09);
+}
+.side-grid b {
+  font-size: 12.5px;
+  font-weight: 400;
+  letter-spacing: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 图是异步画出来的：位置先占好 */
+.spic {
+  width: 40px;
+  height: 17px;
+}
+.spic img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: brightness(1.6) contrast(1.05);
+}
+.spic.none {
+  position: relative;
+}
+.spic.none::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  top: 50%;
+  border-top: 1px dashed var(--t-dim);
+}
 .bonus {
   position: relative;
   z-index: 3;
@@ -616,6 +690,14 @@ em.open {
 @media (max-width: 1360px) {
   .deploy {
     grid-template-columns: 210px minmax(0, 1fr) 290px;
+  }
+  /* 简报栏变窄：随身武器不放小图，名字才写得下 */
+  .side-grid button {
+    grid-template-columns: minmax(0, 1fr);
+    text-align: center;
+  }
+  .spic {
+    display: none;
   }
   .cont span {
     display: none;

@@ -11,7 +11,7 @@ const best = computed(() => Math.max(0, ...hud.weapons.filter((w) => w.owned).ma
   <div v-if="ui.screen === 'bench'" class="bench">
     <div class="panel t-panel t-enter">
       <div class="head">
-        <h2>武器工坊 <small>FIELD WORKSHOP</small></h2>
+        <h2>武器工坊 <small>FIELD WORKSHOP · 换枪免费，升级花零件</small></h2>
         <div class="scrap"><span class="d">◆</span>{{ hud.scrap }}<small>零件</small></div>
       </div>
 

@@ -1,12 +1,13 @@
 import { AmbientLight, Box3, DirectionalLight, Group, Mesh, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, ACESFilmicToneMapping, type Object3D } from 'three';
 import { WEAPON_ORDER, type WeaponKind } from '../../game/data/weapons';
-import { worldGun } from '../tacz/worldgun';
+import { worldGun, worldGunCache } from '../tacz/worldgun';
 import { buildWeapon, hasGunModel } from './index';
 
 /**
- * 武器图标和武器台的 3D 预览（M20）：用程序武器模型（buildWeapon，每把枪都有，不依赖 TACZ 文件）。
- *   图标：离屏画一次侧视图，转成 PNG（data URL），武器台列表、工坊、结算页当 <img> 用
- *   预览：武器台右上角一个小画布，可以拖动旋转
+ * 武器图标和武器台的 3D 预览（M20）。
+ *   图标：离屏画一次侧视图，转成 PNG（data URL），武器台列表、工坊、结算页当 <img> 用。
+ *         gunIcon = 某个型号的 TACZ 模型；weaponIcon = 内置的程序模型（TACZ 没导入 / 加载失败时顶着）
+ *   预览：武器台中间的大画布，画选中的那个型号的 TACZ 模型，可以拖动旋转
  * 只有一个共享的 WebGLRenderer（图标都在第一次请求时画好缓存起来），不占游戏主画布。
  */
 let shared: { renderer: WebGLRenderer; scene: Scene; camera: PerspectiveCamera; holder: Group } | null = null;
@@ -33,7 +34,7 @@ function setup(): NonNullable<typeof shared> {
 }
 
 /** 武器台展示：包围球直径占画面短边的比例 */
-const PREVIEW_FILL = 0.8;
+const PREVIEW_FILL = 0.92;
 /** 武器台展示：取景用的最小包围球半径（米）。长枪约 0.4–0.6，手枪 0.17 */
 const PREVIEW_MIN_R = 0.24;
 
@@ -122,13 +123,31 @@ export function gunIcon(id: string, w = 240, h = 84): string {
 /** 所有枪的图标（1 级外观） */
 export const allIcons = (): Record<WeaponKind, string> => Object.fromEntries(WEAPON_ORDER.map((k) => [k, weaponIcon(k)])) as Record<WeaponKind, string>;
 
+export interface Preview {
+  canvas: HTMLCanvasElement;
+  /** 展示内置的程序模型（没有 TACZ 文件时用） */
+  setWeapon(kind: WeaponKind, tier: number): void;
+  /**
+   * 展示一个型号的 TACZ 模型（和局里拿在手上的是同一份）。模型按需加载：没加载好之前画面空着，
+   * 加载失败才退回这一类的程序模型
+   */
+  setGun(id: string, kind: WeaponKind): void;
+  /** 现在要展示的型号还在加载 */
+  readonly loading: boolean;
+  resize(w: number, h: number): void;
+  dispose(): void;
+}
+
+/** 自动摆动：以侧面为中心左右各转这么多（弧度），一个来回多少秒 */
+const SWAY = 0.5;
+const SWAY_PERIOD = 14;
+
 /**
- * 武器台的 3D 展示（UI-PLAN 3.3）：返回一个画布，默认自动旋转（约 12 秒一圈）；
- * 拖动手动转，松手 3 秒后恢复自动；滚轮缩放 0.6–1.8 倍；换枪时新枪从侧面转进来。
+ * 武器台的 3D 展示（UI-PLAN 3.3）：返回一个画布，默认围着侧面慢慢左右摆（不整圈转：枪口正对镜头时只剩一个点）；
+ * 拖动手动转，松手 3 秒后从停下的角度接着摆；滚轮缩放 0.6–1.8 倍；换枪时新枪从侧面转进来。
  * 画布跟着容器尺寸走（resize），单独一个渲染器，只在武器台打开时存在。
- * 双持手枪展示两把（一左一右），不是一把
  */
-export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; setWeapon(kind: WeaponKind, tier: number): void; resize(w: number, h: number): void; dispose(): void } {
+export function createPreview(w = 360, h = 150): Preview {
   const renderer = new WebGLRenderer({ antialias: true, alpha: true });
   renderer.outputColorSpace = SRGBColorSpace;
   renderer.toneMapping = ACESFilmicToneMapping;
@@ -152,6 +171,9 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   scene.add(holder);
   let aspect = w / h;
   let yaw = 0.35;
+  /** 自动摆动的相位、摆动的中心角（拖动以后中心留在松手的地方附近的那个侧面） */
+  let phase = Math.asin(0.35 / SWAY);
+  let centre = 0;
   let pitch = 0.16;
   let zoom = 1;
   let dragging = false;
@@ -164,12 +186,38 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   /** 换枪动画 0→1：新枪从侧面转 90° 进来，同时放大 */
   let swap = 1;
   let current: Group | null = null;
+  /** 等着加载的 TACZ 型号（空 = 没有在等） */
+  let pending: { id: string; kind: WeaponKind } | null = null;
   const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  const show = (obj: Object3D): void => {
+    holder.clear();
+    // frame() 会挪模型的位置，每次都用新建的外壳
+    const g = new Group();
+    g.add(obj);
+    holder.add(g);
+    current = g;
+    swap = reduce ? 1 : 0;
+    zoom = 1;
+  };
   const loop = (now: number) => {
     const dt = Math.max(0, Math.min(0.05, (now - last) / 1000));
     last = now;
-    // 一圈 12 秒；刚换枪时转得快一点，然后缓下来
-    if (!dragging && now - touched > 3000 && !reduce) yaw += dt * ((Math.PI * 2) / 12);
+    if (pending) {
+      const wg = worldGun(pending.id);
+      if (wg) {
+        show(new Mesh(wg.geometry, wg.material));
+        pending = null;
+      } else if (worldGunCache.get(pending.id) === null) {
+        // 这个型号的文件读不出来：用这一类的程序模型顶上，不让展示台一直空着
+        show(buildWeapon(pending.kind, 0).group);
+        pending = null;
+      }
+    }
+    // 围着侧面来回摆；拖动过以后等 3 秒，从现在的角度接着摆
+    if (!dragging && now - touched > 3000 && !reduce) {
+      phase += dt * ((Math.PI * 2) / SWAY_PERIOD);
+      yaw = centre + Math.sin(phase) * SWAY;
+    }
     if (swap < 1) swap = Math.min(1, swap + dt * 2.6);
     const e = 1 - (1 - swap) ** 3;
     if (current) {
@@ -203,6 +251,9 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
     dragging = false;
     touched = performance.now();
     el.style.cursor = 'grab';
+    // 松手：摆动从这个角度接着走（中心取离它最近的那个侧面，左侧 / 右侧都行）
+    centre = Math.round(yaw / Math.PI) * Math.PI;
+    phase = Math.asin(Math.max(-1, Math.min(1, (yaw - centre) / SWAY)));
   };
   const wheel = (e: WheelEvent) => {
     e.preventDefault();
@@ -217,14 +268,17 @@ export function createPreview(w = 360, h = 150): { canvas: HTMLCanvasElement; se
   return {
     canvas: el,
     setWeapon(kind, tier) {
+      pending = null;
+      show(buildWeapon(kind, tier).group);
+    },
+    setGun(id, kind) {
+      // 换下来的那把先撤掉：加载的那一小会儿台子空着，不拿别的枪（更不拿旧的程序模型）冒充
       holder.clear();
-      // frame() 会挪模型的位置，每次都用新建的模型
-      const g = new Group();
-      g.add(buildWeapon(kind, tier).group);
-      holder.add(g);
-      current = g;
-      swap = reduce ? 1 : 0;
-      zoom = 1;
+      current = null;
+      pending = { id, kind };
+    },
+    get loading() {
+      return pending !== null;
     },
     resize(nw, nh) {
       if (nw < 2 || nh < 2) return;
