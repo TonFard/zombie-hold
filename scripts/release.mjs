@@ -181,7 +181,9 @@ function safeRemove(dir) {
 function exportHead() {
   safeRemove(buildDir);
   fs.mkdirSync(buildDir, { recursive: true });
-  execSync(`git archive ${head} --format=tar | tar -xf - -C "${buildDir}"`, { stdio: 'ignore' });
+  // tar -C 的参数用正斜杠：从 Git Bash 里跑时，带反斜杠的 Windows 路径会被 MSYS 的
+  // 参数转换弄坏（tar 收到 "C:Users%374..." 这种），换成 C:/... 两种 shell 都认
+  execSync(`git archive ${head} --format=tar | tar -xf - -C "${buildDir.replace(/\\/g, '/')}"`, { stdio: 'ignore' });
   fs.symlinkSync(path.join(root, 'node_modules'), path.join(buildDir, 'node_modules'), 'junction');
   const v = readJson(path.join(buildDir, 'package.json')).version;
   if (v !== version) fail(`导出的版本（${v}）和工作区（${version}）不一致：package.json 的改动没提交？`);
