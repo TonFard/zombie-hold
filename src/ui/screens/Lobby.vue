@@ -5,6 +5,7 @@ import { CHAPTERS, chapterUnlocked } from '../../game/data/chapters';
 import { MASTERY_MAX, masteryProgress } from '../../game/data/mastery';
 import { META_BY_ID, META_ITEMS, RANKS, metaDesc, rankFor, rankOf, type MetaSection } from '../../game/data/meta-catalog';
 import { WEAPONS, WEAPON_ORDER } from '../../game/data/weapons';
+import { FEATURES } from '../../game/data/features';
 import { ACHIEVEMENTS } from '../../game/meta/achievements';
 import { canBuy, gunsFor, levelOf, masteryOf, nextPrice, totalMetaCost } from '../../game/meta/progress';
 import { gunIconOf } from '../gun-icons';
@@ -58,8 +59,10 @@ const ITEM_ICON: Record<string, IconName> = {
 const guns = computed(() => gunsFor(meta.value));
 const sec = computed(() => SECTIONS.find((x) => x.id === ui.shopTab) ?? SECTIONS[0]!);
 
+// 守城暂时不收狙击枪和霰弹枪：这两项解锁在军械库里先不列出来（数据留着，开关打开就回来）
+const shown = (m: { id: string }): boolean => FEATURES.sniperShotgun || (m.id !== 'unlock-shotgun' && m.id !== 'unlock-sniper');
 const items = (sec: MetaSection) =>
-  META_ITEMS.filter((m) => m.section === sec).map((m) => {
+  META_ITEMS.filter((m) => m.section === sec && shown(m)).map((m) => {
     const lv = levelOf(meta.value, m.id);
     const price = nextPrice(meta.value, m);
     const state = canBuy(meta.value, m.id);
@@ -88,8 +91,8 @@ const items = (sec: MetaSection) =>
     return { id: m.id, name: m.name, lv, max: m.prices.length, price, state, why, icon: ITEM_ICON[m.id] ?? ('gear' as IconName), pic: gunKind ? gunIconOf(guns.value[gunKind]) : '', isGun: !!gunKind, now: lv > 0 ? metaDesc(m, lv) : '', next: price !== null ? metaDesc(m, lv + 1) : '' };
   });
 /** 已投入的勋章：全部 / 每个子分类 */
-const paid = (pred: (s: MetaSection) => boolean): number => META_ITEMS.filter((m) => pred(m.section)).reduce((a, m) => a + m.prices.slice(0, levelOf(meta.value, m.id)).reduce((x, y) => x + y, 0), 0);
-const priceOf = (s: MetaSection): number => META_ITEMS.filter((m) => m.section === s).reduce((a, m) => a + m.prices.reduce((x, y) => x + y, 0), 0);
+const paid = (pred: (s: MetaSection) => boolean): number => META_ITEMS.filter((m) => pred(m.section) && shown(m)).reduce((a, m) => a + m.prices.slice(0, levelOf(meta.value, m.id)).reduce((x, y) => x + y, 0), 0);
+const priceOf = (s: MetaSection): number => META_ITEMS.filter((m) => m.section === s && shown(m)).reduce((a, m) => a + m.prices.reduce((x, y) => x + y, 0), 0);
 const spent = computed(() => paid(() => true));
 const total = totalMetaCost();
 /** 每个子分类：已投入 / 总价 / 现在就能买的项目数（子 Tab 上的小角标） */

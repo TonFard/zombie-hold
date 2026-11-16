@@ -33,6 +33,8 @@ export interface TaczFrame {
   ads: number;
   /** 换弹进度 0–1，-1 = 没在换弹 */
   reload: number;
+  /** 这一次换弹从头到尾实际要几秒（换弹加成已经算进去）。动画和它的音效都按这个时间压 */
+  reloadTime: number;
   /** 弹匣里剩几发 / 弹匣容量（逐发装填按差值决定塞几发） */
   mag: number;
   magMax: number;
@@ -79,7 +81,11 @@ export class TaczRig {
   /** 摄像机动画（camera 骨骼）：游戏层乘到世界相机上 */
   readonly cameraAnim = new Quaternion();
   readonly fov: { hip: number; ads: number };
-  onSound: ((url: string, gain: number) => void) | null = null;
+  /**
+   * 动画里的一个音效到点了。speed = 配着它的动画现在是几倍速（换弹、拉栓被压到游戏的时间里），
+   * until = 采样的前这么多秒（按原速算）是这个倍速，之后动画回到原速。音频层据此把采样压短 / 拉长，见 audio/stretch.ts
+   */
+  onSound: ((url: string, gain: number, speed: number, until: number) => void) | null = null;
 
   private readonly pose: Pose;
   private readonly base = new Track(false);
@@ -92,7 +98,11 @@ export class TaczRig {
   private readonly move = new Track(true);
   private readonly slideTrack = new Track(true);
   private readonly tracks: Track[];
+  /** 自己往前走的片段（掏枪、检视、拉栓）的音效 */
   private readonly sfx: SfxFn;
+  /** 由换弹进度推着走的片段的音效：弹匣换弹 / 逐发装填 */
+  private readonly reloadSfx: SfxFn;
+  private readonly tubeSfx: SfxFn;
 
   private readonly idle: View | null;
   private readonly iron: View | null;
@@ -113,13 +123,15 @@ export class TaczRig {
   private runOverlay = false;
   private reloadRunner: Runner | null = null;
   private reloadCool = 1;
+  /** 这次换弹动画是几倍速（动画到「可以开火」的秒数 ÷ 游戏里换弹的秒数） */
+  private reloadRate = 1;
   private wasReloading = false;
   private walkDist = 0;
   private shootCd = 0;
   private lastMag = 1;
   private xmag = 0;
   /** 逐发装填的时间线 */
-  private tube: { segs: Array<{ clip: string; len: number }>; total: number; idx: number; runner: Runner | null } | null = null;
+  private tube: { segs: Array<{ clip: string; len: number }>; total: number; idx: number; base: number; rate: number; runner: Runner | null } | null = null;
   /** 距离拉栓还有几秒（-1 = 不拉） */
   private boltIn = -1;
   private boltInterval = 0.5;
@@ -140,7 +152,10 @@ export class TaczRig {
     this.pose = new Pose(json.bones.map((b) => b.name));
     for (let i = 0; i < KICK_TRACKS; i++) this.kicks.push(new Track(true));
     this.tracks = [this.base, this.fireModeTrack, this.bolt, this.adsTrack, this.main, ...this.kicks, this.move, this.slideTrack];
-    this.sfx = (p) => this.onSound?.(`${this.baseUrl}sfx/${p}.ogg`, 0.75);
+    this.sfx = (p, speed) => this.emit(p, 0.75, speed);
+    // 换弹：动画只到「可以开火」那一刻是压过的，之后的收尾按原速播
+    this.reloadSfx = (p, speed, at) => this.emit(p, 0.75, speed, this.reloadCool - at);
+    this.tubeSfx = (p, speed, at) => this.emit(p, 0.75, speed, this.tube ? this.tube.total - this.tube.base - at : Infinity);
     this.fov = { hip: json.display.modelFov, ads: json.display.zoomModelFov };
 
     this.idle = this.view('idle_view');
@@ -244,10 +259,14 @@ export class TaczRig {
    * 动画里没有逐个音效关键帧时（有的枪包只给一整段录音），就在动作开始时播显示配置里的整段音效，
    * 和 TACZ 的 SoundPlayManager 一样
    */
-  private wholeSound(key: string, clip: Runner | null): void {
+  private wholeSound(key: string, clip: Runner | null, speed = 1, until = Infinity): void {
     if (clip && clip.clip.sfx.length) return;
     const s = this.json.display.sounds[key];
-    if (s) this.onSound?.(`${this.baseUrl}sfx/${s}.ogg`, 0.75);
+    if (s) this.emit(s, 0.75, speed, until);
+  }
+
+  private emit(path: string, gain: number, speed = 1, until = Infinity): void {
+    this.onSound?.(`${this.baseUrl}sfx/${path}.ogg`, gain, speed, until);
   }
 
   /** 拿出这把枪：所有动作从头开始 */
@@ -281,7 +300,7 @@ export class TaczRig {
       this.boltInterval = interval;
     }
     const s = this.json.display.sounds.shoot;
-    if (s) this.onSound?.(`${this.baseUrl}sfx/${s}.ogg`, 1);
+    if (s) this.emit(s, 1);
   }
 
   inspect(): void {
@@ -311,7 +330,9 @@ export class TaczRig {
     const len = (n: string) => this.clips.get(n)?.end ?? 0;
     const segs = [{ clip: intro, len: len(intro) }];
     for (let i = 0; i < need; i++) segs.push({ clip: t.loop, len: len(t.loop) });
-    this.tube = { segs, total: segs.reduce((n, s) => n + s.len, 0), idx: -1, runner: null };
+    const total = segs.reduce((n, s) => n + s.len, 0);
+    // 只塞一两发时这条时间线比游戏的换弹时间短，动画是放慢的（rate < 1），音效一样跟着
+    this.tube = { segs, total, idx: -1, base: 0, rate: f.reloadTime > 0 ? total / f.reloadTime : 1, runner: null };
     this.runOverlay = true;
   }
 
@@ -320,17 +341,22 @@ export class TaczRig {
     if (!tb) return;
     let t = Math.min(1, Math.max(0, p)) * tb.total;
     let i = 0;
+    let base = 0;
     while (i < tb.segs.length - 1 && t >= (tb.segs[i] as { len: number }).len) {
       t -= (tb.segs[i] as { len: number }).len;
+      base += (tb.segs[i] as { len: number }).len;
       i++;
     }
     const seg = tb.segs[i] as { clip: string; len: number };
     if (i !== tb.idx) {
+      // 这一帧跨进了下一段：上一段最后那一点里的音效先放掉，不然被跳过去
+      tb.runner?.seek(tb.runner.clip.end, this.tubeSfx, tb.rate);
       tb.idx = i;
+      tb.base = base;
       tb.runner = this.play(this.main, seg.clip, 'hold', i === 0 ? 0.2 : 0);
       if (tb.runner) tb.runner.speed = 0;
     }
-    tb.runner?.seek(Math.min(t, seg.len), this.sfx);
+    tb.runner?.seek(Math.min(t, seg.len), this.tubeSfx, tb.rate);
   }
 
   private startReload(f: TaczFrame): void {
@@ -348,10 +374,11 @@ export class TaczRig {
     let cool = runner.clip.end * 0.85;
     if (cd && stdClip && stdClip.end > 0) cool = (empty ? cd.empty : cd.tactical) * (runner.clip.end / stdClip.end);
     this.reloadCool = Math.min(runner.clip.end, cool);
+    this.reloadRate = f.reloadTime > 0 ? this.reloadCool / f.reloadTime : 1;
     runner.speed = 0;
     this.reloadRunner = runner;
     this.runOverlay = true;
-    this.wholeSound(empty ? 'reload_empty' : 'reload_tactical', runner);
+    this.wholeSound(empty ? 'reload_empty' : 'reload_tactical', runner, this.reloadRate, this.reloadCool);
   }
 
   update(dt: number, f: TaczFrame): void {
@@ -370,7 +397,7 @@ export class TaczRig {
       this.play(this.main, this.roles.tube?.end, 'once', 0.1);
     }
     this.wasReloading = reloading;
-    if (this.reloadRunner) this.reloadRunner.seek(f.reload * this.reloadCool, this.sfx);
+    if (this.reloadRunner) this.reloadRunner.seek(f.reload * this.reloadCool, this.reloadSfx, this.reloadRate);
     if (this.tube) this.seekTube(f.reload);
 
     // 栓动 / 泵动：开火后稍等一下拉栓，拉栓动作压缩到两发的间隔里
@@ -674,9 +701,11 @@ export async function loadTacz(id: string): Promise<TaczRig> {
   const json = (await res.json()) as GunJson;
   const loader = new TextureLoader();
   const tex = await loader.loadAsync(`${base}gun.png`);
-  // 瞄具配件：加载失败就不装（枪照样能用，退回机瞄）
+  // 瞄具配件：加载失败就不装（枪照样能用，退回机瞄）。
+  // 只装「瞄准镜」（狙击枪用）；1 倍镜（sight）一律不装——局内升级不加配件，
+  // P90 这类枪自带的机瞄 / 环形准星才是它本来的样子（以前装 sight_p90，中距离看着就是一块黑）
   const atts: TaczAttachments = {};
-  for (const slot of ['scope', 'sight'] as const) {
+  for (const slot of ['scope'] as const) {
     const att = json.attach?.[slot];
     if (!att) continue;
     const ab = `${import.meta.env.BASE_URL}tacz/_att/${att}/`;

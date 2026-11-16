@@ -1,5 +1,6 @@
 import { ACESFilmicToneMapping, EquirectangularReflectionMapping, PCFShadowMap, PMREMGenerator, PerspectiveCamera, Scene, SRGBColorSpace, Vector3, WebGLRenderer, type Texture } from 'three';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
+import { FEATURES } from '../game/data/features';
 import { Lighting } from '../render/core/lighting';
 import { PostFX } from '../render/core/postfx';
 import { Sky } from '../render/core/sky';
@@ -28,6 +29,13 @@ import { World } from './world/world';
  * 调试：?seed=数字 换世界；?q=min|low|mid|high 固定画质（不给 = 自动，F4 切换，见 quality.ts）；?hour=几点；window.__open 给截图脚本用。
  * 玩法层（背包、生存状态、拾取、天气、丧尸、武器）的入口是 game/game.ts，模块之间的约定在 game/api.ts。
  */
+
+// 生存世界 / 生化模式现在不开放（FEATURES.openWorld）：直接打开这个页面就回主菜单。开发时照常能进
+if (!FEATURES.openWorld && !import.meta.env.DEV) {
+  window.location.replace(import.meta.env.BASE_URL);
+  // 下面还有顶层 await，跳转之前别再往下加载世界
+  await new Promise<never>(() => {});
+}
 
 const params = new URLSearchParams(window.location.search);
 /** ?mode=bio = 生化模式（单独一局）；不给 = 生存世界 */

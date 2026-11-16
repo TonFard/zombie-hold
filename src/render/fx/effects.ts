@@ -705,25 +705,48 @@ export class Effects {
       }
     }
 
-    // 燃烧中的僵尸冒火
+    // 燃烧中的僵尸冒火：柔边火苗（Puffs，往上的小火舌）+ 几颗小火星。
+    // 原来用的是方块粒子、颜色 3.6/1.3/0.25（没做色调映射，直接截成白色），一烧起来整个人像一团白灯
     for (const z of this.game.zombies) {
-      if (!z.alive || z.burnT <= 0 || this.rng.next() > 0.7) continue;
+      if (!z.alive || z.burnT <= 0) continue;
       const s = bodyScale(z);
-      this.particles.spawn({
-        x: z.x + this.rng.range(-0.2, 0.2) * s,
-        y: this.rng.range(0.3, 1.5) * s,
-        z: z.z + this.rng.range(-0.2, 0.2) * s,
-        vx: this.rng.range(-0.3, 0.3),
-        vy: this.rng.range(1.2, 2.6),
-        vz: this.rng.range(-0.3, 0.3),
-        size: this.rng.range(0.08, 0.16),
-        life: this.rng.range(0.3, 0.55),
-        r: 3.6,
-        g: 1.3,
-        b: 0.25,
-        gravity: -3,
-        drag: 1.5,
-      });
+      const k = this.rng.next();
+      if (k < 0.55) {
+        this.puffs.spawn({
+          x: z.x + this.rng.range(-0.16, 0.16) * s,
+          y: this.rng.range(0.15, 1.25) * s,
+          z: z.z + this.rng.range(-0.16, 0.16) * s,
+          vx: this.rng.range(-0.16, 0.16),
+          vy: this.rng.range(0.7, 1.7),
+          vz: this.rng.range(-0.16, 0.16),
+          size: this.rng.range(0.16, 0.3) * s,
+          grow: this.rng.range(0.8, 1.25),
+          life: this.rng.range(0.22, 0.42),
+          r: this.rng.range(0.62, 0.85),
+          g: this.rng.range(0.2, 0.34),
+          b: 0.045,
+          alpha: 0.85,
+          rise: 0.7,
+          drag: 1.6,
+        });
+      } else if (k < 0.8) {
+        // 火星：小方块，暗橙色，往上飘
+        this.particles.spawn({
+          x: z.x + this.rng.range(-0.2, 0.2) * s,
+          y: this.rng.range(0.3, 1.5) * s,
+          z: z.z + this.rng.range(-0.2, 0.2) * s,
+          vx: this.rng.range(-0.3, 0.3),
+          vy: this.rng.range(1.2, 2.6),
+          vz: this.rng.range(-0.3, 0.3),
+          size: this.rng.range(0.018, 0.035),
+          life: this.rng.range(0.3, 0.55),
+          r: 0.9,
+          g: 0.36,
+          b: 0.07,
+          gravity: -3,
+          drag: 1.5,
+        });
+      }
     }
 
     this.particles.eye.copy(this.rig.camera.position);

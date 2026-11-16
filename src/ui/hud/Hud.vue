@@ -32,6 +32,14 @@ const gainOn = computed(() => hud.scrapGain.life > 0.02 && hud.scrapGain.n > 0);
 const showBoxes = computed(() => hud.phase === 'day' && hud.boxesTotal > 0 && hud.alive && ui.screen !== 'training');
 /** 对战里手上拿的是刀：右下角不显示弹药，换成刀的两个按键 */
 const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
+
+/** 回血数字：每次回的很少（零点几），显示到 0.1；十以上取整。以前不足 1 也写 +1 */
+const healText = computed(() => {
+  const n = hud.healPop.n;
+  if (n >= 10) return String(Math.round(n));
+  const t = n.toFixed(1);
+  return t.endsWith('.0') ? t.slice(0, -2) : t;
+});
 </script>
 
 <template>
@@ -125,7 +133,7 @@ const knifeOut = computed(() => hud.tdm.on && hud.tdm.knife);
         <span class="cross-ico">✚</span>
         <span class="hp-num">{{ hud.hp }}</span>
         <span class="hp-max">/ {{ hud.maxHp }}</span>
-        <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ Math.max(1, Math.round(hud.healPop.n)) }}<small>回血</small></span>
+        <span v-if="hud.healPop.life > 0.02" :key="hud.healPop.bump" class="pop heal" :style="{ opacity: Math.min(1, hud.healPop.life * 2) }">+{{ healText }}<small>回血</small></span>
       </div>
       <div class="hp">
         <div class="lost" :style="{ width: hpPct + '%' }"></div>
@@ -734,15 +742,15 @@ kbd {
 /* ---------- 右下：武器 ---------- */
 .br {
   position: absolute;
-  right: 28px;
-  bottom: 22px;
+  right: 26px;
+  bottom: 20px;
   width: 220px;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
 }
 .br.wide {
-  width: 300px;
+  width: 306px;
 }
 .wrow {
   display: flex;
@@ -779,7 +787,7 @@ kbd {
   line-height: 1;
 }
 .ammo .cur {
-  font-size: 56px;
+  font-size: 48px;
   font-weight: 600;
   color: var(--hud-text);
 }
@@ -832,7 +840,7 @@ kbd {
   transition: none;
 }
 .meta {
-  margin-top: 5px;
+  margin-top: 7px;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -923,9 +931,9 @@ kbd {
   display: flex;
   align-items: flex-end;
   justify-content: flex-end;
-  gap: 16px;
+  gap: 18px;
   width: 100%;
-  margin-top: 6px;
+  margin-top: 9px;
 }
 .acol {
   display: flex;
@@ -933,6 +941,7 @@ kbd {
   align-items: flex-end;
 }
 .acol > small {
+  margin-bottom: 3px;
   font-size: 11px;
   letter-spacing: 3px;
   color: var(--hud-muted);
@@ -971,8 +980,8 @@ kbd {
   justify-content: flex-end;
   gap: 2px;
   width: 100%;
-  height: 8px;
-  margin-top: 5px;
+  height: 7px;
+  margin-top: 7px;
 }
 .cells i {
   flex: 1 1 0;
@@ -994,8 +1003,8 @@ kbd {
   display: flex;
   align-items: center;
   gap: 8px;
-  height: 26px;
-  margin-top: 4px;
+  height: 28px;
+  margin-top: 7px;
   padding: 0 8px 0 6px;
   background: linear-gradient(270deg, var(--hud-panel), rgba(9, 13, 18, 0));
   border-right: 2px solid var(--hud-line-strong);

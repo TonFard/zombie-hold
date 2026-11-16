@@ -371,7 +371,7 @@ export function updateHazards(g: Game, dt: number): void {
     }
     const dps = hz.kind === 'fire' ? FIRE_DPS : hz.kind === 'gas' ? GAS_DPS : ACID_DPS;
     if (hz.kind === 'fire') {
-      for (const z of g.zombies) if (z.alive && Math.hypot(z.x - hz.x, z.z - hz.z) < hz.r + z.radius) g.damageZombie(z, dps * dt, { silent: true, src: 'fire' });
+      for (const z of g.zombies) if (z.alive && Math.hypot(z.x - hz.x, z.z - hz.z) < hz.r + z.radius) g.damageZombie(z, dps * dt, { silent: true, dot: true, src: 'fire' });
     }
     if (p.alive && Math.hypot(p.x - hz.x, p.z - hz.z) < hz.r + p.radius) g.damagePlayer(dps * dt * (hz.kind === 'fire' ? 0.6 : 1));
   }

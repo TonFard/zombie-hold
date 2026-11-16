@@ -238,7 +238,7 @@ console.log('\n== 买枪与升级 ==');
   const g = fresh();
   check(!g.buyWeapon('smg'), '零件不够时买不了冲锋枪');
   g.scrap = 1000;
-  check(g.buyWeapon('smg') && g.scrap === 650, `买冲锋枪扣 350（剩 ${g.scrap}）`);
+  check(g.buyWeapon('smg') && g.scrap === 700, `买冲锋枪扣 300（剩 ${g.scrap}）`);
   check(!g.buyWeapon('smg'), '不能重复购买');
   const magBefore = g.loadout.smg.mag;
   check(g.upgradeWeapon('smg') && g.loadout.smg.tier === 1, '升到 1 级');

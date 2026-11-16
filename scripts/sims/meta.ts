@@ -297,12 +297,12 @@ console.log('\n== 开局应用加成 ==');
   gr.input.cycle = 1;
   gr.update(STEP);
   check(gr.player.weapon === 'smg', '滚轮切到另一把');
-  gr.input.select = 4;
-  gr.update(STEP);
-  check(gr.player.weapon === 'rifle', '数字键就是工坊里的编号：4 = 突击步枪');
   gr.input.select = 2;
   gr.update(STEP);
-  check(gr.player.weapon === 'smg', '数字键就是工坊里的编号：2 = 冲锋枪');
+  check(gr.player.weapon === 'rifle', '数字键就是身上武器的编号：2 = 主武器（步枪）');
+  gr.input.select = 1;
+  gr.update(STEP);
+  check(gr.player.weapon === 'smg', '数字键 1 = 身上第一把（冲锋枪）');
   // 放回工坊的手枪：不用再买，取出来免费、等级还在，手里的冲锋枪放回去
   const sc = gr.scrap;
   check(gr.buyState('pistol') === 'owned' && !gr.buyWeapon('pistol'), '放回工坊的枪不用（也不能）再买一遍');
@@ -391,19 +391,19 @@ console.log('\n== 解锁了的枪直接带（「随身武器」去掉了） ==')
   const b = bonusesOf(three);
   check(sidearmOk(b, 'smg') && sidearmOk(b, 'shotgun') && sidearmOk(b, 'rifle') && !sidearmOk(b, 'pistol') && !sidearmOk(b, 'sniper') && !sidearmOk(b, 'bogus') && !sidearmOk(b, null), '出征时能选的主武器：解锁过的都行；手枪、没解锁的、不认识的不行');
 
-  // 选了霰弹枪
+  // 选了霰弹枪：守城暂时不收，按没选处理（仍是解锁顺序里最后一把）
   const g = new Game(5);
   applyMeta(g, b, { difficulty: 'normal', sidearm: 'shotgun' });
   startRun(g);
-  check(g.carried().join() === 'pistol,shotgun' && g.player.weapon === 'shotgun' && g.player.tier === 0, '选了霰弹枪：身上是手枪 + 霰弹枪，手里拿着霰弹枪');
-  check(g.loadout.shotgun.mag === g.statsOf('shotgun', 0).mag, '弹匣是满的');
-  check(g.loadout.smg.owned && !g.loadout.smg.carried && g.loadout.rifle.owned && !g.loadout.rifle.carried, '别的解锁了的枪放在工坊里');
+  check(!g.loadout.shotgun.owned && g.carried().join() === 'pistol,rifle' && g.player.weapon === 'rifle', '守城现在不收霰弹枪：选了也按没选处理，带步枪');
+  check(g.loadout.rifle.mag === g.statsOf('rifle', 0).mag, '弹匣是满的');
+  check(g.loadout.smg.owned && !g.loadout.smg.carried, '别的解锁了的枪放在工坊里');
   const sc = g.scrap;
-  g.takeWeapon('rifle');
-  check(g.player.weapon === 'rifle' && g.scrap === sc && g.carried().join() === 'pistol,rifle' && g.loadout.shotgun.owned && !g.loadout.shotgun.carried, '从工坊换成步枪：免费，霰弹枪放回工坊');
+  g.takeWeapon('smg');
+  check(g.player.weapon === 'smg' && g.scrap === sc && g.carried().join() === 'pistol,smg' && g.loadout.rifle.owned && !g.loadout.rifle.carried, '从工坊换成冲锋枪：免费，步枪放回工坊');
   g.scrap = 9999;
-  for (let i = 0; i < 9; i++) g.upgradeWeapon('shotgun');
-  check(g.loadout.shotgun.tier === 5, `放在工坊里的枪也能升级到它自己的上限 5 级（${g.loadout.shotgun.tier}）`);
+  for (let i = 0; i < 9; i++) g.upgradeWeapon('smg');
+  check(g.loadout.smg.tier === 5, `放在工坊里的枪也能升级到它自己的上限 5 级（${g.loadout.smg.tier}）`);
 
   // 没选：带解锁顺序里最后一把
   const gn = new Game(5);

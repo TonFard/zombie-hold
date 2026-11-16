@@ -170,12 +170,18 @@ export class Pose {
   }
 }
 
-export type SfxFn = (path: string) => void;
+/**
+ * 动画里的一个音效到点了。speed = 这段动画现在按几倍速在播（换弹、拉栓会被压快 / 放慢，声音要跟着压），
+ * at = 这个音效在片段里的时刻（秒）
+ */
+export type SfxFn = (path: string, speed: number, at: number) => void;
 
 export class Runner {
   time = 0;
   state: 'run' | 'hold' | 'stop' = 'run';
   speed = 1;
+  /** 还没走过第一步：标在 0 秒的音效（大多数换弹、检视的第一声）要在第一步响，以前被 (from, to] 漏掉了 */
+  private fresh = true;
 
   constructor(
     readonly clip: CompiledClip,
@@ -183,29 +189,37 @@ export class Runner {
   ) {}
 
   /** 播放音效：触发 (from, to] 区间内的关键帧 */
-  private sfx(from: number, to: number, fn: SfxFn | null): void {
+  private sfx(from: number, to: number, fn: SfxFn | null, speed: number): void {
     if (!fn) return;
-    for (const [t, p] of this.clip.sfx) if (t > from && t <= to) fn(p);
+    for (const [t, p] of this.clip.sfx) if (t > from && t <= to) fn(p, speed, t);
   }
 
   advance(dt: number, fn: SfxFn | null): void {
     if (this.state === 'stop') return;
-    const prev = this.time;
-    let next = prev + dt * this.speed;
+    // 速度是 0 的片段由 seek 推着走（换弹），它的第一步算在 seek 那边
+    const first = this.fresh && this.speed !== 0;
+    if (first) this.fresh = false;
+    const prev = first ? -1 : this.time;
+    let next = this.time + dt * this.speed;
     const end = this.clip.end;
     if (this.mode === 'loop' && next > end) {
-      this.sfx(prev, end, fn);
+      this.sfx(prev, end, fn, this.speed);
       next = end > 0 ? next % end : 0;
-      this.sfx(-1, next, fn);
-    } else this.sfx(prev, next, fn);
+      this.sfx(-1, next, fn, this.speed);
+    } else this.sfx(prev, next, fn, this.speed);
     this.time = next;
     if (this.mode === 'once' && next > end) this.state = 'stop';
     else if (this.mode === 'hold' && next > end) this.state = 'hold';
   }
 
-  /** 直接跳到某个时间（换弹进度由游戏逻辑驱动）；往前跳时触发经过的音效 */
-  seek(t: number, fn: SfxFn | null): void {
-    if (t > this.time) this.sfx(this.time, t, fn);
+  /**
+   * 直接跳到某个时间（换弹进度由游戏逻辑驱动）；往前跳时触发经过的音效。
+   * speed = 这样跳下来相当于几倍速（动画的秒数 ÷ 实际花的秒数），原样交给音效回调
+   */
+  seek(t: number, fn: SfxFn | null, speed = 1): void {
+    const from = this.fresh ? -1 : this.time;
+    this.fresh = false;
+    if (t > from) this.sfx(from, t, fn, speed);
     this.time = t;
     this.state = 'run';
   }

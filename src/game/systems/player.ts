@@ -1,7 +1,7 @@
 import { clamp } from '../core/math';
 import { STAR_FX } from '../data/stars';
 import { EYE_HEIGHT } from '../data/ballistics';
-import { WEAPON_ORDER, type WeaponKind } from '../data/weapons';
+import type { WeaponKind } from '../data/weapons';
 import { resolveCircleVsGrid } from '../world/collision';
 import type { Game } from '../sim';
 import { fireWeapon, melee } from './combat';
@@ -100,9 +100,8 @@ export function updatePlayer(g: Game, dt: number): void {
 
   // ---- 切枪 ----
   if (inp.select > 0) {
-    // 数字键就是工坊里每把枪前面的编号（手枪 1、冲锋枪 2、霰弹枪 3……），没带在身上的按了没反应。
-    // 之前正式局里数字键是「第几个枪位」，和工坊显示的编号对不上：带着冲锋枪 + 霰弹枪时按 3 切不到霰弹枪
-    const k = WEAPON_ORDER[inp.select - 1];
+    // 数字键就是身上武器的顺序（1 手枪、2 主武器），和工坊里前面那个编号一致
+    const k = g.carried()[inp.select - 1];
     if (k) switchWeapon(g, k);
     inp.select = 0;
   }

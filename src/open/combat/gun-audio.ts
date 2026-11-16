@@ -1,3 +1,4 @@
+import { Retimer } from '../../audio/stretch';
 import { audio, blip, noise, out } from '../game/sound';
 
 /**
@@ -49,6 +50,8 @@ export class GunAudio {
   private readonly asked = new Set<string>();
   private readonly voices: Voice[] = [];
   private booms = 0;
+  /** 按动画速度压短 / 拉长过的动作音效（换弹、拉栓） */
+  private readonly retimer = new Retimer();
 
   constructor() {
     this.preload([HIT_BODY, HIT_HEAD, HIT_KILL, DRY_FIRE]);
@@ -90,8 +93,11 @@ export class GunAudio {
     return !!this.bufs.get(url);
   }
 
-  /** 播一个采样。rate = 播放速度（开火时略微随机一点，连发不会像机关枪录音循环） */
-  play(url: string, gain: number, rate = 1): boolean {
+  /**
+   * 播一个采样。rate = 播放速度（开火时略微随机一点，连发不会像机关枪录音循环）。
+   * speed / until：配着它的动画被压了几倍、压到采样的第几秒为止——放的是压短过的那一份，音高不变（audio/stretch.ts）
+   */
+  play(url: string, gain: number, rate = 1, speed = 1, until = Infinity): boolean {
     const a = audio();
     const m = out();
     if (!a || !m) return false;
@@ -101,7 +107,7 @@ export class GunAudio {
       return false;
     }
     const src = a.createBufferSource();
-    src.buffer = b;
+    src.buffer = speed === 1 ? b : this.retimer.fit(a, url, b, speed, until);
     src.playbackRate.value = rate;
     const g = a.createGain();
     g.gain.value = gain;

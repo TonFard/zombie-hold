@@ -4,6 +4,7 @@ import { BENCH_LINES, BENCH_MAX, BENCH_NAME, benchDesc, benchMods, benchPrice, t
 import { AMMO_LIMITED, WEAPONS, WEAPON_ORDER, effectiveStats, sustainedDps, weightOf, type WeaponKind } from '../../game/data/weapons';
 import { benchLevel, bonusesOf, canBench, gunState, gunsFor, masteryOf } from '../../game/meta/progress';
 import { GUNS, GUN_BY_ID } from '../../game/data/guns';
+import { HOLD_CLASSES } from '../../game/data/features';
 import { MASTERY_MAX, MASTERY_PERKS, benchNeeds, masteryProgress, masteryTierCap } from '../../game/data/mastery';
 import { STAR_COLOR, STAR_MAX, STAR_TEXT, starXp, starsOf } from '../../game/data/stars';
 import { gunIconOf } from '../gun-icons';
@@ -62,7 +63,7 @@ function statsFor(k: WeaponKind, bench: Record<string, number>, gunId: string) {
 
 // ---- 上面一排枪类 ----
 const classes = computed(() =>
-  WEAPON_ORDER.map((k) => {
+  WEAPON_ORDER.filter((k) => HOLD_CLASSES.includes(k)).map((k) => {
     const xp = meta.value.mastery[k] ?? 0;
     const p = masteryProgress(k, xp);
     const frac = p.to === null ? 0 : (xp - p.from) / (p.to - p.from);
@@ -71,7 +72,7 @@ const classes = computed(() =>
 );
 
 // ---- 仓库：所有型号一格一把（GUNS 本来就按枪类排好了）----
-const all = computed(() => GUNS.map((g) => ({ g, state: gunState(meta.value, g.id), on: picked.value[g.cls] === g.id, icon: gunIconOf(g.id), cls: WEAPONS[g.cls].name })));
+const all = computed(() => GUNS.filter((g) => HOLD_CLASSES.includes(g.cls)).map((g) => ({ g, state: gunState(meta.value, g.id), on: picked.value[g.cls] === g.id, icon: gunIconOf(g.id), cls: WEAPONS[g.cls].name })));
 const models = computed(() => all.value.filter((m) => (cat.value === 'all' || m.g.cls === cat.value) && (filter.value === 'all' || (filter.value === 'owned') === (m.state === 'owned'))));
 const owned = computed(() => all.value.filter((m) => m.state === 'owned').length);
 const cur = computed(() => all.value.find((m) => m.g.id === view.value) ?? all.value[0]!);
@@ -219,7 +220,7 @@ onBeforeUnmount(() => {
 
 <template>
   <section class="armory t-enter">
-    <!-- 上：分类（全部 + 六类枪，每一类带熟练度的环） -->
+    <!-- 上：分类（全部 + 守城现在开放的几类枪，每一类带熟练度的环） -->
     <nav class="classes" aria-label="分类">
       <button class="cls all" :class="{ on: cat === 'all' }" :aria-pressed="cat === 'all'" @click="setCat('all')">
         <span class="ctx">

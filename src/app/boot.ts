@@ -6,6 +6,7 @@ import { FINAL_NIGHT } from '../game/data/waves';
 import type { ZombieKind } from '../game/data/zombies';
 import { dailyFor, newlyDone, todayKey } from '../game/meta/achievements';
 import { applyDaily, applyMeta, applyTraining, sidearmOk, widenMeta } from '../game/meta/loadout';
+import { FEATURES } from '../game/data/features';
 import { LEVELS, TDM, buyGear, buyGun, canBuy, startTdm } from '../game/systems/tdm';
 import { sandboxConfig } from '../game/config';
 import type { GearId } from '../game/data/shop';
@@ -78,7 +79,8 @@ function readParams() {
     daily: q.get('daily') === '1',
     sidearm: q.get('sidearm'),
     chapter: q.get('chapter'),
-    tdm: q.get('tdm') === '1',
+    // 8v8 现在不开放：开关关着时 ?tdm=1 不认（回到主菜单）
+    tdm: FEATURES.tdm && q.get('tdm') === '1',
     /** 8v8 人机难度：只管这一场 */
     level: asTdmLevel(q.get('level')),
     /** 无头截图用：没有真实鼠标，假装已锁定指针 */
@@ -127,7 +129,7 @@ export function startApp(canvas: HTMLCanvasElement, fxLayer: HTMLElement, auth: 
   const screens = new Screens(game, input);
   const unwire = wireEvents(game, audio);
   // TACZ 枪：动画音效走采样，加载好的武器停掉合成枪声
-  view.viewmodel.onSound = (url, gain) => audio.sample(url, gain);
+  view.viewmodel.onSound = (url, gain, speed, until) => audio.sample(url, gain, speed, until);
   view.viewmodel.onTaczReady = (id, urls) => audio.useSamples(id, urls);
   audio.sampledBy = (kind) => view.viewmodel.hasTacz(game.config.guns[kind]);
   input.onInspect = () => view.viewmodel.inspect();

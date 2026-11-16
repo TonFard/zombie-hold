@@ -15,8 +15,11 @@ export interface AudioSystem {
   useSamples(id: string, urls: string[]): void;
   /** 这一类枪现在是不是用着加载好的 TACZ 模型：是、而且它的采样都解码好了，就停掉合成的枪声 / 换弹声（由渲染层接上） */
   sampledBy: ((kind: WeaponKind) => boolean) | null;
-  /** 播放一个采样（玩家自己的声音，不做空间化） */
-  sample(url: string, gain: number): void;
+  /**
+   * 播放一个采样（玩家自己的声音，不做空间化）。
+   * speed / until：配着它的动画被压了几倍、压到采样的第几秒为止（换弹越快，换弹的声音跟着越紧）
+   */
+  sample(url: string, gain: number, speed?: number, until?: number): void;
   /** 在用户手势里调用：创建 / 恢复 AudioContext 并启动环境声 */
   unlock(): void;
   /** 切回窗口 / 换输出设备后调用：恢复挂起的上下文，报废了就重建 */
@@ -201,7 +204,7 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
         else pending.push(u);
       }
     },
-    sample(url, gain) {
+    sample(url, gain, speed = 1, until = Infinity) {
       // 这把枪的采样还没到齐：这一下由合成声顶着（见上面的 sampled），采样不放，免得一半合成一半采样叠在一起
       const id = groupOf.get(url);
       if (id !== undefined && !samplesReady(id)) {
@@ -209,7 +212,7 @@ export function createAudio(game: Game, volume: number, getYaw: () => number): A
         return;
       }
       engine.channel = 'weapons';
-      engine.sample(url, gain, engine.flat(0.9) ?? undefined);
+      engine.sample(url, gain, engine.flat(0.9) ?? undefined, speed, until);
     },
     unlock() {
       // 先建上下文再加载：以前顺序反了，第一次点击之前排着队的采样（一进页面就加载好的手枪）在这里被直接丢掉，

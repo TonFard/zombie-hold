@@ -75,7 +75,7 @@ export const GUNS: GunDef[] = [
   gun({ id: 'kar98', cls: 'sniper', name: 'Kar98k', desc: '栓动老枪：伤害高、开镜快、最轻；只装 4 发', mul: { damage: 1.25, rate: 0.65, mag: 0.8, adsTime: 0.8, reload: 1.25 }, recoil: 1.1, weight: -2, mastery: 2, medals: 65 }),
   gun({ id: 'mk14', cls: 'sniper', name: 'MK14 EBR', desc: '7.62 射手步枪：射速快、10 发；单发稍轻', mul: { damage: 0.75, rate: 1.4, mag: 2 }, recoil: 0.95, weight: -0.7, mastery: 4, medals: 100 }),
   gun({ id: 'm95', cls: 'sniper', name: 'M95 反器材', desc: '.50 栓动：伤害 ×2、穿 6 只；很重、射速最慢', mul: { damage: 2, rate: 0.45, reload: 1.4, adsTime: 1.25 }, add: { pierce: 3 }, recoil: 1.7, weight: 4, mastery: 4, medals: 115 }),
-  // ---- 轻机枪：12 × 11 发/秒、100 发 ----
+  // ---- 轻机枪：16 × 11 发/秒、100 发 ----
   gun({ id: 'm249', cls: 'lmg', name: 'M249', desc: '弹链 100 发，压制', mastery: 0, medals: 0 }),
   gun({ id: 'rpk', cls: 'lmg', name: 'RPK', desc: '弹匣供弹：45 发、换弹快一倍、轻、准', mul: { damage: 1.1, rate: 0.85, mag: 0.45, reload: 0.55, spread: 0.75 }, recoil: 0.9, weight: -2.5, mastery: 1, medals: 50 }),
   gun({ id: 'pkm', cls: 'lmg', name: 'PKM', desc: '7.62 通用机枪：单发重、射速慢、后坐大、更重', mul: { damage: 1.35, rate: 0.8 }, recoil: 1.3, weight: 1, mastery: 3, medals: 90 }),

@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import { costOf, type StructureKind } from '../game/data/structures';
-import { MAX_TIER, WEAPON_ORDER, WEAPONS, adsAt, effectiveStats, statsAt, sustainedDps, weightOf, type WeaponKind } from '../game/data/weapons';
+import { MAX_TIER, WEAPONS, adsAt, effectiveStats, statsAt, sustainedDps, weightOf, type WeaponKind } from '../game/data/weapons';
 import { CARRY_MAX, type Game } from '../game/sim';
 import { reasonText } from '../game/systems/building';
 import { CHALLENGES, FLASHLIGHT, comboMult, nightMod } from '../game/data/modifiers';
@@ -763,7 +763,7 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   const others = game.carried().filter((k) => k !== p.weapon);
   const ok = others[0];
   hud.other.name = ok ? game.weaponName(ok) : '';
-  hud.other.key = ok ? WEAPON_ORDER.indexOf(ok) + 1 : 0;
+  hud.other.key = ok ? game.carried().indexOf(ok) + 1 : 0;
   hud.other.mag = ok ? game.loadout[ok].mag : 0;
   hud.other.magMax = ok ? game.statsOf(ok).mag : 0;
   hud.other.icon = ok ? ui.gfx.gunIcon(game.config.guns[ok]) : '';
@@ -815,9 +815,10 @@ export function syncHud(game: Game, dt: number, input: { locked: boolean; yaw: n
   hud.bossHp = boss ? boss.hp : 0;
   hud.bossMax = boss ? boss.maxHp : 1;
 
-  // 工坊：每把武器的购买 / 升级信息。只在工坊相关阶段刷新，省一点开销
+  // 工坊：只列身上带的枪（手枪 + 一把主武器）的升级。别的枪出征时在大厅里选，不在这里出现。
+  // 数字键也按这个顺序：1 手枪、2 主武器
   if (run.phase === 'day' || hud.weapons.length === 0) {
-    hud.weapons = WEAPON_ORDER.map((k, i) => {
+    hud.weapons = game.carried().map((k, i) => {
       const slot = game.loadout[k];
       const def = WEAPONS[k];
       const cap = Math.min(MAX_TIER, game.config.tierCap[k]);

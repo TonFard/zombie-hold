@@ -50,19 +50,14 @@ const throwFill = computed(() => (x.value.throwing ? 1 : Math.min(1, x.value.thr
       </div>
     </div>
 
-    <!-- 右下（武器上方）：手雷 / 手电，做成一排技能格（推搡、电击脉冲去掉了） -->
+    <!-- 右下（武器上方）：手雷格。键位统一到数字键 5：按一下扔，连按两下换爆炸 / 燃烧（手电去掉了） -->
     <div class="tools">
       <div class="chip" :class="{ dim: x.frags + x.fires === 0 || x.throwCd > 0, fire: x.useFire }">
-        <kbd>G</kbd>
+        <kbd>5</kbd>
         <span class="cn">{{ x.useFire ? '燃烧弹' : '手雷' }}</span>
         <span class="cv">{{ x.throwing ? '投掷' : x.throwCd > 0 ? x.throwCd.toFixed(1) + 's' : x.useFire ? x.fires : x.frags }}</span>
-        <small v-if="x.fires > 0" class="alt"><kbd class="mini">B</kbd>切换</small>
+        <small class="alt">连按 <kbd class="mini">5</kbd>换弹种</small>
         <i class="cd" :style="{ height: throwFill * 100 + '%' }"></i>
-      </div>
-      <div class="chip" :class="{ lit: x.flashOn }">
-        <kbd>T</kbd>
-        <span class="cn">手电</span>
-        <i class="bat"><i :style="{ width: x.battery * 100 + '%' }" :class="{ on: x.flashOn, low: x.battery < 0.2 }"></i></i>
       </div>
     </div>
   </template>
@@ -294,8 +289,8 @@ kbd.mini {
 /* ---------- 技能格 ---------- */
 .tools {
   position: fixed;
-  right: 28px;
-  bottom: 232px;
+  right: 26px;
+  bottom: 238px;
   z-index: 20;
   pointer-events: none;
   display: flex;

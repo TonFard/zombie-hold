@@ -119,11 +119,13 @@ const PRICE_K = 0.55;
 const WEAPON_NAMES: Record<WeaponKind, string> = { pistol: '手枪', smg: '冲锋枪', shotgun: '霰弹枪', rifle: '突击步枪', sniper: '狙击步枪', lmg: '轻机枪' };
 
 /**
- * 武器解锁链：手枪 → 冲锋枪 → 霰弹枪 → 突击步枪 → 狙击 / 轻机枪（榴弹发射器已删）。
+ * 武器解锁链：手枪 → 冲锋枪 → 突击步枪 → 轻机枪。
+ * 2026-11-16 用户：狙击枪和霰弹枪暂时不进守城（FEATURES.sniperShotgun），路线重新排成四把枪；
+ * 霰弹枪和狙击枪的数据还在，开关打开以后还是按原来的位置接回冲锋枪 / 突击步枪后面。
  * 解锁一把枪要先把上一把枪练到精通（熟练度 5 级，见 data/mastery.ts），再花勋章。
  * 等级上限也不再用勋章买，由这把枪自己的熟练度决定——想用好枪，就得先把手里的枪用熟
  */
-const UNLOCK_PRE: Record<Exclude<WeaponKind, 'pistol'>, WeaponKind> = { smg: 'pistol', shotgun: 'smg', rifle: 'shotgun', sniper: 'rifle', lmg: 'rifle' };
+const UNLOCK_PRE: Record<Exclude<WeaponKind, 'pistol'>, WeaponKind> = { smg: 'pistol', shotgun: 'smg', rifle: 'smg', sniper: 'rifle', lmg: 'rifle' };
 
 const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: string): MetaItem => ({
   id: `unlock-${k}`,
@@ -142,11 +144,11 @@ const unlockWeapon = (k: Exclude<WeaponKind, 'pistol'>, price: number, desc: str
 
 export const META_ITEMS: MetaItem[] = [
   // ---- 军械库 ----
-  unlockWeapon('smg', 60, '射速 13，城区巷战主力'),
+  unlockWeapon('smg', 80, '射速 13，城区巷战主力'),
   unlockWeapon('shotgun', 120, '全自动，贴脸一枪一只，把冲上来的顶回去'),
-  unlockWeapon('rifle', 200, '射程 32 米，从一开始就穿透'),
+  unlockWeapon('rifle', 240, '射程 32 米，从一开始就穿透'),
   unlockWeapon('sniper', 300, '爆头 ×3，一发穿 4 只，无视钢板和头盔'),
-  unlockWeapon('lmg', 300, '弹链 100 发，压制减速'),
+  unlockWeapon('lmg', 360, '弹链 100 发，压制减速'),
   // 「手枪双持」已删（用户：只要单独的格洛克，能右键瞄准）。买过的存档在 parseMeta 里退回勋章
   // 「随身武器」已删（2026-11-16 用户：解锁了的枪不用局内再买，直接能带）。买过的存档在 parseMeta 里退回勋章
   // ---- 工程部 ----
@@ -166,7 +168,7 @@ export const META_ITEMS: MetaItem[] = [
   { id: 'armor', section: 'fitness', name: '防弹插板', desc: '受到的伤害 −{n}%', prices: P(60, 110, 170, 240), ranks: [0, 2, 4, 6], apply: (b, lv) => { b.armor = 1 - 0.04 * lv; } },
   { id: 'regen', section: 'fitness', name: '急救训练', desc: '5 秒没受伤后每秒回复 {n} 点生命', prices: P(90, 160, 240), ranks: [1, 3, 5], requires: { id: 'max-hp', level: 1 }, apply: (b, lv) => { b.regen = REGEN_PER_LEVEL * lv; } },
   { id: 'move-speed', section: 'fitness', name: '负重训练', desc: '移动速度 +{n}%', prices: P(70, 130, 200), ranks: [1, 3, 5], apply: (b, lv) => { b.speed = 1 + 0.03 * lv; } },
-  { id: 'fire-rate', section: 'fitness', name: '射击训练', desc: '所有武器射速 +{n}%', prices: P(110, 200, 300), ranks: [2, 4, 6], requires: { id: 'unlock-shotgun', level: 1 }, apply: (b, lv) => { b.fireRate = 1 + 0.04 * lv; } },
+  { id: 'fire-rate', section: 'fitness', name: '射击训练', desc: '所有武器射速 +{n}%', prices: P(110, 200, 300), ranks: [2, 4, 6], requires: { id: 'unlock-rifle', level: 1 }, apply: (b, lv) => { b.fireRate = 1 + 0.04 * lv; } },
   { id: 'four-cards', section: 'supply', name: '卡牌四选一', desc: '黎明时给 4 张卡牌选', prices: P(500), ranks: [7], requires: { id: 'reroll', level: 1 }, apply: (b, lv) => { b.cardChoices = 3 + lv; } },
 ];
 

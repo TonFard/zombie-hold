@@ -8,6 +8,7 @@ import { sidearmOk } from '../../game/meta/loadout';
 import { bonusesOf, difficultyUnlocked, gunsFor } from '../../game/meta/progress';
 import { GUN_BY_ID } from '../../game/data/guns';
 import { gunIconOf } from '../gun-icons';
+import { FEATURES, HOLD_CLASSES } from '../../game/data/features';
 import { nightMod } from '../../game/data/modifiers';
 import type { MapId } from '../../game/world/maps';
 import { LEVELS, TDM } from '../../game/systems/tdm';
@@ -38,7 +39,7 @@ watch(
   },
   { immediate: true },
 );
-const sidearms = computed<WeaponKind[]>(() => WEAPON_ORDER.filter((k) => sidearmOk(bonuses.value, k)));
+const sidearms = computed<WeaponKind[]>(() => WEAPON_ORDER.filter((k) => HOLD_CLASSES.includes(k) && sidearmOk(bonuses.value, k)));
 /** 每一类出征时用的型号（随身武器的小图画的是它） */
 const picked = computed(() => gunsFor(meta.value));
 
@@ -161,7 +162,7 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         <li v-for="(g, i) in goals" :key="i"><span>{{ String(i + 1).padStart(2, '0') }}</span>{{ g }}</li>
       </ol>
       <div class="sub">推荐武器</div>
-      <p class="rec">{{ cur.weapons.map((k) => WEAPONS[k].name).join(' / ') }}</p>
+      <p class="rec">{{ cur.weapons.filter((k) => HOLD_CLASSES.includes(k)).map((k) => WEAPONS[k].name).join(' / ') }}</p>
 
       <div class="sub">难度</div>
       <div class="t-seg">
@@ -206,8 +207,8 @@ const savedAt = computed(() => (ui.checkpoint?.savedAt ? new Date(ui.checkpoint.
         <button class="t-btn" :title="`「${nightMod(daily.mod).name}」· 只用${WEAPONS[daily.weapon].name}`" @click="ui.actions.daily()">
           每日挑战 <small>{{ daily.key.slice(5) }} · 最好 {{ dailyBest !== undefined ? `${dailyBest} 夜` : '—' }}</small>
         </button>
-        <!-- 8v8 对战：先选人机难度（记在本机），再开打；「？」里是规则和按键 -->
-        <div class="tdm">
+        <!-- 8v8 对战：先选人机难度（记在本机），再开打；「？」里是规则和按键。现在不开放（FEATURES.tdm） -->
+        <div v-if="FEATURES.tdm" class="tdm">
           <div v-if="showTdm" class="tdm-info t-panel">
             <div class="t-head">8v8 对战 <small>北港仓库</small></div>
             <p>先赢 {{ TDM.winRounds }} 局，每局一条命。开局的冻结时间里按 B 用金币买枪、护甲、手雷；打空了能捡地上的枪，刀人人都有。</p>

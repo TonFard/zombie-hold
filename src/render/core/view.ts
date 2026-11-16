@@ -368,6 +368,7 @@ export class GameView {
         alive: p.alive,
         lowered: game.buildMode || game.hz.throwT > 0,
         reload: p.reloadTimer > 0 ? 1 - p.reloadTimer / p.reloadTotal : -1,
+        reloadTime: p.reloadTotal / Math.max(0.01, game.mods.reload),
         recoil: p.recoil,
         speed: Math.hypot(p.vx, p.vz),
         sprinting: p.sprinting,

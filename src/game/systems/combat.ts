@@ -418,7 +418,7 @@ export function updateStatus(g: Game, dt: number): void {
     if (z.slowT > 0) z.slowT -= dt;
     if (!z.alive || z.burnT <= 0) continue;
     z.burnT -= dt;
-    g.damageZombie(z, z.burnDps * dt, { silent: true, burn: 0, ...(z.burnBy ? { weapon: z.burnBy as WeaponKind } : { src: 'fire' as const }) });
+    g.damageZombie(z, z.burnDps * dt, { silent: true, dot: true, burn: 0, ...(z.burnBy ? { weapon: z.burnBy as WeaponKind } : { src: 'fire' as const }) });
   }
 }
 

@@ -54,18 +54,42 @@ export class InputController {
     if (e.code === 'KeyV') g.melee = true;
     // I：检视武器（纯表现，逻辑层不知道）
     if (e.code === 'KeyI') this.onInspect?.();
-    if (e.code === 'KeyG') g.grenade = true;
     // Q：只有对战里用（换回上一把武器）；守城里以前是发电机电击脉冲，去掉了
     if (e.code === 'KeyQ' && this.game.tdm.on) g.pulse = true;
-    if (e.code === 'KeyT') g.flashlight = !g.flashlight;
-    // B：切换手雷种类（爆炸 / 燃烧）；对战里 B 是购买菜单（screens.ts 处理，菜单开着时这里收不到按键）
-    if (e.code === 'KeyB' && !this.game.tdm.on) this.game.hz.useFire = !this.game.hz.useFire;
     if (e.code === 'Enter' || e.code === 'NumpadEnter') g.confirm = true;
-    if (e.code >= 'Digit1' && e.code <= 'Digit6') g.select = Number(e.code.slice(5));
+    // 数字键：守城里 5 是手雷（手电去掉了），其余是身上武器的编号；对战里 1–6 还是枪位
+    if (e.code === 'Digit5' && !this.game.tdm.on) this.onGrenadeKey();
+    else if (e.code >= 'Digit1' && e.code <= 'Digit6') g.select = Number(e.code.slice(5));
   };
   private readonly onKeyUp = (e: KeyboardEvent) => this.keys.delete(e.code);
   /** E 键先问应用层要不要处理（例如打开工坊），返回 true 就不再当成修理 */
   onInteract: (() => boolean) | null = null;
+  /** 上一次按 5 的时间：0.3 秒内连按两下 = 换手雷种类，不扔 */
+  private grenadeAt = 0;
+  private grenadeTimer: number | null = null;
+
+  /**
+   * 5：手雷。单按扔一个（延迟 0.26 秒，留出连按的窗口）；连按两下 = 爆炸 / 燃烧切换，那颗不扔。
+   * 以前是 G 扔、B 换种类、T 开手电，键位散在键盘各处；现在统一在数字键上，屏幕上那个格子也写 5
+   */
+  private onGrenadeKey(): void {
+    if (!this.game.config.extras) return;
+    const now = performance.now();
+    if (now - this.grenadeAt < 300) {
+      this.grenadeAt = 0;
+      if (this.grenadeTimer !== null) {
+        window.clearTimeout(this.grenadeTimer);
+        this.grenadeTimer = null;
+      }
+      this.game.hz.useFire = !this.game.hz.useFire;
+      return;
+    }
+    this.grenadeAt = now;
+    this.grenadeTimer = window.setTimeout(() => {
+      this.grenadeTimer = null;
+      if (this.enabled) this.game.input.grenade = true;
+    }, 260);
+  }
   onInspect: (() => void) | null = null;
   /** 刚进入指针锁定后丢掉的事件数（第一下常常带着锁定前的整段位移） */
   private skipMoves = 0;

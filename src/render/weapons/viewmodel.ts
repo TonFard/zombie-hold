@@ -186,6 +186,8 @@ export interface ViewModelState {
   lowered: boolean;
   /** 换弹进度 0–1，-1 = 没在换弹 */
   reload: number;
+  /** 这一次换弹从头到尾实际要几秒（换弹加成已经算进去）；没在换弹时不看 */
+  reloadTime: number;
   /** 开火后坐力 0–1 */
   recoil: number;
   speed: number;
@@ -222,8 +224,8 @@ export class ViewModel {
 
   /** TACZ 枪的摄像机动画（每帧更新），世界相机也要乘上它 */
   readonly cameraAnim = new Quaternion();
-  /** TACZ 枪的动画音效 */
-  onSound: ((url: string, gain: number) => void) | null = null;
+  /** TACZ 枪的动画音效。speed / until = 配着它的动画被压了几倍、压到采样的第几秒为止（见 TaczRig.onSound） */
+  onSound: ((url: string, gain: number, speed: number, until: number) => void) | null = null;
   /** 某个型号的 TACZ 模型加载好了（音频层据此预加载音效） */
   onTaczReady: ((id: string, urls: string[]) => void) | null = null;
 
@@ -367,7 +369,7 @@ export class ViewModel {
           rig.dispose();
           return;
         }
-        rig.onSound = (url, gain) => this.onSound?.(url, gain);
+        rig.onSound = (url, gain, speed, until) => this.onSound?.(url, gain, speed, until);
         this.tacz.set(id, rig);
         this.onTaczReady?.(id, rig.soundUrls());
       })
@@ -765,6 +767,7 @@ export class ViewModel {
     rig.update(dt, {
       ads: aimK,
       reload: s.reload,
+      reloadTime: s.reloadTime,
       mag: s.mag,
       magMax: s.magMax,
       xmag: 0,

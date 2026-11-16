@@ -194,7 +194,7 @@ export class Arsenal implements ArsenalApi {
   private shvz = 0;
 
   // ---- 视角模型
-  private readonly vmState: ViewModelState = { kind: 'pistol', scope: false, tier: 0, alive: true, lowered: false, reload: -1, recoil: 0, speed: 0, sprinting: false, yaw: 0, pitch: 0, ads: 0, melee: -1, crouch: 0, sliding: false, sprintOut: 0, mag: 0, magMax: 1, fwd: 0, side: 0, gun: '' };
+  private readonly vmState: ViewModelState = { kind: 'pistol', scope: false, tier: 0, alive: true, lowered: false, reload: -1, reloadTime: 1, recoil: 0, speed: 0, sprinting: false, yaw: 0, pitch: 0, ads: 0, melee: -1, crouch: 0, sliding: false, sprintOut: 0, mag: 0, magMax: 1, fwd: 0, side: 0, gun: '' };
   private readonly meleeFrame: MeleeFrame = { kind: null, up: false, swing: -1, combo: 0, speed: 0, sprinting: false, yaw: 0, pitch: 0 };
   /** 视角模型自己的东西（枪、它的手臂）现在显示着没有；拿近战武器时藏起来 */
   private gunLayer = true;
@@ -231,10 +231,10 @@ export class Arsenal implements ArsenalApi {
     vm.scene.add(this.itemView.root);
     ctx.scene.add(this.fx.group);
     ctx.scene.add(this.nades.group);
-    vm.onSound = (url, gain) => {
-      // 开火的采样音量是 1，动作音效是 0.75；开火的音高略微随机
+    vm.onSound = (url, gain, speed, until) => {
+      // 开火的采样音量是 1，动作音效是 0.75；开火的音高略微随机。动作音效跟着动画的快慢压短 / 拉长
       if (gain >= 1) this.audio.play(url, 0.85, 0.96 + Math.random() * 0.08);
-      else this.audio.play(url, 0.6);
+      else this.audio.play(url, 0.6, 1, speed, until);
     };
     vm.onTaczReady = (id, urls) => {
       this.audio.preload(urls);
@@ -1323,6 +1323,7 @@ export class Arsenal implements ArsenalApi {
     st.gun = g.id;
     st.lowered = this.phase === 'lower' || this.useT >= 0 || this.throwT >= 0;
     st.reload = reloading ? Math.min(1, this.reloadT / this.reloadDur) : -1;
+    st.reloadTime = this.reloadDur;
     st.speed = p.speed;
     st.sprinting = p.sprinting && p.speed > 1.5;
     st.yaw = p.yaw;

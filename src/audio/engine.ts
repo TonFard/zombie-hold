@@ -3,6 +3,8 @@
  * 接受任意 BaseAudioContext，所以既能跑在 AudioContext 里发声，也能跑在 OfflineAudioContext 里做无声自检。
  */
 
+import { Retimer } from './stretch';
+
 export interface FilterSpec {
   type: BiquadFilterType;
   freq: number;
@@ -161,6 +163,8 @@ export class AudioEngine {
 
   /** 采样音效（TACZ 枪的 ogg）：先 load，加载好之后 sample 才会响。null = 正在加载，false = 加载失败 */
   private readonly samples = new Map<string, AudioBuffer | null | false>();
+  /** 按动画速度压短 / 拉长过的采样（换弹、拉栓的动作音效） */
+  private readonly retimer = new Retimer();
 
   /** 这个采样有结果了没有（解码好了，或者加载失败不会再有了）。还没开始加载 / 正在加载 = false */
   settled(url: string): boolean {
@@ -185,8 +189,12 @@ export class AudioEngine {
       });
   }
 
-  /** 播放已加载的采样；还没加载就先加载，这一次不响 */
-  sample(url: string, gain = 1, out?: AudioNode): void {
+  /**
+   * 播放已加载的采样；还没加载就先加载，这一次不响。
+   * speed = 配着它的动画是几倍速：不是 1 时放的是压短 / 拉长过的那一份（音高不变，采样里每一下响声的时刻跟着动画走）；
+   * until = 采样的前这么多秒（原速）按 speed 算，后面保持原速。见 stretch.ts
+   */
+  sample(url: string, gain = 1, out?: AudioNode, speed = 1, until = Infinity): void {
     const ctx = this.ctx;
     const dest = out ?? this.bus;
     if (!ctx || !dest) return;
@@ -194,7 +202,7 @@ export class AudioEngine {
     if (buf === undefined) this.load(url);
     if (!buf || this.busy()) return;
     const src = ctx.createBufferSource();
-    src.buffer = buf;
+    src.buffer = speed === 1 ? buf : this.retimer.fit(ctx, url, buf, speed, until);
     const g = ctx.createGain();
     g.gain.value = gain;
     src.connect(g);
@@ -231,6 +239,7 @@ export class AudioEngine {
     if (c.state === 'closed') {
       const urls = [...this.samples.keys()];
       this.samples.clear();
+      this.retimer.clear();
       this.ctx = null;
       this.voices = 0;
       this.unlock();

@@ -3,6 +3,7 @@ import { DIFFICULTIES, type Difficulty } from '../data/difficulty';
 import { baseBonuses, type MetaBonuses } from '../data/meta-catalog';
 import type { Daily } from './achievements';
 import { STRUCTURE_ORDER } from '../data/structures';
+import { HOLD_CLASSES } from '../data/features';
 import { AMMO_LIMITED, MAX_TIER, WEAPON_ORDER, noMods, type WeaponKind } from '../data/weapons';
 import { CHAPTER_BY_ID } from '../data/chapters';
 import { benchMods } from '../data/bench';
@@ -39,7 +40,7 @@ export function configFor(b: MetaBonuses, d: Difficulty, chapter: MapId = 'outpo
     zombieCount: def.count * ch.count,
     zombieDamage: def.damage * ch.damage,
     tierCap: { ...b.tierCap },
-    weapons: WEAPON_ORDER.filter((k) => b.weapons.has(k)),
+    weapons: WEAPON_ORDER.filter((k) => b.weapons.has(k) && HOLD_CLASSES.includes(k)),
     structures: STRUCTURE_ORDER.filter((k) => b.structures.has(k)),
     turretCap: b.turretCap,
     rerolls: b.rerolls,
@@ -104,7 +105,7 @@ export function applyMeta(g: Game, b: MetaBonuses, dep: Deploy): void {
 export function widenMeta(g: Game, b: MetaBonuses): void {
   const c = g.config;
   if (c.training || c.daily) return;
-  c.weapons = WEAPON_ORDER.filter((k) => c.weapons.includes(k) || b.weapons.has(k));
+  c.weapons = WEAPON_ORDER.filter((k) => HOLD_CLASSES.includes(k) && (c.weapons.includes(k) || b.weapons.has(k)));
   // 旧版本存的检查点（那时枪还要在工坊买）、存档以后大厅里新解锁的枪：直接补到工坊里
   g.grantUnlocked();
   c.structures = STRUCTURE_ORDER.filter((k) => c.structures.includes(k) || b.structures.has(k));

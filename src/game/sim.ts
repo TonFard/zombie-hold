@@ -228,6 +228,8 @@ export interface CoreState {
 }
 
 export interface DamageOpts {
+  /** 持续伤害（灼烧、火堆）：不算一次「命中」，不触发受击白闪 */
+  dot?: boolean;
   crit?: boolean;
   kx?: number;
   kz?: number;
@@ -730,7 +732,8 @@ export class Game {
       else this.stats.srcDamage[o.src ?? (o.chain ? 'chain' : 'other')] += dealt;
     }
     z.hp -= amount;
-    z.hitFlash = 0.09;
+    // 灼烧是每帧结算的：也闪白的话烧着的僵尸会一直白到火灭
+    if (!o.dot) z.hitFlash = 0.09;
     if (o.kx || o.kz) {
       z.kbx += o.kx ?? 0;
       z.kbz += o.kz ?? 0;

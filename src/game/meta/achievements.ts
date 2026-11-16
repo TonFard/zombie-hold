@@ -74,13 +74,14 @@ export interface Daily {
   seed: number;
   mod: NightModId;
   /** 限定武器：只能用这一把（开局就给，工坊里买不了别的） */
-  weapon: 'pistol' | 'smg' | 'shotgun' | 'rifle';
+  weapon: 'pistol' | 'smg' | 'rifle' | 'lmg';
 }
 
 export function dailyFor(key: string): Daily {
   // 日期串的简单散列
   let h = 2166136261;
   for (let i = 0; i < key.length; i++) h = Math.imul(h ^ key.charCodeAt(i), 16777619) >>> 0;
-  const weapons = ['pistol', 'smg', 'shotgun', 'rifle'] as const;
+  // 守城暂时不收狙击枪 / 霰弹枪：每日挑战也从开放的种类里轮
+  const weapons = ['pistol', 'smg', 'rifle', 'lmg'] as const;
   return { key, seed: h & 0xffff, mod: NIGHT_MOD_ORDER[h % NIGHT_MOD_ORDER.length] as NightModId, weapon: weapons[(h >>> 8) % weapons.length] as Daily['weapon'] };
 }

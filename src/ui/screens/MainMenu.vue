@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { version } from '../../../package.json';
 import { CHAPTER_BY_ID } from '../../game/data/chapters';
 import { DIFFICULTIES } from '../../game/data/difficulty';
+import { FEATURES } from '../../game/data/features';
 import { fmtTime, ui } from '../store';
 
 /**
@@ -51,8 +52,10 @@ const openWorld = (mode?: 'bio'): void => {
           <b>{{ cp ? '指挥中心' : '开始生存' }}</b><small>{{ cp ? 'COMMAND · 出征 / 仓库 / 军械库' : 'NEW GAME · 进入据点' }}</small>
         </button>
         <button class="item" @click="ui.actions.training()"><b>训练场</b><small>TRAINING · 试枪、练爆头</small></button>
-        <button class="item" @click="openWorld()"><b>生存世界</b><small>OPEN WORLD · 空手开局、搜刮、开车</small></button>
-        <button class="item" @click="openWorld('bio')"><b>生化模式</b><small>INFECTION · 母体感染，撑到天黑</small></button>
+        <template v-if="FEATURES.openWorld">
+          <button class="item" @click="openWorld()"><b>生存世界</b><small>OPEN WORLD · 空手开局、搜刮、开车</small></button>
+          <button class="item" @click="openWorld('bio')"><b>生化模式</b><small>INFECTION · 母体感染，撑到天黑</small></button>
+        </template>
         <button class="item" @click="help = true"><b>操作说明</b><small>CONTROLS</small></button>
         <button class="item" @click="openSettings()"><b>设置</b><small>SETTINGS · 音量 / 画质 / 灵敏度</small></button>
         <button v-if="desktop" class="item" @click="quit()"><b>退出游戏</b><small>EXIT</small></button>
